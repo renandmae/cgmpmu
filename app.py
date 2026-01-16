@@ -644,7 +644,7 @@ def colaboradores():
     if session['perfil'] != 'admin':
         return 'Acesso negado'
 
-    ADMIN_MASTER_ID = 21
+    ADMIN_MASTER_ID = 1
     admin_master = session.get("user_id") == ADMIN_MASTER_ID
 
     con = get_db()

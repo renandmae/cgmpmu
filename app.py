@@ -50,7 +50,7 @@ app.secret_key = 'troque_esta_chave'
 # -------------------------
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://postgres.rjdfnufoeulbmotxjqwd:cgm2025@aws-1-sa-east-1.pooler.supabase.com:5432/postgres"
+    "postgresql://postgres.fvbharlpyxiwakbzyxzw:cgm2025agdt@aws-1-sa-east-1.pooler.supabase.com:5432/postgres"
 )
 
 def get_db():

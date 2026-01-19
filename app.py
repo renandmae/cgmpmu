@@ -6102,49 +6102,86 @@ def editar_requisicao(id):
 
     html = """
     <h3>Editar Requisição</h3>
-
+    
     <form method="post">
-        <b>Chave:</b> {{ r.chave }}<br><br>
-
-        <label>Status Análise</label><br>
-        <select name="status_analise">
-            <option value=""></option>
-            {% for s in ['ANDAMENTO','ANALISANDO','ANALISADO'] %}
-                <option value="{{s}}" {% if r.status_analise==s %}selected{% endif %}>{{s}}</option>
-            {% endfor %}
-        </select><br><br>
-
-        <label>Tipo</label><br>
-        <select name="tipo">
-            <option value=""></option>
-            {% for t in ['CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO'] %}
-                <option value="{{t}}" {% if r.tipo==t %}selected{% endif %}>{{t}}</option>
-            {% endfor %}
-        </select><br><br>
-
-        <label>Critério</label><br>
-        <select name="criterio">
-            <option value=""></option>
-            {% for c in ['MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA'] %}
-                <option value="{{c}}" {% if r.criterio==c %}selected{% endif %}>{{c}}</option>
-            {% endfor %}
-        </select><br><br>
-
-        <label>Responsável</label><br>
-        <select name="servidor_id">
-            <option value=""></option>
-            {% for col in colaboradores %}
-                <option value="{{col.id}}" {% if r.servidor_id==col.id %}selected{% endif %}>
-                    {{col.nome}}
-                </option>
-            {% endfor %}
-        </select><br><br>
-
-        <label>Observações</label><br>
-        <textarea name="observacoes" style="width:100%">{{ r.observacoes }}</textarea><br><br>
-
-        <button class="btn">Salvar</button>
-        <a class="btn" href="/requisicoes">Cancelar</a>
+    
+    <fieldset style="border:1px solid #ccc;padding:10px">
+    <legend><b>Dados da Requisição (somente leitura)</b></legend>
+    
+    <table style="width:100%">
+    <tr><td><b>Chave</b></td><td>{{ r.chave }}</td></tr>
+    <tr><td><b>Nº Requisição</b></td><td>{{ r.requisicao_num }}</td></tr>
+    <tr><td><b>Sigla</b></td><td>{{ r.sigla }}</td></tr>
+    <tr><td><b>Secretaria</b></td><td>{{ r.secretaria }}</td></tr>
+    <tr><td><b>Tipo Documento</b></td><td>{{ r.tipo_documento }}</td></tr>
+    <tr><td><b>Valor</b></td><td>{{ r.valor_requisicao }}</td></tr>
+    <tr><td><b>Solicitante</b></td><td>{{ r.nome_solicitante }}</td></tr>
+    <tr><td><b>Status Atual</b></td><td>{{ r.status_atual }}</td></tr>
+    <tr><td><b>Data Criação</b></td><td>{{ r.data_criacao }}</td></tr>
+    <tr><td><b>Data Tramitação</b></td><td>{{ r.data_tramitacao }}</td></tr>
+    <tr><td><b>Natureza Despesa</b></td><td>{{ r.natureza_despesa }}</td></tr>
+    <tr><td><b>Item Despesa</b></td><td>{{ r.item_despesa }}</td></tr>
+    <tr><td><b>Fornecedor</b></td><td>{{ r.nome_fornecedor }}</td></tr>
+    <tr><td><b>Edital</b></td><td>{{ r.edital }}</td></tr>
+    <tr><td><b>Contrato</b></td><td>{{ r.contrato }}</td></tr>
+    <tr><td><b>Empenho</b></td><td>{{ r.empenho }}</td></tr>
+    <tr><td><b>Ficha Despesa</b></td><td>{{ r.ficha_despesa }}</td></tr>
+    <tr><td><b>Data Corte</b></td><td>{{ r.data_corte }}</td></tr>
+    </table>
+    
+    </fieldset>
+    
+    <br>
+    
+    <fieldset style="border:1px solid #ccc;padding:10px">
+    <legend><b>Análise CGM</b></legend>
+    
+    <label>Status da Análise</label><br>
+    <select name="status_analise">
+        <option value=""></option>
+        {% for s in ['ANDAMENTO','ANALISANDO','ANALISADO'] %}
+        <option value="{{s}}" {% if r.status_analise==s %}selected{% endif %}>{{s}}</option>
+        {% endfor %}
+    </select><br><br>
+    
+    <label>Tipo</label><br>
+    <select name="tipo">
+        <option value=""></option>
+        {% for t in ['CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO'] %}
+        <option value="{{t}}" {% if r.tipo==t %}selected{% endif %}>{{t}}</option>
+        {% endfor %}
+    </select><br><br>
+    
+    <label>Critério</label><br>
+    <select name="criterio">
+        <option value=""></option>
+        {% for c in ['MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA'] %}
+        <option value="{{c}}" {% if r.criterio==c %}selected{% endif %}>{{c}}</option>
+        {% endfor %}
+    </select><br><br>
+    
+    <label>Responsável</label><br>
+    <select name="servidor_id">
+        <option value=""></option>
+        {% for col in colaboradores %}
+        <option value="{{col.id}}" {% if r.servidor_id==col.id %}selected{% endif %}>
+            {{col.nome}}
+        </option>
+        {% endfor %}
+    </select><br><br>
+    
+    <label>Observações</label><br>
+    <textarea name="observacoes" style="width:100%;min-height:80px">
+    {{ r.observacoes or '' }}
+    </textarea>
+    
+    </fieldset>
+    
+    <br>
+    
+    <button class="btn">Salvar</button>
+    <a class="btn" href="/requisicoes">Cancelar</a>
+    
     </form>
     """
 

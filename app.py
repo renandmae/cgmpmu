@@ -218,9 +218,8 @@ CREATE TABLE IF NOT EXISTS os (
     
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
 
-    CREATE TABLE IF NOT EXISTS requisicoes (
+        CREATE TABLE IF NOT EXISTS requisicoes (
     id SERIAL PRIMARY KEY,
 
     -- chave de negócio
@@ -267,7 +266,8 @@ CREATE TABLE IF NOT EXISTS os (
 
     created_at TIMESTAMP DEFAULT NOW()
 );
-
+    
+    """)
 
     con.commit()
     con.close()

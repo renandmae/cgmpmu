@@ -15,6 +15,24 @@ import psycopg2
 import psycopg2.extras
 from psycopg2 import IntegrityError
 
+from datetime import datetime
+
+def parse_data_excel(valor):
+    if not valor:
+        return None
+
+    if isinstance(valor, datetime):
+        return valor
+
+    try:
+        return datetime.strptime(str(valor).strip(), "%d/%m/%Y %H:%M:%S")
+    except ValueError:
+        try:
+            return datetime.strptime(str(valor).strip(), "%d/%m/%Y")
+        except ValueError:
+            return None
+
+
 def data_padrao_2026():
     hoje = date.today()
     if hoje.year == 2026:
@@ -5660,38 +5678,55 @@ def exportar_consultorias():
         download_name="consultorias.csv"
     )
 
-@app.route("/requisicoes/importar", methods=["GET","POST"])
+from datetime import datetime
+from flask import request, redirect, session, render_template_string
+
+@app.route("/requisicoes/importar", methods=["GET", "POST"])
 def importar_requisicoes():
+
     SIGLAS = {
-    "02": "SEGOV",
-    "03": "SMGAS",
-    "04": "PGM",
-    "05": "SMA",
-    "06": "SMF",
-    "07": "SME",
-    "08": "SMCT",
-    "09": "SMS",
-    "10": "SMDES",
-    "12": "SMAGRO",
-    "13": "SEINFRA",
-    "15": "SETTRAN",
-    "17": "DMAE",
-    "18": "IPREMU",
-    "19": "FUTEL",
-    "20": "FERUB",
-    "21": "EMAM",
-    "23": "CGM",
-    "24": "SESURB",
-    "25": "SMH",
-    "27": "SEJUV",
-    "28": "SECOM",
-    "29": "SEDEI",
-    "33": "SMGE",
-    "34": "SEPLAN",
-    "35": "SSEG",
-    "38": "ARESAN"
-}
-    
+        "02": "SEGOV",
+        "03": "SMGAS",
+        "04": "PGM",
+        "05": "SMA",
+        "06": "SMF",
+        "07": "SME",
+        "08": "SMCT",
+        "09": "SMS",
+        "10": "SMDES",
+        "12": "SMAGRO",
+        "13": "SEINFRA",
+        "15": "SETTRAN",
+        "17": "DMAE",
+        "18": "IPREMU",
+        "19": "FUTEL",
+        "20": "FERUB",
+        "21": "EMAM",
+        "23": "CGM",
+        "24": "SESURB",
+        "25": "SMH",
+        "27": "SEJUV",
+        "28": "SECOM",
+        "29": "SEDEI",
+        "33": "SMGE",
+        "34": "SEPLAN",
+        "35": "SSEG",
+        "38": "ARESAN"
+    }
+
+    def parse_data_excel(valor):
+        if not valor:
+            return None
+        if isinstance(valor, datetime):
+            return valor
+        try:
+            return datetime.strptime(str(valor).strip(), "%d/%m/%Y %H:%M:%S")
+        except ValueError:
+            try:
+                return datetime.strptime(str(valor).strip(), "%d/%m/%Y")
+            except ValueError:
+                return None
+
     if "user" not in session:
         return redirect("/")
 
@@ -5702,8 +5737,9 @@ def importar_requisicoes():
 
     if request.method == "POST":
         from openpyxl import load_workbook
+
         arquivo = request.files["arquivo"]
-        data_corte = request.form["data_corte"]
+        data_corte = datetime.strptime(request.form["data_corte"], "%Y-%m-%d")
 
         wb = load_workbook(arquivo, data_only=True)
         ws = wb.active
@@ -5714,11 +5750,15 @@ def importar_requisicoes():
         inseridos = 0
         ignorados = 0
 
-        for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
+        for row in ws.iter_rows(min_row=2, values_only=True):
+
             secretaria = row[0]
             num = row[1]
 
-            codigo = secretaria[:2]
+            if not secretaria or not num:
+                continue
+
+            codigo = str(secretaria)[:2]
             sigla = SIGLAS.get(codigo)
 
             if not sigla:
@@ -5740,13 +5780,26 @@ def importar_requisicoes():
                 ON CONFLICT (chave) DO NOTHING
                 RETURNING id
             """, (
-                chave, num, sigla,
-                row[0], row[2], row[3],
-                row[4], row[5], row[6],
-                row[7], row[8], row[9],
-                row[11], row[12], row[13],
-                row[14], row[15], row[16],
-                row[17], data_corte
+                chave,
+                num,
+                sigla,
+                row[0],
+                row[2],
+                row[3],
+                row[4],
+                parse_data_excel(row[5]),
+                row[6],
+                parse_data_excel(row[7]),
+                row[8],
+                row[9],
+                row[11],
+                row[12],
+                row[13],
+                parse_data_excel(row[14]),
+                parse_data_excel(row[15]),
+                row[16],
+                row[17],
+                data_corte
             ))
 
             if cur.fetchone():
@@ -5762,7 +5815,9 @@ def importar_requisicoes():
     html = """
     <h3>Importar Requisições</h3>
 
-    {% if msg %}<p><b>{{ msg }}</b></p>{% endif %}
+    {% if msg %}
+        <p><b>{{ msg }}</b></p>
+    {% endif %}
 
     <form method="post" enctype="multipart/form-data">
         <label>Arquivo XLSX</label><br>
@@ -5781,6 +5836,7 @@ def importar_requisicoes():
         user=session["user"],
         perfil=session["perfil"]
     )
+
 
 @app.route("/requisicoes")
 def requisicoes():

@@ -5913,9 +5913,9 @@ def requisicoes():
             cur.execute("""
                 UPDATE requisicoes
                 SET
-                    status_analise = %s,
-                    tipo = %s,
-                    criterio = %s,
+                    status_analise = NULLIF(%s,''),
+                    tipo = NULLIF(%s,''),
+                    criterio = NULLIF(%s,''),
                     servidor_id = %s
                 WHERE id = %s
             """, (
@@ -5925,6 +5925,7 @@ def requisicoes():
                 request.form.get("servidor_id") or None,
                 req_id
             ))
+
             con.commit()
             con.close()
             return "OK"
@@ -6006,11 +6007,13 @@ def requisicoes():
                 </select>
             </td>
 
-            <td>
-                {% if perfil == 'admin' %}
+           <td>
+            {% if perfil == 'admin' %}
+                <a href="/requisicoes/editar/{{ r.id }}">✏️</a>
                 <button onclick="excluir({{ r.id }})">🗑️</button>
-                {% endif %}
-            </td>
+            {% endif %}
+        </td>
+        
         </tr>
         {% endfor %}
     </table>
@@ -6056,7 +6059,102 @@ def requisicoes():
         perfil=session["perfil"]
     )
 
+@app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])
+def editar_requisicao(id):
+    if "user" not in session:
+        return redirect("/")
 
+    if session["perfil"] != "admin":
+        return "Acesso negado", 403
+
+    con = get_db()
+    cur = con.cursor()
+
+    if request.method == "POST":
+        cur.execute("""
+            UPDATE requisicoes
+            SET
+                tipo = NULLIF(%s,''),
+                status_analise = NULLIF(%s,''),
+                criterio = NULLIF(%s,''),
+                servidor_id = %s,
+                observacoes = %s
+            WHERE id = %s
+        """, (
+            request.form.get("tipo"),
+            request.form.get("status_analise"),
+            request.form.get("criterio"),
+            request.form.get("servidor_id") or None,
+            request.form.get("observacoes"),
+            id
+        ))
+        con.commit()
+        con.close()
+        return redirect("/requisicoes")
+
+    cur.execute("SELECT * FROM requisicoes WHERE id = %s", (id,))
+    r = cur.fetchone()
+
+    cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
+    colaboradores = cur.fetchall()
+
+    con.close()
+
+    html = """
+    <h3>Editar Requisição</h3>
+
+    <form method="post">
+        <b>Chave:</b> {{ r.chave }}<br><br>
+
+        <label>Status Análise</label><br>
+        <select name="status_analise">
+            <option value=""></option>
+            {% for s in ['ANDAMENTO','ANALISANDO','ANALISADO'] %}
+                <option value="{{s}}" {% if r.status_analise==s %}selected{% endif %}>{{s}}</option>
+            {% endfor %}
+        </select><br><br>
+
+        <label>Tipo</label><br>
+        <select name="tipo">
+            <option value=""></option>
+            {% for t in ['CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO'] %}
+                <option value="{{t}}" {% if r.tipo==t %}selected{% endif %}>{{t}}</option>
+            {% endfor %}
+        </select><br><br>
+
+        <label>Critério</label><br>
+        <select name="criterio">
+            <option value=""></option>
+            {% for c in ['MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA'] %}
+                <option value="{{c}}" {% if r.criterio==c %}selected{% endif %}>{{c}}</option>
+            {% endfor %}
+        </select><br><br>
+
+        <label>Responsável</label><br>
+        <select name="servidor_id">
+            <option value=""></option>
+            {% for col in colaboradores %}
+                <option value="{{col.id}}" {% if r.servidor_id==col.id %}selected{% endif %}>
+                    {{col.nome}}
+                </option>
+            {% endfor %}
+        </select><br><br>
+
+        <label>Observações</label><br>
+        <textarea name="observacoes" style="width:100%">{{ r.observacoes }}</textarea><br><br>
+
+        <button class="btn">Salvar</button>
+        <a class="btn" href="/requisicoes">Cancelar</a>
+    </form>
+    """
+
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        r=r,
+        colaboradores=colaboradores,
+        user=session["user"],
+        perfil=session["perfil"]
+    )
 
 @app.route("/seed")
 def seed():

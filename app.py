@@ -5660,6 +5660,194 @@ def exportar_consultorias():
         download_name="consultorias.csv"
     )
 
+@app.route("/requisicoes/importar", methods=["GET","POST"])
+def importar_requisicoes():
+SIGLAS = {
+    "02": "SEGOV",
+    "03": "SMGAS",
+    "04": "PGM",
+    "05": "SMA",
+    "06": "SMF",
+    "07": "SME",
+    "08": "SMCT",
+    "09": "SMS",
+    "10": "SMDES",
+    "12": "SMAGRO",
+    "13": "SEINFRA",
+    "15": "SETTRAN",
+    "17": "DMAE",
+    "18": "IPREMU",
+    "19": "FUTEL",
+    "20": "FERUB",
+    "21": "EMAM",
+    "23": "CGM",
+    "24": "SESURB",
+    "25": "SMH",
+    "27": "SEJUV",
+    "28": "SECOM",
+    "29": "SEDEI",
+    "33": "SMGE",
+    "34": "SEPLAN",
+    "35": "SSEG",
+    "38": "ARESAN"
+}
+
+    if "user" not in session:
+        return redirect("/")
+
+    if session["perfil"] != "admin":
+        return "Acesso negado"
+
+    msg = None
+
+    if request.method == "POST":
+        from openpyxl import load_workbook
+        arquivo = request.files["arquivo"]
+        data_corte = request.form["data_corte"]
+
+        wb = load_workbook(arquivo, data_only=True)
+        ws = wb.active
+
+        con = get_db()
+        cur = con.cursor()
+
+        inseridos = 0
+        ignorados = 0
+
+        for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
+            secretaria = row[0]
+            num = row[1]
+
+            codigo = secretaria[:2]
+            sigla = SIGLAS.get(codigo)
+
+            if not sigla:
+                continue
+
+            chave = f"{num}/{sigla}"
+
+            cur.execute("""
+                INSERT INTO requisicoes (
+                    chave, requisicao_num, sigla,
+                    secretaria, tipo_documento, valor_requisicao,
+                    nome_solicitante, data_criacao, status_atual,
+                    data_tramitacao, natureza_despesa, item_despesa,
+                    nome_fornecedor, edital, contrato,
+                    data_medicao, data_liquidacao, empenho,
+                    ficha_despesa, data_corte
+                )
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (chave) DO NOTHING
+                RETURNING id
+            """, (
+                chave, num, sigla,
+                row[0], row[2], row[3],
+                row[4], row[5], row[6],
+                row[7], row[8], row[9],
+                row[11], row[12], row[13],
+                row[14], row[15], row[16],
+                row[17], data_corte
+            ))
+
+            if cur.fetchone():
+                inseridos += 1
+            else:
+                ignorados += 1
+
+        con.commit()
+        con.close()
+
+        msg = f"Importação concluída — {inseridos} novos / {ignorados} ignorados"
+
+    html = """
+    <h3>Importar Requisições</h3>
+
+    {% if msg %}<p><b>{{ msg }}</b></p>{% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        <label>Arquivo XLSX</label><br>
+        <input type="file" name="arquivo" required><br><br>
+
+        <label>Data de Corte</label><br>
+        <input type="date" name="data_corte" required><br><br>
+
+        <button class="btn">Importar</button>
+    </form>
+    """
+
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        msg=msg,
+        user=session["user"],
+        perfil=session["perfil"]
+    )
+
+@app.route("/requisicoes")
+def requisicoes():
+    if "user" not in session:
+        return redirect("/")
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT r.*, c.nome AS servidor
+        FROM requisicoes r
+        LEFT JOIN colaboradores c ON c.id = r.servidor_id
+        ORDER BY r.created_at DESC
+        LIMIT 500
+    """)
+
+    rows = cur.fetchall()
+    con.close()
+
+    html = """
+    <h3>Requisições</h3>
+
+    <input type="text" id="filtro" placeholder="Pesquisar..."
+           style="width:100%;padding:8px;margin-bottom:10px;">
+
+    <table id="tbl">
+        <tr>
+            <th>Chave</th>
+            <th>Sigla</th>
+            <th>Valor</th>
+            <th>Status Análise</th>
+            <th>Tipo</th>
+            <th>Critério</th>
+        </tr>
+
+        {% for r in rows %}
+        <tr>
+            <td>{{ r.chave }}</td>
+            <td>{{ r.sigla }}</td>
+            <td>{{ r.valor_requisicao }}</td>
+            <td>{{ r.status_analise }}</td>
+            <td>{{ r.tipo }}</td>
+            <td>{{ r.criterio }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <script>
+    document.getElementById("filtro").addEventListener("keyup", function(){
+        let f = this.value.toLowerCase();
+        document.querySelectorAll("#tbl tr").forEach((tr,i)=>{
+            if(i===0) return;
+            tr.style.display = tr.innerText.toLowerCase().includes(f) ? "" : "none";
+        });
+    });
+    </script>
+    """
+
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        rows=rows,
+        user=session["user"],
+        perfil=session["perfil"]
+    )
+
+
 @app.route("/seed")
 def seed():
     executar_seed()

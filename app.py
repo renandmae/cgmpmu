@@ -5662,7 +5662,7 @@ def exportar_consultorias():
 
 @app.route("/requisicoes/importar", methods=["GET","POST"])
 def importar_requisicoes():
-SIGLAS = {
+    SIGLAS = {
     "02": "SEGOV",
     "03": "SMGAS",
     "04": "PGM",
@@ -5691,7 +5691,7 @@ SIGLAS = {
     "35": "SSEG",
     "38": "ARESAN"
 }
-
+    
     if "user" not in session:
         return redirect("/")
 

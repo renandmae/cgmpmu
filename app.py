@@ -220,6 +220,55 @@ CREATE TABLE IF NOT EXISTS os (
     );
     """)
 
+    CREATE TABLE IF NOT EXISTS requisicoes (
+    id SERIAL PRIMARY KEY,
+
+    -- chave de negócio
+    chave TEXT UNIQUE,               -- ex: 1000/2026/CGM
+    requisicao_num TEXT,             -- 1000/2026
+    sigla TEXT,                      -- CGM
+
+    -- dados importados do XLSX
+    secretaria TEXT,
+    tipo_documento TEXT,
+    valor_requisicao NUMERIC(15,2),
+    nome_solicitante TEXT,
+    data_criacao TIMESTAMP,
+    status_atual TEXT,
+    data_tramitacao TIMESTAMP,
+    natureza_despesa TEXT,
+    item_despesa TEXT,
+    nome_fornecedor TEXT,
+    edital TEXT,
+    contrato TEXT,
+    data_medicao TEXT,
+    data_liquidacao TEXT,
+    empenho TEXT,
+    ficha_despesa TEXT,
+
+    -- controle de carga
+    data_corte DATE,
+
+    -- CAMPOS DE ANÁLISE (preenchidos depois)
+    tipo TEXT CHECK (tipo IN ('CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO')),
+    status_analise TEXT CHECK (status_analise IN ('ANDAMENTO','ANALISANDO','ANALISADO')),
+    criterio TEXT CHECK (criterio IN ('MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA')),
+
+    servidor_id INTEGER REFERENCES colaboradores(id),
+
+    nota TEXT CHECK (nota IN ('SIM','NÃO')),
+    num_nota TEXT,
+    oficio TEXT,
+    monitoramento TEXT CHECK (monitoramento IN ('SIM','NÃO')),
+    monitoramento_resposta TEXT,
+
+    observacoes TEXT,
+    valor_posterior NUMERIC(15,2),
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
     con.commit()
     con.close()
 
@@ -5838,7 +5887,7 @@ def importar_requisicoes():
     )
 
 
-@app.route("/requisicoes")
+@app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
     if "user" not in session:
         return redirect("/")
@@ -5846,6 +5895,41 @@ def requisicoes():
     con = get_db()
     cur = con.cursor()
 
+    # ====== ATUALIZAÇÃO INLINE / EXCLUSÃO ======
+    if request.method == "POST":
+        if session["perfil"] != "admin":
+            return "Acesso negado", 403
+
+        acao = request.form.get("acao")
+        req_id = request.form.get("id")
+
+        if acao == "excluir":
+            cur.execute("DELETE FROM requisicoes WHERE id = %s", (req_id,))
+            con.commit()
+            con.close()
+            return "OK"
+
+        if acao == "atualizar":
+            cur.execute("""
+                UPDATE requisicoes
+                SET
+                    status_analise = %s,
+                    tipo = %s,
+                    criterio = %s,
+                    servidor_id = %s
+                WHERE id = %s
+            """, (
+                request.form.get("status_analise"),
+                request.form.get("tipo"),
+                request.form.get("criterio"),
+                request.form.get("servidor_id") or None,
+                req_id
+            ))
+            con.commit()
+            con.close()
+            return "OK"
+
+    # ====== LISTAGEM ======
     cur.execute("""
         SELECT r.*, c.nome AS servidor
         FROM requisicoes r
@@ -5853,8 +5937,11 @@ def requisicoes():
         ORDER BY r.created_at DESC
         LIMIT 500
     """)
-
     rows = cur.fetchall()
+
+    cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
+    colaboradores = cur.fetchall()
+
     con.close()
 
     html = """
@@ -5868,9 +5955,11 @@ def requisicoes():
             <th>Chave</th>
             <th>Sigla</th>
             <th>Valor</th>
-            <th>Status Análise</th>
+            <th>Status</th>
             <th>Tipo</th>
             <th>Critério</th>
+            <th>Responsável</th>
+            <th>Ações</th>
         </tr>
 
         {% for r in rows %}
@@ -5878,9 +5967,50 @@ def requisicoes():
             <td>{{ r.chave }}</td>
             <td>{{ r.sigla }}</td>
             <td>{{ r.valor_requisicao }}</td>
-            <td>{{ r.status_analise }}</td>
-            <td>{{ r.tipo }}</td>
-            <td>{{ r.criterio }}</td>
+
+            <td>
+                <select onchange="salvar({{ r.id }})" id="status_{{ r.id }}">
+                    <option value=""></option>
+                    {% for s in ['ANDAMENTO','ANALISANDO','ANALISADO'] %}
+                        <option value="{{s}}" {% if r.status_analise==s %}selected{% endif %}>{{s}}</option>
+                    {% endfor %}
+                </select>
+            </td>
+
+            <td>
+                <select onchange="salvar({{ r.id }})" id="tipo_{{ r.id }}">
+                    <option value=""></option>
+                    {% for t in ['CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO'] %}
+                        <option value="{{t}}" {% if r.tipo==t %}selected{% endif %}>{{t}}</option>
+                    {% endfor %}
+                </select>
+            </td>
+
+            <td>
+                <select onchange="salvar({{ r.id }})" id="criterio_{{ r.id }}">
+                    <option value=""></option>
+                    {% for c in ['MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA'] %}
+                        <option value="{{c}}" {% if r.criterio==c %}selected{% endif %}>{{c}}</option>
+                    {% endfor %}
+                </select>
+            </td>
+
+            <td>
+                <select onchange="salvar({{ r.id }})" id="servidor_{{ r.id }}">
+                    <option value=""></option>
+                    {% for col in colaboradores %}
+                        <option value="{{col.id}}" {% if r.servidor_id==col.id %}selected{% endif %}>
+                            {{col.nome}}
+                        </option>
+                    {% endfor %}
+                </select>
+            </td>
+
+            <td>
+                {% if perfil == 'admin' %}
+                <button onclick="excluir({{ r.id }})">🗑️</button>
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
     </table>
@@ -5893,15 +6023,39 @@ def requisicoes():
             tr.style.display = tr.innerText.toLowerCase().includes(f) ? "" : "none";
         });
     });
+
+    function salvar(id){
+        let fd = new FormData();
+        fd.append("acao","atualizar");
+        fd.append("id",id);
+        fd.append("status_analise", document.getElementById("status_"+id).value);
+        fd.append("tipo", document.getElementById("tipo_"+id).value);
+        fd.append("criterio", document.getElementById("criterio_"+id).value);
+        fd.append("servidor_id", document.getElementById("servidor_"+id).value);
+
+        fetch("/requisicoes",{method:"POST", body:fd});
+    }
+
+    function excluir(id){
+        if(!confirm("Excluir esta requisição?")) return;
+        let fd = new FormData();
+        fd.append("acao","excluir");
+        fd.append("id",id);
+
+        fetch("/requisicoes",{method:"POST", body:fd})
+            .then(()=>location.reload());
+    }
     </script>
     """
 
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
         rows=rows,
+        colaboradores=colaboradores,
         user=session["user"],
         perfil=session["perfil"]
     )
+
 
 
 @app.route("/seed")

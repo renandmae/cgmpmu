@@ -5213,7 +5213,8 @@ def requisicoes():
                     WHERE hr.requisicao_id = %s
                 """, (req_id,))
     
-                ultima_data = cur.fetchone()[0]
+                row = cur.fetchone()
+                ultima_data = row["max"] if row else None
     
                 if ultima_data:
                     cur.execute("""

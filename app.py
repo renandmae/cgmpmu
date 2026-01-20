@@ -4118,7 +4118,14 @@ def minhas_delegacoes():
         <td>{{ r.chave }}</td>
         <td>{{ r.os_codigo }}</td>
         <td>{{ fmt(r.data_inicio) }}</td>
-        <td>{{ r.status_analise }}</td>
+        <td>
+            <select class="status-select" data-id="{{ r.id }}">
+                <option value="ANDAMENTO" {{ "selected" if r.status_analise=="ANDAMENTO" else "" }}>ANDAMENTO</option>
+                <option value="ANALISANDO" {{ "selected" if r.status_analise=="ANALISANDO" else "" }}>ANALISANDO</option>
+                <option value="ANALISADO" {{ "selected" if r.status_analise=="ANALISADO" else "" }}>ANALISADO</option>
+            </select>
+        </td>
+
         <td>{{ r.tipo }}</td>
         <td>{{ r.criterio }}</td>
         <td>
@@ -4127,6 +4134,25 @@ def minhas_delegacoes():
     </tr>
     {% endfor %}
 </table>
+<script>
+document.querySelectorAll(".status-select").forEach(sel => {
+    sel.addEventListener("change", function () {
+
+        fetch("/requisicoes", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                acao: "atualizar",
+                id: this.dataset.id,
+                status_analise: this.value
+            })
+        }).then(r => {
+            if (!r.ok) alert("Erro ao atualizar status");
+        });
+
+    });
+});
+</script>
 {% else %}
 <p>Nenhuma requisição delegada para você.</p>
 {% endif %}
@@ -4183,8 +4209,9 @@ def ver_requisicao(id):
             h.atividade,
             col.nome AS colaborador
         FROM horas h
+        JOIN horas_requisicoes hr ON hr.hora_id = h.id
         LEFT JOIN colaboradores col ON col.id = h.colaborador_id
-        WHERE h.requisicao_id = %s
+        WHERE hr.requisicao_id = %s
         ORDER BY h.data, h.hora_inicio
     """, (id,))
 

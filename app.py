@@ -5375,11 +5375,25 @@ def requisicoes():
     </table>
 
     <script>
-    document.getElementById("filtro").addEventListener("keyup", function(){
+    document.getElementById("filtro").addEventListener("keyup", function () {
         let f = this.value.toLowerCase();
-        document.querySelectorAll("#tbl tr").forEach((tr,i)=>{
-            if(i===0) return;
-            tr.style.display = tr.innerText.toLowerCase().includes(f) ? "" : "none";
+    
+        document.querySelectorAll("#tbl tr").forEach((tr, i) => {
+            if (i === 0) return;
+    
+            let texto = tr.innerText.toLowerCase();
+    
+            // incluir selects
+            tr.querySelectorAll("select").forEach(sel => {
+                texto += " " + (sel.value || "").toLowerCase();
+            });
+    
+            // incluir inputs
+            tr.querySelectorAll("input").forEach(inp => {
+                texto += " " + (inp.value || "").toLowerCase();
+            });
+    
+            tr.style.display = texto.includes(f) ? "" : "none";
         });
     });
 

@@ -5747,20 +5747,18 @@ def importar_requisicoes():
 
     def parse_data_excel(valor):
         if not valor:
-            return None
+            return ""
         if isinstance(valor, datetime):
-            return valor
-        try:
-            return datetime.strptime(str(valor).strip(), "%d/%m/%Y %H:%M:%S")
-        except ValueError:
+            return valor.strftime("%Y-%m-%d %H:%M:%S")
+        for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
             try:
-                return datetime.strptime(str(valor).strip(), "%d/%m/%Y")
-            except ValueError:
-                return None
+                return datetime.strptime(str(valor).strip(), fmt).strftime("%Y-%m-%d %H:%M:%S")
+            except:
+                pass
+        return ""
 
     if "user" not in session:
         return redirect("/")
-
     if session["perfil"] != "admin":
         return "Acesso negado", 403
 
@@ -5768,28 +5766,28 @@ def importar_requisicoes():
 
     if request.method == "POST":
         from openpyxl import load_workbook
+        import io
 
         arquivo = request.files["arquivo"]
-        data_corte = datetime.strptime(request.form["data_corte"], "%Y-%m-%d")
+        data_corte = request.form["data_corte"]
 
-        # 🔥 STREAMING (não carrega tudo na memória)
         wb = load_workbook(arquivo, read_only=True, data_only=True)
         ws = wb.active
 
         con = get_db()
         cur = con.cursor()
 
-        BATCH_SIZE = 500
-        batch = []
+        # limpa staging
+        cur.execute("TRUNCATE requisicoes_staging")
 
-        inseridos = 0
-        ignorados = 0
+        buffer = io.StringIO()
+        linhas = 0
+        BATCH = 2000
 
         for row in ws.iter_rows(min_row=2, values_only=True):
 
             secretaria = row[0]
             num = row[1]
-
             if not secretaria or not num:
                 continue
 
@@ -5800,84 +5798,68 @@ def importar_requisicoes():
 
             chave = f"{num}/{sigla}"
 
-            batch.append((
-                chave,
-                num,
-                sigla,
-                row[0],
-                row[2],
-                row[3],
-                row[4],
+            linha = [
+                chave, num, sigla,
+                row[0], row[2], row[3], row[4],
                 parse_data_excel(row[5]),
                 row[6],
                 parse_data_excel(row[7]),
-                row[8],
-                row[9],
-                row[11],
-                row[12],
-                row[13],
+                row[8], row[9], row[11],
+                row[12], row[13],
                 parse_data_excel(row[14]),
                 parse_data_excel(row[15]),
-                row[16],
-                row[17],
+                row[16], row[17],
                 data_corte
-            ))
+            ]
 
-            if len(batch) >= BATCH_SIZE:
-                cur.executemany("""
-                    INSERT INTO requisicoes (
-                        chave, requisicao_num, sigla,
-                        secretaria, tipo_documento, valor_requisicao,
-                        nome_solicitante, data_criacao, status_atual,
-                        data_tramitacao, natureza_despesa, item_despesa,
-                        nome_fornecedor, edital, contrato,
-                        data_medicao, data_liquidacao, empenho,
-                        ficha_despesa, data_corte
-                    )
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (chave) DO NOTHING
-                """, batch)
+            buffer.write("\t".join("" if v is None else str(v) for v in linha) + "\n")
+            linhas += 1
 
-                inseridos += cur.rowcount
-                batch.clear()
-                con.commit()
+            if linhas % BATCH == 0:
+                buffer.seek(0)
+                cur.copy_from(buffer, "requisicoes_staging", sep="\t", null="")
+                buffer.close()
+                buffer = io.StringIO()
 
-        # resto do lote
-        if batch:
-            cur.executemany("""
-                INSERT INTO requisicoes (
-                    chave, requisicao_num, sigla,
-                    secretaria, tipo_documento, valor_requisicao,
-                    nome_solicitante, data_criacao, status_atual,
-                    data_tramitacao, natureza_despesa, item_despesa,
-                    nome_fornecedor, edital, contrato,
-                    data_medicao, data_liquidacao, empenho,
-                    ficha_despesa, data_corte
-                )
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (chave) DO NOTHING
-            """, batch)
-            inseridos += cur.rowcount
-            con.commit()
+        buffer.seek(0)
+        cur.copy_from(buffer, "requisicoes_staging", sep="\t", null="")
+        buffer.close()
 
+        # move para tabela final
+        cur.execute("""
+            INSERT INTO requisicoes (
+                chave, requisicao_num, sigla,
+                secretaria, tipo_documento, valor_requisicao,
+                nome_solicitante, data_criacao, status_atual,
+                data_tramitacao, natureza_despesa, item_despesa,
+                nome_fornecedor, edital, contrato,
+                data_medicao, data_liquidacao, empenho,
+                ficha_despesa, data_corte
+            )
+            SELECT
+                chave, requisicao_num, sigla,
+                secretaria, tipo_documento, valor_requisicao,
+                nome_solicitante, data_criacao, status_atual,
+                data_tramitacao, natureza_despesa, item_despesa,
+                nome_fornecedor, edital, contrato,
+                data_medicao, data_liquidacao, empenho,
+                ficha_despesa, data_corte
+            FROM requisicoes_staging
+            ON CONFLICT (chave) DO NOTHING
+        """)
+
+        inseridos = cur.rowcount
+        con.commit()
         con.close()
 
-        msg = f"Importação concluída — {inseridos} novos / duplicados ignorados"
+        msg = f"Importação concluída — {inseridos} novos registros"
 
     html = """
     <h3>Importar Requisições</h3>
-
-    {% if msg %}
-        <p><b>{{ msg }}</b></p>
-    {% endif %}
-
+    {% if msg %}<p><b>{{ msg }}</b></p>{% endif %}
     <form method="post" enctype="multipart/form-data">
-        <label>Arquivo XLSX</label><br>
         <input type="file" name="arquivo" required><br><br>
-
-        <label>Data de Corte</label><br>
         <input type="date" name="data_corte" required><br><br>
-
         <button class="btn">Importar</button>
     </form>
     """
@@ -5888,6 +5870,7 @@ def importar_requisicoes():
         user=session["user"],
         perfil=session["perfil"]
     )
+
 
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():

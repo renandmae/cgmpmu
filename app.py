@@ -5170,7 +5170,7 @@ def requisicoes():
                             data_conclusao = NOW()
                         WHERE id = %s
                     """, (ultima_data, req_id))
-            if acao == "atualizar_campo":
+        elif acao == "atualizar_campo":
 
                 campo = request.form.get("campo")
                 valor = request.form.get("valor")

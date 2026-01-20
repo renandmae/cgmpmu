@@ -2421,12 +2421,13 @@ function remover(btn) {
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", form_html),
         oss=oss,
-        delegacoes=delegacoes,
+        requisicoes=requisicoes,   # ✅ É o que o HTML usa
         colaboradores=colaboradores,
         data_padrao=data_padrao,
         user=session['user'],
         perfil=session['perfil']
     )
+
 
 
 # -------------------------

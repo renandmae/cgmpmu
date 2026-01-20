@@ -2034,169 +2034,149 @@ def lancar():
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
     colaboradores = cur.fetchall()
 
-    # -------------------------
-    # PROCESSAR POST
-    # -------------------------
-    if request.method == 'POST':
+# -------------------------
+# PROCESSAR POST
+# -------------------------
+if request.method == 'POST':
 
-        item = request.form.get('item')
-        os_codigo = request.form.get('os')
-        atividade = request.form.get('atividade')
-        observacoes = request.form.get('observacoes')
+    item = request.form.get('item')
+    os_codigo = request.form.get('os')
+    atividade = request.form.get('atividade')
+    observacoes = request.form.get('observacoes')
 
-        requisicoes_ids = request.form.getlist("requisicoes[]")
+    requisicoes_ids = request.form.getlist("requisicoes[]")
 
-        datas = request.form.getlist("data[]")
-        horas_ini = request.form.getlist("hora_ini[]")
-        horas_fim = request.form.getlist("hora_fim[]")
+    datas = request.form.getlist("data[]")
+    horas_ini = request.form.getlist("hora_ini[]")
+    horas_fim = request.form.getlist("hora_fim[]")
 
-        if not datas:
-            con.close()
-            return "Nenhum lançamento informado"
-
-        total_minutos_paint = 0
-
-        for data, hora_ini, hora_fim in zip(datas, horas_ini, horas_fim):
-
-            # ---- validar data
-            dt = datetime.strptime(data, "%Y-%m-%d")
-            if dt.year != 2026:
-                con.close()
-                return "Só é permitido lançar horas em 2026"
-
-            # ---- calcular duração
-            ini = datetime.strptime(hora_ini, "%H:%M")
-            fim = datetime.strptime(hora_fim, "%H:%M")
-            minutos = (fim - ini).seconds // 60
-            duracao = f"{minutos//60:02d}:{minutos%60:02d}"
-
-            # se não marcou requisição, lança 1x sem vínculo
-            if not requisicoes_ids:
-                requisicoes_ids = [None]
-
-            for req_id in requisicoes_ids:
-
-                cur.execute("""
-                    INSERT INTO horas
-                    (colaborador_id, requisicao_id, data, item_paint, os_codigo,
-                     atividade, hora_inicio, hora_fim, duracao, duracao_minutos,
-                     observacoes, conta_total)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    RETURNING id
-                """, (
-                    session["user_id"],
-                    req_id,
-                    data,
-                    item,
-                    os_codigo,
-                    atividade,
-                    hora_ini,
-                    hora_fim,
-                    duracao,
-                    minutos,
-                    observacoes,
-                    req_id == requisicoes_ids[0]  # ✅ só a primeira conta
-                ))
-            
-                hora_id = cur.fetchone()["id"]
-
-                # -------------------------
-                # OS 1.15 – Atendimento
-                # -------------------------
-                if os_codigo == "1.15/2026":
-
-                    responsaveis_ids = request.form.getlist("responsaveis[]")
-
-                    for resp_id in responsaveis_ids:
-                        if not resp_id.isdigit():
-                            continue
-                        resp_id = int(resp_id)
-                        if resp_id == session["user_id"]:
-                            continue
-
-                        cur.execute("""
-                            INSERT INTO horas
-                            (colaborador_id, data, item_paint, os_codigo, atividade,
-                             hora_inicio, hora_fim, duracao, duracao_minutos, observacoes)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                        """, (
-                            resp_id, data, item, os_codigo, atividade,
-                            hora_ini, hora_fim, duracao, minutos,
-                            f"Lançamento automático – Atendimento OS {os_codigo}"
-                        ))
-
-                    os_resumo = next((o["resumo"] for o in oss if o["codigo"] == os_codigo), None)
-
-                    cur.execute("""
-                        INSERT INTO atendimentos (
-                            hora_id, colaborador_id, os_codigo, os_resumo,
-                            responsaveis_consultoria, macro, diretoria, atividade,
-                            data_consultoria, assunto, participantes_externos,
-                            entidades, meio_contato, observacao,
-                            duracao_minutos, data_lancamento
-                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (
-                        hora_id,
-                        session["user_id"],
-                        os_codigo,
-                        os_resumo,
-                        ", ".join([
-                            c["nome"] for c in colaboradores
-                            if str(c["id"]) in responsaveis_ids
-                        ]),
-                        request.form.get("macro"),
-                        request.form.get("diretoria"),
-                        request.form.get("atividade_atendimento"),
-                        request.form.get("data_consultoria"),
-                        request.form.get("assunto"),
-                        request.form.get("participantes_externos"),
-                        ", ".join(request.form.getlist("entidades[]")),
-                        request.form.get("meio_contato"),
-                        request.form.get("observacao_atendimento"),
-                        minutos,
-                        data
-                    ))
-
-                # -------------------------
-                # OS 1.14 / 1.16 – Consultoria
-                # -------------------------
-                elif os_codigo in ("1.14/2026", "1.16/2026"):
-
-                    tipo = "consultoria" if os_codigo == "1.14/2026" else "treinamento"
-                    responsaveis = request.form.getlist("responsaveis2[]")
-
-                    os_resumo = next((o["resumo"] for o in oss if o["codigo"] == os_codigo), None)
-
-                    cur.execute("""
-                        INSERT INTO consultorias (
-                            hora_id, colaborador_id, os_codigo, os_resumo,
-                            responsaveis, tipo, data_consul, assunto,
-                            secretarias, meio, palavras_chave,
-                            num_oficio, observacao,
-                            duracao_minutos, data_lancamento
-                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (
-                        hora_id,
-                        session["user_id"],
-                        os_codigo,
-                        os_resumo,
-                        ", ".join(responsaveis),
-                        tipo,
-                        request.form.get("data_consul"),
-                        request.form.get("assunto_consultoria"),
-                        ", ".join(request.form.getlist("secretarias[]")),
-                        request.form.get("meio"),
-                        request.form.get("palavras_chave"),
-                        request.form.get("num_oficio"),
-                        request.form.get("observacao"),
-                        minutos,
-                        data
-                    ))
-            total_minutos_paint += minutos
-
-        con.commit()
+    if not datas:
         con.close()
-        return redirect('/menu')
+        return "Nenhum lançamento informado"
+
+    for data, hora_ini, hora_fim in zip(datas, horas_ini, horas_fim):
+
+        # ---- validar data
+        dt = datetime.strptime(data, "%Y-%m-%d")
+        if dt.year != 2026:
+            con.close()
+            return "Só é permitido lançar horas em 2026"
+
+        # ---- calcular duração
+        ini = datetime.strptime(hora_ini, "%H:%M")
+        fim = datetime.strptime(hora_fim, "%H:%M")
+        minutos = (fim - ini).seconds // 60
+        duracao = f"{minutos//60:02d}:{minutos%60:02d}"
+
+        # -------------------------
+        # INSERE A HORA
+        # -------------------------
+        cur.execute("""
+            INSERT INTO horas
+            (colaborador_id, data, item_paint, os_codigo,
+             atividade, hora_inicio, hora_fim,
+             duracao, duracao_minutos, observacoes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (
+            session["user_id"],
+            data,
+            item,
+            os_codigo,
+            atividade,
+            hora_ini,
+            hora_fim,
+            duracao,
+            minutos,
+            observacoes
+        ))
+
+        hora_id = cur.fetchone()["id"]
+
+        # -------------------------
+        # VÍNCULO COM REQUISIÇÕES
+        # -------------------------
+        for req_id in requisicoes_ids:
+            cur.execute("""
+                INSERT INTO horas_requisicoes (hora_id, requisicao_id)
+                VALUES (%s, %s)
+            """, (hora_id, req_id))
+
+        # -------------------------
+        # OS 1.15 – Atendimento
+        # -------------------------
+        if os_codigo == "1.15/2026":
+
+            responsaveis_ids = request.form.getlist("responsaveis[]")
+            os_resumo = next((o["resumo"] for o in oss if o["codigo"] == os_codigo), None)
+
+            cur.execute("""
+                INSERT INTO atendimentos (
+                    hora_id, colaborador_id, os_codigo, os_resumo,
+                    responsaveis_consultoria, macro, diretoria, atividade,
+                    data_consultoria, assunto, participantes_externos,
+                    entidades, meio_contato, observacao,
+                    duracao_minutos, data_lancamento
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                hora_id,
+                session["user_id"],
+                os_codigo,
+                os_resumo,
+                ", ".join(
+                    c["nome"] for c in colaboradores
+                    if str(c["id"]) in responsaveis_ids
+                ),
+                request.form.get("macro"),
+                request.form.get("diretoria"),
+                request.form.get("atividade_atendimento"),
+                request.form.get("data_consultoria"),
+                request.form.get("assunto"),
+                request.form.get("participantes_externos"),
+                ", ".join(request.form.getlist("entidades[]")),
+                request.form.get("meio_contato"),
+                request.form.get("observacao_atendimento"),
+                minutos,
+                data
+            ))
+
+        # -------------------------
+        # OS 1.14 / 1.16 – Consultoria
+        # -------------------------
+        elif os_codigo in ("1.14/2026", "1.16/2026"):
+
+            tipo = "consultoria" if os_codigo == "1.14/2026" else "treinamento"
+            responsaveis = request.form.getlist("responsaveis2[]")
+            os_resumo = next((o["resumo"] for o in oss if o["codigo"] == os_codigo), None)
+
+            cur.execute("""
+                INSERT INTO consultorias (
+                    hora_id, colaborador_id, os_codigo, os_resumo,
+                    responsaveis, tipo, data_consul, assunto,
+                    secretarias, meio, palavras_chave,
+                    num_oficio, observacao,
+                    duracao_minutos, data_lancamento
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                hora_id,
+                session["user_id"],
+                os_codigo,
+                os_resumo,
+                ", ".join(responsaveis),
+                tipo,
+                request.form.get("data_consul"),
+                request.form.get("assunto_consultoria"),
+                ", ".join(request.form.getlist("secretarias[]")),
+                request.form.get("meio"),
+                request.form.get("palavras_chave"),
+                request.form.get("num_oficio"),
+                request.form.get("observacao"),
+                minutos,
+                data
+            ))
+    con.commit()
+    con.close()
+    return redirect('/menu')
 
     # -------------------------
     # HTML

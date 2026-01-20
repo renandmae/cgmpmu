@@ -2079,8 +2079,9 @@ def lancar():
                 cur.execute("""
                     INSERT INTO horas
                     (colaborador_id, requisicao_id, data, item_paint, os_codigo,
-                     atividade, hora_inicio, hora_fim, duracao, duracao_minutos, observacoes)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                     atividade, hora_inicio, hora_fim, duracao, duracao_minutos,
+                     observacoes, conta_total)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     RETURNING id
                 """, (
                     session["user_id"],
@@ -2093,9 +2094,10 @@ def lancar():
                     hora_fim,
                     duracao,
                     minutos,
-                    observacoes
+                    observacoes,
+                    req_id == requisicoes_ids[0]  # ✅ só a primeira conta
                 ))
-
+            
                 hora_id = cur.fetchone()["id"]
 
                 # -------------------------
@@ -2625,6 +2627,9 @@ def relatorios():
         if len(obs) > 90:
             obs = obs[:90] + "..."
 
+        duracao_visual = r['duracao'] if r.get('conta_total') else "—"
+        titulo = "Conta no total de horas" if r.get('conta_total') else "Vínculo de requisição (não soma)"
+
         html += f"""
             <tr>
                 <td>{fmt(r['data'])}</td>
@@ -2632,7 +2637,7 @@ def relatorios():
                 <td>{os_visual}</td>
                 <td>{r['atividade']}</td>
                 <td title="{r['observacoes'] or ''}">{obs}</td>
-                <td>{r['duracao']}</td>
+                <td title="{titulo}">{duracao_visual}</td>
                 <td style="white-space: nowrap;">
                 <a class='btn' href='/editar/{r["id"]}'>Editar</a>
                 <a class='btn' style='background:#c0392b; margin-left:5px;'
@@ -4144,7 +4149,7 @@ def minhas_delegacoes():
         <td>{{ r.tipo }}</td>
         <td>{{ r.criterio }}</td>
         <td>
-            <a class="btn" href="/requisicoes/editar/{{ r.id }}">Abrir</a>
+            <a class="btn" href="/requisicao/{{ r.id }}">Ver</a>
         </td>
     </tr>
     {% endfor %}
@@ -4159,96 +4164,95 @@ def minhas_delegacoes():
         perfil=session["perfil"]
     )
 
-@app.route("/excluir_delegacao/<int:id>")
-def excluir_delegacao(id):
-    if "user" not in session:
-        return redirect("/")
-    if session["perfil"] != "admin":
-        return "Acesso negado"
-
-    con = get_db()
-    cur = con.cursor()
-    cur.execute("DELETE FROM delegacoes WHERE id = %s", (id,))
-    con.commit()
-    con.close()
-
-    return redirect("/delegacoes")
-
-
 # ---------------------------------------------------------
-# Visualizar uma delegação + histórico de horas associadas
+# Visualizar uma requisição + histórico de horas associadas
 # ---------------------------------------------------------
-@app.route("/delegacao/<int:id>")
-def ver_delegacao(id):
+@app.route("/requisicao/<int:id>")
+def ver_requisicao(id):
     if "user" not in session:
         return redirect("/")
 
     con = get_db()
     cur = con.cursor()
 
-    # Buscar dados da delegação
+    # -------------------------------
+    # Buscar dados da requisição
+    # -------------------------------
     cur.execute("""
-        SELECT d.*, c.nome AS colaborador
-        FROM delegacoes d
-        LEFT JOIN colaboradores c ON c.id = d.colaborador_id
-        WHERE d.id = %s
+        SELECT r.*, c.nome AS colaborador
+        FROM requisicoes r
+        LEFT JOIN colaboradores c ON c.id = r.servidor_id
+        WHERE r.id = %s
     """, (id,))
-    deleg = cur.fetchone()
+    req = cur.fetchone()
 
-    if not deleg:
+    if not req:
         con.close()
-        return "Delegação não encontrada"
+        return "Requisição não encontrada"
 
-    # -------------------------------------------------
+    # -------------------------------
     # REGRA DE ACESSO
-    # -------------------------------------------------
+    # -------------------------------
     if session["perfil"] != "admin":
-        if deleg["colaborador_id"] != session["user_id"]:
+        if req["servidor_id"] != session["user_id"]:
             con.close()
-            return "Acesso negado"
+            return "Acesso negado", 403
 
-    # Lista de requisições
+    # -------------------------------
+    # Buscar horas vinculadas
+    # -------------------------------
     cur.execute("""
-    SELECT h.*, col.nome AS colaborador_nome
-    FROM horas h
-    LEFT JOIN colaboradores col ON col.id = h.colaborador_id
-    WHERE h.delegacao_id = %s
-    ORDER BY h.data, h.hora_inicio
+        SELECT
+            h.data,
+            h.hora_inicio,
+            h.hora_fim,
+            h.duracao,
+            h.atividade,
+            col.nome AS colaborador
+        FROM horas h
+        LEFT JOIN colaboradores col ON col.id = h.colaborador_id
+        WHERE h.requisicao_id = %s
+        ORDER BY h.data, h.hora_inicio
     """, (id,))
 
     horas = cur.fetchall()
-
     con.close()
 
     # -------------------------------
-    # Construção do HTML
+    # HTML
     # -------------------------------
     html = f"""
-    <h2>Delegação #{id}</h2>
+    <h2>Requisição {req['chave']}</h2>
 
-    <b>Requisições:</b> {deleg['requisicoes']}<br>
-    <b>O.S:</b> {deleg['os_codigo']}<br>
-    <b>Colaborador:</b> {deleg['colaborador']}<br>
-    <b>Data Início:</b> {fmt(deleg['data_inicio'])}<br>
-    <b>Status:</b> {deleg['status']}<br>
-    <b>Grau:</b> {deleg['grau']}<br>
-    <b>Critério:</b> {deleg['criterio']}<br><br>
+    <fieldset>
+        <legend><b>Dados da Requisição</b></legend>
 
-    <h3>Horas Lançadas nesta Delegação</h3>
+        <b>Sigla:</b> {req['sigla']}<br>
+        <b>Tipo:</b> {req['tipo'] or '-'}<br>
+        <b>Critério:</b> {req['criterio'] or '-'}<br>
+        <b>Status:</b> {req['status_analise'] or '-'}<br>
+        <b>Responsável:</b> {req['colaborador'] or '-'}<br>
+        <b>O.S:</b> {req['os_codigo'] or '-'}<br>
+        <b>Data Início:</b> {fmt(req['data_inicio'])}<br>
+        <b>Data Fim:</b> {fmt(req['data_fim'])}<br>
+    </fieldset>
+
+    <br>
+
+    <h3>Horas Lançadas nesta Requisição</h3>
     """
 
     if not horas:
         html += "<p>Nenhum lançamento encontrado.</p>"
     else:
         html += """
-        <table border=1 cellpadding=5>
+        <table border="1" cellpadding="6" cellspacing="0">
             <tr>
                 <th>Data</th>
-                <th>Início</th>
-                <th>Fim</th>
+                <th>Hora Início</th>
+                <th>Hora Fim</th>
                 <th>Duração</th>
                 <th>Atividade</th>
-                <th>Requisições</th>
                 <th>Colaborador</th>
             </tr>
         """
@@ -4260,15 +4264,20 @@ def ver_delegacao(id):
                 <td>{h['hora_fim']}</td>
                 <td>{h['duracao']}</td>
                 <td>{h['atividade']}</td>
-                <td>{deleg['requisicoes']}</td>
-                <td>{h['colaborador_nome']}</td>
+                <td>{h['colaborador']}</td>
             </tr>
             """
         html += "</table>"
 
+    html += """
+    <br>
+    <a class="btn" href="javascript:history.back()">⬅ Voltar</a>
+    """
+
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
-        user=session["user"], perfil=session["perfil"]
+        user=session["user"],
+        perfil=session["perfil"]
     )
 
 def minutos_para_hhmm(minutos):

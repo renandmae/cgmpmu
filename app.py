@@ -5138,47 +5138,83 @@ def requisicoes():
     # ======================================================
     if request.method == "POST":
 
-        if session["perfil"] != "admin":
-            return "Acesso negado", 403
-
         acao = request.form.get("acao")
         req_id = request.form.get("id")
-
-        # -------- EXCLUIR
+    
+        # ==========================================
+        # EXCLUIR → SÓ ADMIN
+        # ==========================================
         if acao == "excluir":
+            if session["perfil"] != "admin":
+                return "Acesso negado", 403
+    
             cur.execute("DELETE FROM requisicoes WHERE id = %s", (req_id,))
             con.commit()
             con.close()
             return "OK"
-
-        # -------- ATUALIZAR CAMPOS PRINCIPAIS
-        elif acao == "atualizar":
-
-            status = request.form.get("status_analise") or None
-            tipo = request.form.get("tipo") or None
-            criterio = request.form.get("criterio") or None
-            servidor_id = request.form.get("servidor_id") or None
-
-            cur.execute("""
-                UPDATE requisicoes
-                SET
-                    status_analise = %s,
-                    tipo = %s,
-                    criterio = %s,
-                    servidor_id = %s
-                WHERE id = %s
-            """, (status, tipo, criterio, servidor_id, req_id))
-
-            # REGRA: ANALISADO → data_fim = última hora
+    
+        # ==========================================
+        # ATUALIZAR
+        # ==========================================
+        if acao == "atualizar":
+    
+            status = request.form.get("status_analise")
+            tipo = request.form.get("tipo")
+            criterio = request.form.get("criterio")
+            servidor_id = request.form.get("servidor_id")
+    
+            # ------------------------------------------
+            # COLABORADOR
+            # ------------------------------------------
+            if session["perfil"] != "admin":
+    
+                # só pode alterar status
+                if tipo or criterio or servidor_id:
+                    return "Acesso negado", 403
+    
+                # só se for dono da requisição
+                cur.execute(
+                    "SELECT servidor_id FROM requisicoes WHERE id = %s",
+                    (req_id,)
+                )
+                dono = cur.fetchone()
+    
+                if not dono or dono["servidor_id"] != session["user_id"]:
+                    return "Acesso negado", 403
+    
+                cur.execute("""
+                    UPDATE requisicoes
+                    SET status_analise = %s
+                    WHERE id = %s
+                """, (status, req_id))
+    
+            # ------------------------------------------
+            # ADMIN
+            # ------------------------------------------
+            else:
+                cur.execute("""
+                    UPDATE requisicoes
+                    SET
+                        status_analise = %s,
+                        tipo = %s,
+                        criterio = %s,
+                        servidor_id = %s
+                    WHERE id = %s
+                """, (status, tipo, criterio, servidor_id, req_id))
+    
+            # ------------------------------------------
+            # REGRA: ANALISADO → data_fim
+            # ------------------------------------------
             if status == "ANALISADO":
                 cur.execute("""
-                    SELECT MAX(data)
-                    FROM horas
-                    WHERE requisicao_id = %s
+                    SELECT MAX(h.data)
+                    FROM horas h
+                    JOIN horas_requisicoes hr ON hr.hora_id = h.id
+                    WHERE hr.requisicao_id = %s
                 """, (req_id,))
-
+    
                 ultima_data = cur.fetchone()[0]
-
+    
                 if ultima_data:
                     cur.execute("""
                         UPDATE requisicoes
@@ -5187,26 +5223,30 @@ def requisicoes():
                             data_conclusao = NOW()
                         WHERE id = %s
                     """, (ultima_data, req_id))
-
+    
             con.commit()
             con.close()
             return "OK"
-
-        # -------- ATUALIZAÇÃO INLINE (DATA INÍCIO / FIM)
-        elif acao == "atualizar_campo":
-
+    
+        # ==========================================
+        # ATUALIZAR DATA INÍCIO / FIM → SÓ ADMIN
+        # ==========================================
+        if acao == "atualizar_campo":
+            if session["perfil"] != "admin":
+                return "Acesso negado", 403
+    
             campo = request.form.get("campo")
             valor = request.form.get("valor")
-
+    
             if campo not in ("data_inicio", "data_fim"):
                 return "Campo inválido", 400
-
+    
             cur.execute(f"""
                 UPDATE requisicoes
                 SET {campo} = %s
                 WHERE id = %s
             """, (valor or None, req_id))
-
+    
             con.commit()
             con.close()
             return "OK"

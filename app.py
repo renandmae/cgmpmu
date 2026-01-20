@@ -5116,7 +5116,7 @@ def requisicoes():
     # ======================================================
     # ATUALIZAÇÃO INLINE / EXCLUSÃO
     # ======================================================
-        if request.method == "POST":
+    if request.method == "POST":
 
         if session["perfil"] != "admin":
             return "Acesso negado", 403
@@ -5354,8 +5354,6 @@ function atualizarCampo(id, campo, valor){
         user=session["user"],
         perfil=session["perfil"]
     )
-
-
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])
 def editar_requisicao(id):

@@ -5281,8 +5281,9 @@ def requisicoes():
 
             <td>
                 <input type="date"
-                       value="{{ r.data_inicio or hoje }}"
+                       value="{{ r.data_inicio if r.data_inicio else '' }}"
                        onchange="atualizarCampo({{ r.id }}, 'data_inicio', this.value)">
+
             </td>
 
             <td>

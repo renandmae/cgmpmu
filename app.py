@@ -5734,32 +5734,14 @@ from flask import request, redirect, session, render_template_string
 def importar_requisicoes():
 
     SIGLAS = {
-        "02": "SEGOV",
-        "03": "SMGAS",
-        "04": "PGM",
-        "05": "SMA",
-        "06": "SMF",
-        "07": "SME",
-        "08": "SMCT",
-        "09": "SMS",
-        "10": "SMDES",
-        "12": "SMAGRO",
-        "13": "SEINFRA",
-        "15": "SETTRAN",
-        "17": "DMAE",
-        "18": "IPREMU",
-        "19": "FUTEL",
-        "20": "FERUB",
-        "21": "EMAM",
-        "23": "CGM",
-        "24": "SESURB",
-        "25": "SMH",
-        "27": "SEJUV",
-        "28": "SECOM",
-        "29": "SEDEI",
-        "33": "SMGE",
-        "34": "SEPLAN",
-        "35": "SSEG",
+        "02": "SEGOV", "03": "SMGAS", "04": "PGM", "05": "SMA",
+        "06": "SMF", "07": "SME", "08": "SMCT", "09": "SMS",
+        "10": "SMDES", "12": "SMAGRO", "13": "SEINFRA",
+        "15": "SETTRAN", "17": "DMAE", "18": "IPREMU",
+        "19": "FUTEL", "20": "FERUB", "21": "EMAM",
+        "23": "CGM", "24": "SESURB", "25": "SMH",
+        "27": "SEJUV", "28": "SECOM", "29": "SEDEI",
+        "33": "SMGE", "34": "SEPLAN", "35": "SSEG",
         "38": "ARESAN"
     }
 
@@ -5780,7 +5762,7 @@ def importar_requisicoes():
         return redirect("/")
 
     if session["perfil"] != "admin":
-        return "Acesso negado"
+        return "Acesso negado", 403
 
     msg = None
 
@@ -5790,11 +5772,15 @@ def importar_requisicoes():
         arquivo = request.files["arquivo"]
         data_corte = datetime.strptime(request.form["data_corte"], "%Y-%m-%d")
 
-        wb = load_workbook(arquivo, data_only=True)
+        # 🔥 STREAMING (não carrega tudo na memória)
+        wb = load_workbook(arquivo, read_only=True, data_only=True)
         ws = wb.active
 
         con = get_db()
         cur = con.cursor()
+
+        BATCH_SIZE = 500
+        batch = []
 
         inseridos = 0
         ignorados = 0
@@ -5809,26 +5795,12 @@ def importar_requisicoes():
 
             codigo = str(secretaria)[:2]
             sigla = SIGLAS.get(codigo)
-
             if not sigla:
                 continue
 
             chave = f"{num}/{sigla}"
 
-            cur.execute("""
-                INSERT INTO requisicoes (
-                    chave, requisicao_num, sigla,
-                    secretaria, tipo_documento, valor_requisicao,
-                    nome_solicitante, data_criacao, status_atual,
-                    data_tramitacao, natureza_despesa, item_despesa,
-                    nome_fornecedor, edital, contrato,
-                    data_medicao, data_liquidacao, empenho,
-                    ficha_despesa, data_corte
-                )
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (chave) DO NOTHING
-                RETURNING id
-            """, (
+            batch.append((
                 chave,
                 num,
                 sigla,
@@ -5851,15 +5823,46 @@ def importar_requisicoes():
                 data_corte
             ))
 
-            if cur.fetchone():
-                inseridos += 1
-            else:
-                ignorados += 1
+            if len(batch) >= BATCH_SIZE:
+                cur.executemany("""
+                    INSERT INTO requisicoes (
+                        chave, requisicao_num, sigla,
+                        secretaria, tipo_documento, valor_requisicao,
+                        nome_solicitante, data_criacao, status_atual,
+                        data_tramitacao, natureza_despesa, item_despesa,
+                        nome_fornecedor, edital, contrato,
+                        data_medicao, data_liquidacao, empenho,
+                        ficha_despesa, data_corte
+                    )
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (chave) DO NOTHING
+                """, batch)
 
-        con.commit()
+                inseridos += cur.rowcount
+                batch.clear()
+                con.commit()
+
+        # resto do lote
+        if batch:
+            cur.executemany("""
+                INSERT INTO requisicoes (
+                    chave, requisicao_num, sigla,
+                    secretaria, tipo_documento, valor_requisicao,
+                    nome_solicitante, data_criacao, status_atual,
+                    data_tramitacao, natureza_despesa, item_despesa,
+                    nome_fornecedor, edital, contrato,
+                    data_medicao, data_liquidacao, empenho,
+                    ficha_despesa, data_corte
+                )
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (chave) DO NOTHING
+            """, batch)
+            inseridos += cur.rowcount
+            con.commit()
+
         con.close()
 
-        msg = f"Importação concluída — {inseridos} novos / {ignorados} ignorados"
+        msg = f"Importação concluída — {inseridos} novos / duplicados ignorados"
 
     html = """
     <h3>Importar Requisições</h3>
@@ -5885,7 +5888,6 @@ def importar_requisicoes():
         user=session["user"],
         perfil=session["perfil"]
     )
-
 
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():

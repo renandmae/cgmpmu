@@ -5116,7 +5116,7 @@ def requisicoes():
     # ======================================================
     # ATUALIZAÇÃO INLINE / EXCLUSÃO
     # ======================================================
-    if request.method == "POST":
+        if request.method == "POST":
 
         if session["perfil"] != "admin":
             return "Acesso negado", 403
@@ -5131,8 +5131,8 @@ def requisicoes():
             con.close()
             return "OK"
 
-        # -------- ATUALIZAR
-        if acao == "atualizar":
+        # -------- ATUALIZAR CAMPOS PRINCIPAIS
+        elif acao == "atualizar":
 
             status = request.form.get("status_analise") or None
             tipo = request.form.get("tipo") or None
@@ -5149,10 +5149,7 @@ def requisicoes():
                 WHERE id = %s
             """, (status, tipo, criterio, servidor_id, req_id))
 
-            # ===============================================
-            # REGRA DE NEGÓCIO
-            # STATUS = ANALISADO → DATA_FIM = ÚLTIMA HORA
-            # ===============================================
+            # REGRA: ANALISADO → data_fim = última hora
             if status == "ANALISADO":
                 cur.execute("""
                     SELECT MAX(data)
@@ -5170,20 +5167,25 @@ def requisicoes():
                             data_conclusao = NOW()
                         WHERE id = %s
                     """, (ultima_data, req_id))
+
+            con.commit()
+            con.close()
+            return "OK"
+
+        # -------- ATUALIZAÇÃO INLINE (DATA INÍCIO / FIM)
         elif acao == "atualizar_campo":
 
-                campo = request.form.get("campo")
-                valor = request.form.get("valor")
-                req_id = request.form.get("id")
-            
-                if campo not in ("data_inicio", "data_fim"):
-                    return "Campo inválido", 400
-            
-                cur.execute(f"""
-                    UPDATE requisicoes
-                    SET {campo} = %s
-                    WHERE id = %s
-                """, (valor or None, req_id))
+            campo = request.form.get("campo")
+            valor = request.form.get("valor")
+
+            if campo not in ("data_inicio", "data_fim"):
+                return "Campo inválido", 400
+
+            cur.execute(f"""
+                UPDATE requisicoes
+                SET {campo} = %s
+                WHERE id = %s
+            """, (valor or None, req_id))
 
             con.commit()
             con.close()

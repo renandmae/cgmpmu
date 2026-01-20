@@ -5195,10 +5195,14 @@ def requisicoes():
                 else:
                     cur.execute("""
                         UPDATE requisicoes
-                        SET status_analise=%s, tipo=%s, criterio=%s, servidor_id=%s
-                        WHERE id=%s
+                        SET
+                            status_analise = NULLIF(%s,''),
+                            tipo = NULLIF(%s,''),
+                            criterio = NULLIF(%s,''),
+                            servidor_id = NULLIF(%s,'')::INTEGER
+                        WHERE id = %s
                     """, (status, tipo, criterio, servidor_id, req_id))
-    
+
                 if status == "ANALISADO":
                     cur.execute("""
                         SELECT MAX(h.data) AS ultima_data

@@ -569,8 +569,7 @@ BASE = """
             <a href='/colaboradores'>Colaboradores</a>
             <a href='/paint'>Projetos PAINT</a>
             <a href='/os'>O.S</a>
-            <a href="/delegar">Delegar Requisições</a>
-            <a href="/delegacoes">Delegações Cadastradas</a>
+            <a href="/requisicoes">Requisições</a>
             <a href='/admin_projetos'>Gerenciar Projetos</a>
             <a href='/visao'>Visão Consolidada</a>
         {% endif %}
@@ -2018,30 +2017,34 @@ def lancar():
     oss = cur.fetchall()
 
     # -------------------------
-    # CARREGAR DELEGAÇÕES
+    # CARREGAR REQUISIÇÕES DO COLABORADOR
     # -------------------------
     cur.execute("""
-        SELECT id, requisicoes, os_codigo, grau
-        FROM delegacoes
-        WHERE colaborador_id = %s
-          AND status = 'Em Andamento'
+        SELECT id, chave, tipo, criterio
+        FROM requisicoes
+        WHERE servidor_id = %s
+          AND status_analise = 'ANDAMENTO'
+        ORDER BY chave
     """, (session["user_id"],))
-    delegacoes = [dict(r) for r in cur.fetchall()]
+    requisicoes = [dict(r) for r in cur.fetchall()]
+
+    # -------------------------
+    # COLABORADORES
+    # -------------------------
+    cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
+    colaboradores = cur.fetchall()
 
     # -------------------------
     # PROCESSAR POST
     # -------------------------
-    
-    cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
-    colaboradores = cur.fetchall()
-    
     if request.method == 'POST':
 
         item = request.form.get('item')
         os_codigo = request.form.get('os')
         atividade = request.form.get('atividade')
-        delegacao_id = request.form.get('delegacao_id') or None
         observacoes = request.form.get('observacoes')
+
+        requisicoes_ids = request.form.getlist("requisicoes[]")
 
         datas = request.form.getlist("data[]")
         horas_ini = request.form.getlist("hora_ini[]")
@@ -2051,96 +2054,75 @@ def lancar():
             con.close()
             return "Nenhum lançamento informado"
 
-        total_minutos_paint = 0
-
         for data, hora_ini, hora_fim in zip(datas, horas_ini, horas_fim):
 
-            # ---- validar data (somente 2026)
-            try:
-                dt = datetime.strptime(data, "%Y-%m-%d")
-                if dt.year != 2026:
-                    con.close()
-                    return "Só é permitido lançar horas em 2026"
-            except:
+            # ---- validar data
+            dt = datetime.strptime(data, "%Y-%m-%d")
+            if dt.year != 2026:
                 con.close()
-                return "Data inválida"
+                return "Só é permitido lançar horas em 2026"
 
             # ---- calcular duração
-            try:
-                ini = datetime.strptime(hora_ini, "%H:%M")
-                fim = datetime.strptime(hora_fim, "%H:%M")
-                minutos = (fim - ini).seconds // 60
-                duracao = f"{minutos//60:02d}:{minutos%60:02d}"
-            except:
-                con.close()
-                return "Hora inválida"
+            ini = datetime.strptime(hora_ini, "%H:%M")
+            fim = datetime.strptime(hora_fim, "%H:%M")
+            minutos = (fim - ini).seconds // 60
+            duracao = f"{minutos//60:02d}:{minutos%60:02d}"
 
-            # ---- inserir
-            cur.execute("""
-                INSERT INTO horas
-                (colaborador_id, data, item_paint, os_codigo, atividade,
-                 delegacao_id, hora_inicio, hora_fim, duracao, duracao_minutos, observacoes)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                RETURNING id
-            """, (
-                session['user_id'], data, item, os_codigo, atividade,
-                delegacao_id, hora_ini, hora_fim, duracao, minutos, observacoes
-            ))
-            hora_id = cur.fetchone()["id"]
+            # se não marcou requisição, lança 1x sem vínculo
+            if not requisicoes_ids:
+                requisicoes_ids = [None]
 
-            # -------------------------
-            # OS 1.2 – Atendimento
-            # -------------------------
-            if os_codigo == "1.15/2026":
+            for req_id in requisicoes_ids:
 
-                responsaveis_ids = request.form.getlist("responsaveis[]")
-            
-                # lançar horas para participantes (continua igual)
-                for resp_id in responsaveis_ids:
-                    if not resp_id or not resp_id.isdigit():
-                        continue
-                    resp_id = int(resp_id)
-                    if resp_id == session["user_id"]:
-                        continue
-            
-                    cur.execute("""
-                        INSERT INTO horas
-                        (colaborador_id, data, item_paint, os_codigo, atividade,
-                         delegacao_id, hora_inicio, hora_fim, duracao, duracao_minutos, observacoes)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (
-                        resp_id, data, item, os_codigo, atividade,
-                        None, hora_ini, hora_fim, duracao, minutos,
-                        f"Lançamento automático – Atendimento OS {os_codigo}"
-                    ))
-            
-                # 🔐 só insere atendimento se tiver dados
-                tem_atendimento = any([
-                    request.form.get("data_consultoria"),
-                    request.form.get("assunto"),
-                    request.form.get("macro"),
-                    request.form.get("diretoria"),
-                    request.form.get("atividade_atendimento"),
-                    request.form.get("meio_contato"),
-                    request.form.getlist("entidades[]"),
-                    request.form.get("observacao_atendimento")
-                ])
-            
-                if tem_atendimento:
-            
-                    nomes = []
-                    for rid in responsaveis_ids:
-                        if rid and rid.isdigit():
-                            cur.execute("SELECT nome FROM colaboradores WHERE id=%s", (rid,))
-                            r = cur.fetchone()
-                            if r:
-                                nomes.append(r["nome"])
-            
-                    os_resumo = next(
-                        (o["resumo"] for o in oss if o["codigo"] == os_codigo),
-                        None
-                    )
-            
+                cur.execute("""
+                    INSERT INTO horas
+                    (colaborador_id, requisicao_id, data, item_paint, os_codigo,
+                     atividade, hora_inicio, hora_fim, duracao, duracao_minutos, observacoes)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    RETURNING id
+                """, (
+                    session["user_id"],
+                    req_id,
+                    data,
+                    item,
+                    os_codigo,
+                    atividade,
+                    hora_ini,
+                    hora_fim,
+                    duracao,
+                    minutos,
+                    observacoes
+                ))
+
+                hora_id = cur.fetchone()["id"]
+
+                # -------------------------
+                # OS 1.15 – Atendimento
+                # -------------------------
+                if os_codigo == "1.15/2026":
+
+                    responsaveis_ids = request.form.getlist("responsaveis[]")
+
+                    for resp_id in responsaveis_ids:
+                        if not resp_id.isdigit():
+                            continue
+                        resp_id = int(resp_id)
+                        if resp_id == session["user_id"]:
+                            continue
+
+                        cur.execute("""
+                            INSERT INTO horas
+                            (colaborador_id, data, item_paint, os_codigo, atividade,
+                             hora_inicio, hora_fim, duracao, duracao_minutos, observacoes)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        """, (
+                            resp_id, data, item, os_codigo, atividade,
+                            hora_ini, hora_fim, duracao, minutos,
+                            f"Lançamento automático – Atendimento OS {os_codigo}"
+                        ))
+
+                    os_resumo = next((o["resumo"] for o in oss if o["codigo"] == os_codigo), None)
+
                     cur.execute("""
                         INSERT INTO atendimentos (
                             hora_id, colaborador_id, os_codigo, os_resumo,
@@ -2150,9 +2132,14 @@ def lancar():
                             duracao_minutos, data_lancamento
                         ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
-                        hora_id, session["user_id"], os_codigo,
+                        hora_id,
+                        session["user_id"],
+                        os_codigo,
                         os_resumo,
-                        ", ".join(nomes),
+                        ", ".join([
+                            c["nome"] for c in colaboradores
+                            if str(c["id"]) in responsaveis_ids
+                        ]),
                         request.form.get("macro"),
                         request.form.get("diretoria"),
                         request.form.get("atividade_atendimento"),
@@ -2162,59 +2149,20 @@ def lancar():
                         ", ".join(request.form.getlist("entidades[]")),
                         request.form.get("meio_contato"),
                         request.form.get("observacao_atendimento"),
-                        minutos, data
+                        minutos,
+                        data
                     ))
 
-            # -------------------------
-            # OS 1.20 – Consultoria
-            # -------------------------
-            elif os_codigo in ("1.14/2026", "1.16/2026"):
-                tipo_consultoria = ("consultoria" if os_codigo == "1.14/2026" else "treinamento")
-                responsaveis = request.form.getlist("responsaveis2[]")
-            
-                for resp_id in responsaveis:
-                    if not resp_id or not resp_id.isdigit():
-                        continue
-                    resp_id = int(resp_id)
-                    if resp_id == session["user_id"]:
-                        continue
-            
-                    cur.execute("""
-                        INSERT INTO horas
-                        (colaborador_id, data, item_paint, os_codigo, atividade,
-                         delegacao_id, hora_inicio, hora_fim, duracao, duracao_minutos, observacoes)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (
-                        resp_id, data, item, os_codigo, atividade,
-                        None, hora_ini, hora_fim, duracao, minutos,
-                        f"Lançamento automático – Consultoria OS {os_codigo}"
-                    ))
-            
-                tem_consultoria = any([
-                    request.form.get("data_consul"),
-                    request.form.get("assunto_consultoria"),
-                    request.form.get("meio"),
-                    request.form.get("num_oficio"),
-                    request.form.get("palavras_chave"),
-                    request.form.getlist("secretarias[]"),
-                    request.form.get("observacao")
-                ])
-            
-                if tem_consultoria:
-            
-                    nomes = []
-                    for rid in responsaveis:
-                        if rid and rid.isdigit():
-                            cur.execute("SELECT nome FROM colaboradores WHERE id=%s", (rid,))
-                            r = cur.fetchone()
-                            if r:
-                                nomes.append(r["nome"])
-            
-                    os_resumo = next(
-                        (o["resumo"] for o in oss if o["codigo"] == os_codigo),
-                        None
-                    )
-            
+                # -------------------------
+                # OS 1.14 / 1.16 – Consultoria
+                # -------------------------
+                elif os_codigo in ("1.14/2026", "1.16/2026"):
+
+                    tipo = "consultoria" if os_codigo == "1.14/2026" else "treinamento"
+                    responsaveis = request.form.getlist("responsaveis2[]")
+
+                    os_resumo = next((o["resumo"] for o in oss if o["codigo"] == os_codigo), None)
+
                     cur.execute("""
                         INSERT INTO consultorias (
                             hora_id, colaborador_id, os_codigo, os_resumo,
@@ -2222,12 +2170,14 @@ def lancar():
                             secretarias, meio, palavras_chave,
                             num_oficio, observacao,
                             duracao_minutos, data_lancamento
-                        ) VALUES (%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
-                        hora_id, session["user_id"], os_codigo,
+                        hora_id,
+                        session["user_id"],
+                        os_codigo,
                         os_resumo,
-                        ", ".join(nomes),
-                        tipo_consultoria,
+                        ", ".join(responsaveis),
+                        tipo,
                         request.form.get("data_consul"),
                         request.form.get("assunto_consultoria"),
                         ", ".join(request.form.getlist("secretarias[]")),
@@ -2235,11 +2185,10 @@ def lancar():
                         request.form.get("palavras_chave"),
                         request.form.get("num_oficio"),
                         request.form.get("observacao"),
-                        minutos, data
+                        minutos,
+                        data
                     ))
 
-            total_minutos_paint += minutos
-            
         con.commit()
         con.close()
         return redirect('/menu')
@@ -2270,12 +2219,20 @@ def lancar():
         <input type="text" id="item_paint" name="item" readonly>
     </div>
 
-    <!-- DELEGAÇÃO -->
-    <div id="box_delegacao" style="display:none;">
-        <div>Delegação:
-            <select name="delegacao_id" id="delegacao_select">
-                <option value=""></option>
-            </select>
+    <!-- REQUISIÇÕES -->
+    <div id="box_requisicoes" style="display:none; border:1px solid #ccc; padding:10px; margin-top:10px;">
+        <h4>Requisições Delegadas</h4>
+
+        <input type="text" id="busca_req" placeholder="Pesquisar..."
+               style="width:100%; margin-bottom:6px;">
+
+        <div id="lista_reqs" style="max-height:200px; overflow:auto;">
+            {% for r in requisicoes %}
+                <label class="req_item">
+                    <input type="checkbox" name="requisicoes[]" value="{{ r.id }}">
+                    {{ r.chave }} | {{ r.tipo }} | {{ r.criterio }}
+                </label><br>
+            {% endfor %}
         </div>
     </div>
 
@@ -2290,7 +2247,6 @@ def lancar():
     <h4>Registros de Horas</h4>
 
     <div id="registros">
-
         <div class="registro">
             <input type="date" name="data[]" value="{{ data_padrao }}"
                    min="2026-01-01" max="2026-12-31" required>
@@ -2300,141 +2256,114 @@ def lancar():
 
             <button type="button" onclick="remover(this)">❌</button>
         </div>
-
     </div>
 
     <!-- ATENDIMENTO OS 1.15 -->
-<div id="box_atendimento" style="display:none; border:1px solid #ccc; padding:10px; margin-top:10px;">
+    <div id="box_atendimento" style="display:none; border:1px solid #ccc; padding:10px; margin-top:10px;">
+        <h4>Dados do Atendimento (O.S 1.15)</h4>
 
-    <h4>Dados do Atendimento (O.S 1.15)</h4>
-
-    <div>
-        <label>Responsáveis pelo Atendimento</label><br>
+        <label>Responsáveis</label><br>
         <select name="responsaveis[]" multiple size="5">
             {% for c in colaboradores %}
                 <option value="{{ c.id }}">{{ c.nome }}</option>
             {% endfor %}
         </select>
-        
+
+        <div>Macro: <input name="macro"></div>
+        <div>Diretoria: <input name="diretoria"></div>
+
+        <div>Atividade:
+            <select name="atividade_atendimento">
+                <option></option>
+                <option>Consulta</option>
+                <option>Esclarecimento</option>
+                <option>Orientação</option>
+                <option>Preventiva</option>
+            </select>
+        </div>
+
+        <div>Data: <input type="date" name="data_consultoria"></div>
+        <div>Assunto: <input name="assunto"></div>
+
+        <div>Participantes Externos:
+            <textarea name="participantes_externos"></textarea>
+        </div>
+
+        <div>Entidades:
+            <select name="entidades[]" multiple size="6">
+                <option>CM</option><option>SEGOV</option><option>SMGAS</option>
+                <option>PGM</option><option>SMA</option><option>SMF</option>
+                <option>SME</option><option>SMCT</option><option>SMS</option>
+                <option>SEDES</option><option>SMAGRO</option><option>SEINFRA</option>
+                <option>SETTRAN</option><option>DMAE</option><option>FUTEL</option>
+                <option>EMAM</option><option>FERUB</option><option>IPREMU</option>
+                <option>SESURB</option><option>SMH</option><option>SEJUV</option>
+                <option>SECOM</option><option>SEDEI</option><option>SMGE</option>
+                <option>SSEG</option><option>ARESAN</option>
+            </select>
+        </div>
+
+        <div>Meio:
+            <select name="meio_contato">
+                <option></option>
+                <option>Presencial</option>
+                <option>Email</option>
+                <option>Telefone</option>
+            </select>
+        </div>
+
+        <div>Observação:
+            <textarea name="observacao_atendimento"></textarea>
+        </div>
     </div>
 
-    <div>Macro: <input type="text" name="macro"></div>
-    <div>Diretoria: <input type="text" name="diretoria"></div>
+    <!-- CONSULTORIA -->
+    <div id="box_consultoria" style="display:none; border:1px solid #ccc; padding:10px; margin-top:10px;">
+        <h4>Consultoria / Treinamento</h4>
 
-    <div>Atividade:
-        <select name="atividade_atendimento">
-            <option value=""></option>
-            <option>Consulta</option>
-            <option>Esclarecimento</option>
-            <option>Orientação</option>
-            <option>Preventiva</option>
-        </select>
-    </div>
-
-    <div>Data do Atendimento:
-        <input type="date" name="data_consultoria">
-    </div>
-
-    <div>Assunto:
-        <input type="text" name="assunto">
-    </div>
-
-    <div>Participantes Externos:
-        <textarea name="participantes_externos"></textarea>
-    </div>
-
-    <div>Entidades:
-        <select name="entidades[]" multiple size="6">
-            <option>CM</option><option>SEGOV</option><option>SMGAS</option>
-            <option>PGM</option><option>SMA</option><option>SMF</option>
-            <option>SME</option><option>SMCT</option><option>SMS</option>
-            <option>SEDES</option><option>SMAGRO</option><option>SEINFRA</option>
-            <option>SETTRAN</option><option>DMAE</option><option>FUTEL</option>
-            <option>EMAM</option><option>FERUB</option><option>IPREMU</option>
-            <option>SESURB</option><option>SMH</option><option>SEJUV</option>
-            <option>SECOM</option><option>SEDEI</option><option>SMGE</option>
-            <option>SSEG</option><option>ARESAN</option>
-        </select>
-    </div>
-
-    <div>Meio de Contato:
-        <select name="meio_contato">
-            <option value=""></option>
-            <option>Presencial</option>
-            <option>Email</option>
-            <option>Telefone</option>
-        </select>
-    </div>
-
-    <div>Observação do Atendimento:
-        <textarea name="observacao_atendimento"></textarea>
-    </div>
-
-</div>
-
-    <!-- CONSULTORIA OS 1.14/1.16 -->
-<div id="box_consultoria" style="display:none; border:1px solid #ccc; padding:10px; margin-top:10px;">
-
-    <h4>Dados da Consultoria/Treinamento (O.S 1.16 / O.S 1.14)</h4>
-
-    <div>
-        <label>Responsáveis pela Consultoria</label><br>
+        <label>Responsáveis</label><br>
         <select name="responsaveis2[]" multiple size="5">
             {% for c in colaboradores %}
                 <option value="{{ c.id }}">{{ c.nome }}</option>
             {% endfor %}
         </select>
-        
-    </div>
 
-    <div>Assunto:
-        <textarea name="assunto_consultoria"></textarea>
-    </div>
-    
-    <div>Meio: <input type="text" name="meio"></div>
+        <div>Assunto: <textarea name="assunto_consultoria"></textarea></div>
+        <div>Meio: <input name="meio"></div>
+        <div>Ofício: <input name="num_oficio"></div>
+        <div>Data: <input type="date" name="data_consul"></div>
+        <div>Palavras-chave: <textarea name="palavras_chave"></textarea></div>
 
-    <div>Oficio Resposta:
-        <input type="text" name="num_oficio">
-    </div>
+        <div>Secretarias:
+            <select name="secretarias[]" multiple size="6">
+                <option>CM</option><option>SEGOV</option><option>SMGAS</option>
+                <option>PGM</option><option>SMA</option><option>SMF</option>
+                <option>SME</option><option>SMCT</option><option>SMS</option>
+                <option>SEDES</option><option>SMAGRO</option><option>SEINFRA</option>
+                <option>SETTRAN</option><option>DMAE</option><option>FUTEL</option>
+                <option>EMAM</option><option>FERUB</option><option>IPREMU</option>
+                <option>SESURB</option><option>SMH</option><option>SEJUV</option>
+                <option>SECOM</option><option>SEDEI</option><option>SMGE</option>
+                <option>SSEG</option><option>ARESAN</option>
+            </select>
+        </div>
 
-    <div>Data da Consultoria:
-        <input type="date" name="data_consul">
+        <div>Observação:
+            <textarea name="observacao"></textarea>
+        </div>
     </div>
-
-    <div>Palavras Chave:
-        <textarea name="palavras_chave"></textarea>
-    </div>
-
-    <div>Secretarias:
-        <select name="secretarias[]" multiple size="6">
-            <option>CM</option><option>SEGOV</option><option>SMGAS</option>
-            <option>PGM</option><option>SMA</option><option>SMF</option>
-            <option>SME</option><option>SMCT</option><option>SMS</option>
-            <option>SEDES</option><option>SMAGRO</option><option>SEINFRA</option>
-            <option>SETTRAN</option><option>DMAE</option><option>FUTEL</option>
-            <option>EMAM</option><option>FERUB</option><option>IPREMU</option>
-            <option>SESURB</option><option>SMH</option><option>SEJUV</option>
-            <option>SECOM</option><option>SEDEI</option><option>SMGE</option>
-            <option>SSEG</option><option>ARESAN</option>
-        </select>
-    </div>
-
-    <div>Observação da Consultoria/Treinamento:
-        <textarea name="observacao"></textarea>
-    </div>
-
-</div>
 
     <button type="button" onclick="adicionar()">➕ Adicionar registro</button>
-    
+
     <div style="margin-top:10px;">
-        <label>Observação Lançamento da Hora (*Campo Não Obrigatório*) Se o lançamento de horas for múltiplo, é enviado para todos os registros, se necessário, alterar individualmente no editor de horas):</label><br>
+        <label>Observação geral:</label>
         <textarea name="observacoes" rows="4" style="width:100%;"></textarea>
     </div>
 
     <button class="btn" style="margin-top:15px;">
         Registrar Lançamento(s)
     </button>
+
 </form>
 
 <script>
@@ -2443,56 +2372,32 @@ document.addEventListener("DOMContentLoaded", function () {
     const osSelect = document.getElementById("os_select");
     const itemInput = document.getElementById("item_paint");
 
-    const delSelect = document.getElementById("delegacao_select");
-    const boxDelegacao = document.getElementById("box_delegacao");
-
+    const boxReq = document.getElementById("box_requisicoes");
     const boxAtendimento = document.getElementById("box_atendimento");
     const boxConsultoria = document.getElementById("box_consultoria");
-
-    const delegacoes = {{ delegacoes | tojson }};
 
     osSelect.addEventListener("change", function () {
 
         const selected = this.selectedOptions[0];
         const codigoOS = this.value;
 
-        // item paint
         itemInput.value = selected ? selected.dataset.item : "";
 
-        // -------- delegações
-        delSelect.innerHTML = "<option value=''></option>";
-        boxDelegacao.style.display = "none";
-        delSelect.required = false;
+        // requisições
+        boxReq.style.display = codigoOS ? "block" : "none";
 
-        let encontrou = false;
+        // OS específicas
+        boxAtendimento.style.display = (codigoOS === "1.15/2026") ? "block" : "none";
+        boxConsultoria.style.display =
+            (codigoOS === "1.14/2026" || codigoOS === "1.16/2026") ? "block" : "none";
+    });
 
-        delegacoes.forEach(d => {
-            if (d.os_codigo === codigoOS) {
-                encontrou = true;
-                const opt = document.createElement("option");
-                opt.value = d.id;
-                opt.textContent = "Reqs: " + d.requisicoes + " | Grau: " + d.grau;
-                delSelect.appendChild(opt);
-            }
+    // busca rápida
+    document.getElementById("busca_req").addEventListener("keyup", function () {
+        const f = this.value.toLowerCase();
+        document.querySelectorAll(".req_item").forEach(e => {
+            e.style.display = e.innerText.toLowerCase().includes(f) ? "" : "none";
         });
-
-        if (encontrou) {
-            boxDelegacao.style.display = "block";
-            delSelect.required = true;
-        }
-
-        // -------- atendimento OS 1.15
-        if (codigoOS === "1.15/2026") {
-            boxAtendimento.style.display = "block";
-        } else {
-            boxAtendimento.style.display = "none";
-        }
-                // -------- atendimento OS 1.14 e 1.16
-        if (codigoOS === "1.14/2026" || codigoOS === "1.16/2026") {
-            boxConsultoria.style.display = "block";
-        } else {
-            boxConsultoria.style.display = "none";
-        }
     });
 
 });
@@ -2507,9 +2412,7 @@ function adicionar() {
 
 function remover(btn) {
     const registros = document.querySelectorAll(".registro");
-    if (registros.length > 1) {
-        btn.parentElement.remove();
-    }
+    if (registros.length > 1) btn.parentElement.remove();
 }
 </script>
 
@@ -4163,406 +4066,6 @@ def export_preventivas():
         }
     )
 
-# -------------------------
-# Delegar Requisições (ADMIN)
-# -------------------------
-@app.route("/delegar", methods=["GET", "POST"])
-def delegar():
-    if "user" not in session:
-        return redirect("/")
-    if session["perfil"] != "admin":
-        return "Acesso negado"
-
-    con = get_db()
-    cur = con.cursor()
-
-    # Carregar colaboradores
-    cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
-    colaboradores = cur.fetchall()
-
-    # Carregar OS permitidas
-    cur.execute("""
-        SELECT codigo, resumo FROM os 
-        WHERE codigo IN ('1.4/2026','1.5/2026','1.6/2026')
-    """)
-    oss = cur.fetchall()
-
-    if request.method == "POST":
-        qtd = int(request.form.get("qtd"))
-        requisicoes = []
-
-        for i in range(qtd):
-            req = request.form.get(f"req{i+1}")
-            if req:
-                requisicoes.append(req)
-
-        req_str = ",".join(requisicoes)
-
-        os_codigo = request.form.get("os_codigo")
-        colaborador = request.form.get("colaborador_id")
-        data_inicio = request.form.get("data_inicio")
-        grau = request.form.get("grau")
-        criterio = request.form.get("criterio")
-
-        # Validação do ano
-        if not data_inicio.startswith("2026-"):
-            return "A data deve ser do ano de 2026"
-
-        # Status inicial sempre "Em Andamento"
-        status = "Em Andamento"
-
-        cur.execute("""
-            INSERT INTO delegacoes 
-                (requisicoes, os_codigo, colaborador_id, data_inicio, status, grau, criterio)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (req_str, os_codigo, colaborador, data_inicio, status, grau, criterio))
-
-        con.commit()
-        con.close()
-        return redirect("/menu")
-
-    con.close()
-
-    # ---- HTML ----
-    html = """
-    <h2>Delegar Requisições</h2>
-
-    <form method="post">
-        <div>Quantidade de requisições:
-            <input type="number" name="qtd" id="qtd" min="1" max="50" required>
-            <button type="button" onclick="gerar()">Gerar Campos</button>
-        </div>
-
-        <div id="campos"></div>
-
-        <div>O.S:
-            <select name="os_codigo" required>
-                <option></option>
-    """
-    for os in oss:
-        texto = os["codigo"]
-        if os["resumo"]:
-            texto += " - " + os["resumo"]
-
-        html += f"""
-            <option value="{os['codigo']}">
-                {texto}
-            </option>
-    """
-    
-    html += """
-            </select>
-        </div>
-
-        <div>Colaborador:
-            <select name="colaborador_id" required>
-                <option></option>
-    """
-    for c in colaboradores:
-        html += f"<option value='{c['id']}'>{c['nome']}</option>"
-
-    html += """
-            </select>
-        </div>
-
-        <div>Tipo da Requisição:
-            <select name="grau" required>
-                <option></option>
-                <option value="Contratação">Contratação</option>
-                <option value="Liquidação">Liquidação</option>
-                <option value="Aditamento">Aditamento</option>
-            </select>
-        </div>
-
-        <div>Critério:
-            <select name="criterio" required>
-                <option></option>
-                <option value="Materialidade">Materialidade</option>
-                <option value="Relevância">Relevância</option>
-                <option value="Risco">Risco</option>
-                <option value="Engenharia">Engenharia</option>
-            </select>
-        </div>
-
-        <div>Data de início:
-            <input type="date" name="data_inicio" min="2026-01-01" max="2026-12-31" required>
-        </div>
-
-        <button class='btn'>Salvar</button>
-    </form>
-
-    <script>
-    function gerar() {
-        let qtd = document.getElementById("qtd").value;
-        let div = document.getElementById("campos");
-        div.innerHTML = "";
-        for (let i = 1; i <= qtd; i++) {
-            div.innerHTML += "<div>Requisição " + i + 
-                             ": <input name='req" + i + "' required></div>";
-        }
-    }
-    </script>
-    """
-
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
-        user=session["user"],
-        perfil=session["perfil"]
-    )
-
-# -------------------------
-# Listar Delegações (ADMIN)
-# -------------------------
-@app.route("/delegacoes")
-def listar_delegacoes():
-    if "user" not in session:
-        return redirect("/")
-    if session["perfil"] != "admin":
-        return "Acesso negado"
-
-    con = get_db()
-    cur = con.cursor()
-
-   # ---------------- PAGINAÇÃO ----------------
-    limit_param = request.args.get("limit", "50")
-    
-    if limit_param == "all":
-        limite = None
-    else:
-        try:
-            limite = int(limit_param)
-        except:
-            limite = 50
-
-    # ---------------- FILTRO STATUS ----------------
-    status_param = request.args.get("status", "Em Andamento")
-
-    sql = """
-        SELECT d.*, c.nome AS colaborador
-        FROM delegacoes d
-        LEFT JOIN colaboradores c ON c.id = d.colaborador_id
-    """
-    params = []
-
-    # filtro por status
-    if status_param != "all":
-        sql += " WHERE d.status = %s "
-        params.append(status_param)
-    
-    sql += " ORDER BY d.id DESC "
-    
-    # limite
-    if limite is not None:
-        sql += " LIMIT %s "
-        params.append(limite)
-    
-    cur.execute(sql, tuple(params))
-    delegacoes = cur.fetchall()
-    con.close()
-
-    html = """
-    <h2>Delegações Cadastradas</h2>
-
-<!-- PAGINAÇÃO -->
-<div style="margin-bottom:6px">
-    Mostrar:
-    <a class="btn" href="/delegacoes?limit=20&status={{status}}">20</a>
-    <a class="btn" href="/delegacoes?limit=50&status={{status}}">50</a>
-    <a class="btn" href="/delegacoes?limit=100&status={{status}}">100</a>
-    <a class="btn" href="/delegacoes?limit=200&status={{status}}">200</a>
-    <a class="btn" href="/delegacoes?limit=all&status={{status}}">Todos</a>
-</div>
-
-<!-- FILTRO STATUS -->
-<div style="margin-bottom:12px">
-    <strong>Status:</strong><br>
-    <a class="btn"
-       href="/delegacoes?status=Em Andamento&limit={{limit_param}}">
-       Em Andamento
-    </a>
-
-    <a class="btn"
-       href="/delegacoes?status=Concluída&limit={{limit_param}}">
-       Concluídas
-    </a>
-
-    <a class="btn"
-       href="/delegacoes?status=all&limit={{limit_param}}">
-       Todas
-    </a>
-</div>
-
-<!-- FILTRO GERAL -->
-<input type="text" id="filtroGeral"
-       placeholder="Pesquisar em qualquer campo..."
-       style="width:100%; padding:8px; margin-bottom:12px;">
-
-<table id="tabelaDelegacoes" border=1 cellpadding=5>
-    <tr>
-        <th>ID</th>
-        <th>Requisições</th>
-        <th>O.S</th>
-        <th>Colaborador</th>
-        <th>Data Início</th>
-        <th>Status</th>
-        <th>Tipo</th>
-        <th>Critério</th>
-        <th>Ações</th>
-    </tr>
-    """
-
-    for d in delegacoes:
-        html += f"""
-            <tr>
-                <td>{d['id']}</td>
-                <td class="col-requisicoes">{d['requisicoes']}</td>
-                <td>{d['os_codigo']}</td>
-                <td>{d['colaborador']}</td>
-                <td>{fmt(d['data_inicio'])}</td>
-                <td style="min-width:140px">
-                <select style="width:100%" onchange="alterarStatus({d['id']}, this.value)">
-                    <option {"selected" if d['status']=="Em Andamento" else ""}>Em Andamento</option>
-                    <option {"selected" if d['status']=="Concluída" else ""}>Concluída</option>
-                    <option {"selected" if d['status']=="Cancelada" else ""}>Cancelada</option>
-                </select>
-                </td>
-                <td>{d['grau']}</td>
-                <td>{d['criterio']}</td>
-                <td>
-                    <a href='/delegacao/{d['id']}'>Ver</a> |
-                    <a href='/editar_delegacao/{d['id']}'>Editar</a> |
-                    <a href='/excluir_delegacao/{d['id']}'
-                       onclick="return confirm('Excluir delegação?')">Excluir</a>
-                </td>
-            </tr>
-        """
-
-    html += "</table>"
-
-    html += """
-    <script>
-    function alterarStatus(id, status) {
-        fetch('/alterar_status_delegacao', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                id: id,
-                status: status
-            })
-        })
-        .then(r => r.json())
-        .then(resp => {
-            if (!resp.ok) {
-                alert(resp.msg || "Erro ao atualizar status");
-            }
-        })
-        .catch(() => alert("Erro de comunicação com o servidor"));
-    }
-    </script>
-    """
-
-    html += """
-    <script>
-    // FILTRO GERAL
-    document.getElementById("filtroGeral").addEventListener("keyup", function () {
-        let filtro = this.value.toLowerCase();
-        let linhas = document.querySelectorAll("#tabelaDelegacoes tr");
-
-        linhas.forEach((tr, i) => {
-            if (i === 0) return; // cabeçalho
-            tr.style.display = tr.innerText.toLowerCase().includes(filtro)
-                ? ""
-                : "none";
-        });
-    });
-
-    function alterarStatus(id, status) {
-        fetch('/alterar_status_delegacao', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: id, status: status })
-        })
-        .then(r => r.json())
-        .then(resp => {
-            if (!resp.ok) alert(resp.msg || "Erro ao atualizar status");
-        })
-        .catch(() => alert("Erro de comunicação"));
-    }
-    </script>
-    """
-    
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
-        user=session["user"], perfil=session["perfil"],
-        status=status_param,
-        limit_param=limit_param
-    )
-
-# -------------------------------------------------
-# Atualizar status da delegação (inline)
-# -------------------------------------------------
-@app.route("/alterar_status_delegacao", methods=["POST"])
-def alterar_status_delegacao():
-    if "user" not in session:
-        return {"ok": False, "msg": "Não autenticado"}, 403
-
-    data = request.get_json()
-    delegacao_id = data.get("id")
-    novo_status = data.get("status")
-
-    if novo_status not in ["Em Andamento", "Concluída", "Cancelada"]:
-        return {"ok": False, "msg": "Status inválido"}, 400
-
-    con = get_db()
-    cur = con.cursor()
-
-    # 🔎 Busca delegação
-    cur.execute("""
-        SELECT id, colaborador_id
-        FROM delegacoes
-        WHERE id = %s
-    """, (delegacao_id,))
-    delegacao = cur.fetchone()
-
-    if not delegacao:
-        con.close()
-        return {"ok": False, "msg": "Delegação não encontrada"}, 404
-
-    # 🔐 Permissão
-    if session["perfil"] != "admin":
-        if delegacao["colaborador_id"] != session["user_id"]:
-            con.close()
-            return {"ok": False, "msg": "Sem permissão"}, 403
-
-        if novo_status == "Cancelada":
-            con.close()
-            return {"ok": False, "msg": "Ação não permitida"}, 403
-
-    # 🧠 Data fim automática ao concluir
-    data_fim = None
-    if novo_status == "Concluída":
-        cur.execute("""
-            SELECT MAX(data) AS ultima_data
-            FROM horas
-            WHERE delegacao_id = %s
-        """, (delegacao_id,))
-        r = cur.fetchone()
-        data_fim = r["ultima_data"] if r else None
-
-    cur.execute("""
-        UPDATE delegacoes
-        SET status = %s,
-            data_fim = %s
-        WHERE id = %s
-    """, (novo_status, data_fim, delegacao_id))
-
-    con.commit()
-    con.close()
-
-    return {"ok": True}
-
 @app.route("/minhas_delegacoes")
 def minhas_delegacoes():
     if "user" not in session:
@@ -4661,183 +4164,6 @@ def excluir_delegacao(id):
 
     return redirect("/delegacoes")
 
-@app.route("/editar_delegacao/<int:id>", methods=["GET", "POST"])
-def editar_delegacao(id):
-    if "user" not in session:
-        return redirect("/")
-    if session["perfil"] != "admin":
-        return "Acesso negado"
-
-    con = get_db()
-    cur = con.cursor()
-
-    # ================= POST =================
-    if request.method == "POST":
-        requisicoes = request.form.get("requisicoes")
-        os_codigo = request.form.get("os_codigo")
-        colaborador_id = request.form.get("colaborador_id")
-        data_inicio = request.form.get("data_inicio")
-        status = request.form.get("status")
-        grau = request.form.get("grau")
-        criterio = request.form.get("criterio")
-        data_fim = request.form.get("data_fim") or None
-        cur.execute("SELECT os_codigo FROM delegacoes WHERE id=%s", (id,))
-        os_antiga = cur.fetchone()["os_codigo"]
-        
-        if data_fim and not data_fim.startswith("2026-"):
-            return "A data de conclusão deve ser dentro do ano de 2026."
-
-        # -------------------------------
-        # REGRA DE STATUS / DATA_FIM
-        # -------------------------------
-        if status == "Concluída":
-            # se admin NÃO informou data_fim → pega última data de horas
-            if not data_fim:
-                cur.execute("""
-                    SELECT MAX(data) AS ultima_data
-                    FROM horas
-                    WHERE delegacao_id = %s
-                """, (id,))
-                r = cur.fetchone()
-                data_fim = r["ultima_data"] if r and r["ultima_data"] else None
-        else:
-            # se não for concluída → limpa data_fim
-            data_fim = None
-        
-        cur.execute("SELECT os_codigo FROM delegacoes WHERE id=%s", (id,))
-        os_antiga = cur.fetchone()["os_codigo"]
-        
-        cur.execute("""
-            UPDATE delegacoes
-            SET requisicoes=%s,
-                os_codigo=%s,
-                colaborador_id=%s,
-                data_inicio=%s,
-                status=%s,
-                grau=%s,
-                criterio=%s,
-                data_fim=%s
-            WHERE id=%s
-        """, (
-            requisicoes,
-            os_codigo,
-            colaborador_id,
-            data_inicio,
-            status,
-            grau,
-            criterio,
-            data_fim,
-            id
-        ))
-        
-        # Atualiza horas vinculadas à delegação
-        if os_antiga != os_codigo:
-            cur.execute("""
-                UPDATE horas
-                SET os_codigo = %s
-                WHERE delegacao_id = %s
-            """, (os_codigo, id))
-        
-        con.commit()
-        con.close()
-        return redirect("/delegacoes")
-
-    # ================= GET =================
-    cur.execute("SELECT * FROM delegacoes WHERE id=%s", (id,))
-    d = cur.fetchone()
-
-    cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
-    colaboradores = cur.fetchall()
-
-    cur.execute("""
-        SELECT codigo, resumo
-        FROM os
-        WHERE codigo IN ('1.4/2026','1.5/2026','1.6/2026')
-    """)
-    oss = cur.fetchall()
-
-    con.close()
-
-    # ================= HTML =================
-    html = f"""
-    <h2>Editar Delegação #{id}</h2>
-
-    <form method="post">
-        Requisições:<br>
-        <input name="requisicoes" value="{d['requisicoes']}" required><br><br>
-
-        O.S:<br>
-        <select name="os_codigo" required>
-    """
-
-    for os in oss:
-        texto = os["codigo"]
-        if os["resumo"]:
-            texto += " - " + os["resumo"]
-
-        sel = "selected" if os["codigo"] == d["os_codigo"] else ""
-        html += f"""
-            <option value="{os['codigo']}" {sel}>
-                {texto}
-            </option>
-        """
-
-    html += """
-        </select><br><br>
-
-        Colaborador:<br>
-        <select name="colaborador_id" required>
-    """
-
-    for c in colaboradores:
-        sel = "selected" if c["id"] == d["colaborador_id"] else ""
-        html += f"<option value='{c['id']}' {sel}>{c['nome']}</option>"
-
-    html += "</select><br><br>"
-
-    html += f"""
-        Data início:<br>
-        <input type="date" name="data_inicio"
-               value="{d['data_inicio']}"
-               min="2026-01-01" max="2026-12-31"
-               required><br><br>
-
-        Status:<br>
-        <select name="status">
-            <option {"selected" if d['status']=="Em Andamento" else ""}>Em Andamento</option>
-            <option {"selected" if d['status']=="Concluída" else ""}>Concluída</option>
-            <option {"selected" if d['status']=="Cancelada" else ""}>Cancelada</option>
-        </select><br><br>
-
-        Grau:<br>
-        <select name="grau">
-            <option {"selected" if d['grau']=="Contratação" else ""}>Contratação</option>
-            <option {"selected" if d['grau']=="Liquidação" else ""}>Liquidação</option>
-            <option {"selected" if d['grau']=="Aditamento" else ""}>Aditamento</option>
-        </select><br><br>
-
-        Critério:<br>
-        <select name="criterio">
-            <option {"selected" if d['criterio']=="Materialidade" else ""}>Materialidade</option>
-            <option {"selected" if d['criterio']=="Relevância" else ""}>Relevância</option>
-            <option {"selected" if d['criterio']=="Risco" else ""}>Risco</option>
-            <option {"selected" if d['criterio']=="Engenharia" else ""}>Engenharia</option>
-        </select><br><br>
-
-        Data de conclusão (opcional):<br>
-        <input type="date" name="data_fim"
-               value="{d['data_fim'] or ''}"
-               min="2026-01-01" max="2026-12-31"><br><br>
-
-        <button class="btn">Salvar</button>
-    </form>
-    """
-
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
-        user=session["user"],
-        perfil=session["perfil"]
-    )
 
 # ---------------------------------------------------------
 # Visualizar uma delegação + histórico de horas associadas

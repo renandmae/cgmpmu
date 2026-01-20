@@ -5177,18 +5177,15 @@ def requisicoes():
                 servidor_id = request.form.get("servidor_id")
     
                 if session["perfil"] != "admin":
-                    if tipo or criterio or servidor_id:
-                        return "Acesso negado", 403
-    
                     cur.execute(
-                        "SELECT servidor_id FROM requisicoes WHERE id = %s",
+                        "SELECT servidor_id FROM requisicoes WHERE id=%s",
                         (req_id,)
                     )
                     dono = cur.fetchone()
-    
+                
                     if not dono or dono["servidor_id"] != session["user_id"]:
                         return "Acesso negado", 403
-    
+                
                     cur.execute("""
                         UPDATE requisicoes
                         SET status_analise = %s

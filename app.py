@@ -5148,120 +5148,109 @@ def requisicoes():
     # ATUALIZAÇÃO INLINE / EXCLUSÃO
     # ======================================================
     if request.method == "POST":
-
-        acao = request.form.get("acao")
-        req_id = request.form.get("id")
+        try:
+            acao = request.form.get("acao")
+            req_id = request.form.get("id")
     
-        # ==========================================
-        # EXCLUIR → SÓ ADMIN
-        # ==========================================
-        if acao == "excluir":
-            if session["perfil"] != "admin":
-                return "Acesso negado", 403
+            if not acao or not req_id:
+                return "Ação ou ID inválido", 400
     
-            cur.execute("DELETE FROM requisicoes WHERE id = %s", (req_id,))
-            con.commit()
-            con.close()
-            return "OK"
-    
-        # ==========================================
-        # ATUALIZAR
-        # ==========================================
-        if acao == "atualizar":
-    
-            status = request.form.get("status_analise")
-            tipo = request.form.get("tipo")
-            criterio = request.form.get("criterio")
-            servidor_id = request.form.get("servidor_id")
-    
-            # ------------------------------------------
-            # COLABORADOR
-            # ------------------------------------------
-            if session["perfil"] != "admin":
-    
-                # só pode alterar status
-                if tipo or criterio or servidor_id:
+            # ==========================================
+            # EXCLUIR → SÓ ADMIN
+            # ==========================================
+            if acao == "excluir":
+                if session["perfil"] != "admin":
                     return "Acesso negado", 403
     
-                # só se for dono da requisição
-                cur.execute(
-                    "SELECT servidor_id FROM requisicoes WHERE id = %s",
-                    (req_id,)
-                )
-                dono = cur.fetchone()
+                cur.execute("DELETE FROM requisicoes WHERE id = %s", (req_id,))
+                con.commit()
+                return "OK"
     
-                if not dono or dono["servidor_id"] != session["user_id"]:
-                    return "Acesso negado", 403
+            # ==========================================
+            # ATUALIZAR CAMPOS
+            # ==========================================
+            if acao == "atualizar":
     
-                cur.execute("""
-                    UPDATE requisicoes
-                    SET status_analise = %s
-                    WHERE id = %s
-                """, (status, req_id))
+                status = request.form.get("status_analise")
+                tipo = request.form.get("tipo")
+                criterio = request.form.get("criterio")
+                servidor_id = request.form.get("servidor_id")
     
-            # ------------------------------------------
-            # ADMIN
-            # ------------------------------------------
-            else:
-                cur.execute("""
-                    UPDATE requisicoes
-                    SET
-                        status_analise = %s,
-                        tipo = %s,
-                        criterio = %s,
-                        servidor_id = %s
-                    WHERE id = %s
-                """, (status, tipo, criterio, servidor_id, req_id))
+                if session["perfil"] != "admin":
+                    if tipo or criterio or servidor_id:
+                        return "Acesso negado", 403
     
-            # ------------------------------------------
-            # REGRA: ANALISADO → data_fim
-            # ------------------------------------------
-            if status == "ANALISADO":
-                cur.execute("""
-                    SELECT MAX(h.data)
-                    FROM horas h
-                    JOIN horas_requisicoes hr ON hr.hora_id = h.id
-                    WHERE hr.requisicao_id = %s
-                """, (req_id,))
+                    cur.execute(
+                        "SELECT servidor_id FROM requisicoes WHERE id = %s",
+                        (req_id,)
+                    )
+                    dono = cur.fetchone()
     
-                row = cur.fetchone()
-                ultima_data = row["max"] if row else None
+                    if not dono or dono["servidor_id"] != session["user_id"]:
+                        return "Acesso negado", 403
     
-                if ultima_data:
                     cur.execute("""
                         UPDATE requisicoes
-                        SET
-                            data_fim = %s,
-                            data_conclusao = NOW()
+                        SET status_analise = %s
                         WHERE id = %s
-                    """, (ultima_data, req_id))
+                    """, (status, req_id))
     
-            con.commit()
+                else:
+                    cur.execute("""
+                        UPDATE requisicoes
+                        SET status_analise=%s, tipo=%s, criterio=%s, servidor_id=%s
+                        WHERE id=%s
+                    """, (status, tipo, criterio, servidor_id, req_id))
+    
+                if status == "ANALISADO":
+                    cur.execute("""
+                        SELECT MAX(h.data) AS ultima_data
+                        FROM horas h
+                        JOIN horas_requisicoes hr ON hr.hora_id = h.id
+                        WHERE hr.requisicao_id = %s
+                    """, (req_id,))
+    
+                    row = cur.fetchone()
+                    if row and row["ultima_data"]:
+                        cur.execute("""
+                            UPDATE requisicoes
+                            SET data_fim=%s, data_conclusao=NOW()
+                            WHERE id=%s
+                        """, (row["ultima_data"], req_id))
+    
+                con.commit()
+                return "OK"
+    
+            # ==========================================
+            # ATUALIZAR DATA → ADMIN
+            # ==========================================
+            if acao == "atualizar_campo":
+                if session["perfil"] != "admin":
+                    return "Acesso negado", 403
+    
+                campo = request.form.get("campo")
+                valor = request.form.get("valor")
+    
+                if campo not in ("data_inicio", "data_fim"):
+                    return "Campo inválido", 400
+    
+                cur.execute(
+                    f"UPDATE requisicoes SET {campo}=%s WHERE id=%s",
+                    (valor or None, req_id)
+                )
+    
+                con.commit()
+                return "OK"
+    
+            return "Ação desconhecida", 400
+    
+        except Exception as e:
+            con.rollback()
+            print("ERRO POST /requisicoes:", e)
+            return "Erro interno", 500
+    
+        finally:
             con.close()
-            return "OK"
-    
-        # ==========================================
-        # ATUALIZAR DATA INÍCIO / FIM → SÓ ADMIN
-        # ==========================================
-        if acao == "atualizar_campo":
-            if session["perfil"] != "admin":
-                return "Acesso negado", 403
-    
-            campo = request.form.get("campo")
-            valor = request.form.get("valor")
-    
-            if campo not in ("data_inicio", "data_fim"):
-                return "Campo inválido", 400
-    
-            cur.execute(f"""
-                UPDATE requisicoes
-                SET {campo} = %s
-                WHERE id = %s
-            """, (valor or None, req_id))
-    
-            con.commit()
-            con.close()
-            return "OK"
 
     # ======================================================
     # LISTAGEM
@@ -5406,7 +5395,18 @@ def requisicoes():
         fd.append("criterio", document.getElementById("criterio_"+id).value);
         fd.append("servidor_id", document.getElementById("servidor_"+id).value);
 
-        fetch("/requisicoes",{method:"POST", body:fd});
+        fetch("/requisicoes", { method:"POST", body: fd })
+            .then(r => r.text())
+            .then(resp => {
+                if (resp !== "OK") {
+                    alert("Erro ao salvar");
+                    console.error(resp);
+                }
+            })
+            .catch(err => {
+                alert("Erro de rede");
+                console.error(err);
+            });
     }
 
     function excluir(id){

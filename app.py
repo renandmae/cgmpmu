@@ -2054,6 +2054,8 @@ def lancar():
             con.close()
             return "Nenhum lançamento informado"
 
+        total_minutos_paint = 0
+
         for data, hora_ini, hora_fim in zip(datas, horas_ini, horas_fim):
 
             # ---- validar data
@@ -2188,6 +2190,7 @@ def lancar():
                         minutos,
                         data
                     ))
+            total_minutos_paint += minutos
 
         con.commit()
         con.close()
@@ -5113,7 +5116,6 @@ def importar_requisicoes():
         perfil=session["perfil"]
     )
 
-
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
     if "user" not in session:
@@ -5122,42 +5124,85 @@ def requisicoes():
     con = get_db()
     cur = con.cursor()
 
-    # ====== ATUALIZAÇÃO INLINE / EXCLUSÃO ======
+    # ======================================================
+    # ATUALIZAÇÃO INLINE / EXCLUSÃO
+    # ======================================================
     if request.method == "POST":
+
         if session["perfil"] != "admin":
             return "Acesso negado", 403
 
         acao = request.form.get("acao")
         req_id = request.form.get("id")
 
+        # -------- EXCLUIR
         if acao == "excluir":
             cur.execute("DELETE FROM requisicoes WHERE id = %s", (req_id,))
             con.commit()
             con.close()
             return "OK"
 
+        # -------- ATUALIZAR
         if acao == "atualizar":
+
+            status = request.form.get("status_analise") or None
+            tipo = request.form.get("tipo") or None
+            criterio = request.form.get("criterio") or None
+            servidor_id = request.form.get("servidor_id") or None
+
             cur.execute("""
                 UPDATE requisicoes
                 SET
-                    status_analise = NULLIF(%s,''),
-                    tipo = NULLIF(%s,''),
-                    criterio = NULLIF(%s,''),
+                    status_analise = %s,
+                    tipo = %s,
+                    criterio = %s,
                     servidor_id = %s
                 WHERE id = %s
-            """, (
-                request.form.get("status_analise"),
-                request.form.get("tipo"),
-                request.form.get("criterio"),
-                request.form.get("servidor_id") or None,
-                req_id
-            ))
+            """, (status, tipo, criterio, servidor_id, req_id))
+
+            # ===============================================
+            # REGRA DE NEGÓCIO
+            # STATUS = ANALISADO → DATA_FIM = ÚLTIMA HORA
+            # ===============================================
+            if status == "ANALISADO":
+                cur.execute("""
+                    SELECT MAX(data)
+                    FROM horas
+                    WHERE requisicao_id = %s
+                """, (req_id,))
+
+                ultima_data = cur.fetchone()[0]
+
+                if ultima_data:
+                    cur.execute("""
+                        UPDATE requisicoes
+                        SET
+                            data_fim = %s,
+                            data_conclusao = NOW()
+                        WHERE id = %s
+                    """, (ultima_data, req_id))
+            if acao == "atualizar_campo":
+
+                campo = request.form.get("campo")
+                valor = request.form.get("valor")
+                req_id = request.form.get("id")
+            
+                if campo not in ("data_inicio", "data_fim"):
+                    return "Campo inválido", 400
+            
+                cur.execute(f"""
+                    UPDATE requisicoes
+                    SET {campo} = %s
+                    WHERE id = %s
+                """, (valor or None, req_id))
 
             con.commit()
             con.close()
             return "OK"
 
-    # ====== LISTAGEM ======
+    # ======================================================
+    # LISTAGEM
+    # ======================================================
     cur.execute("""
         SELECT r.*, c.nome AS servidor
         FROM requisicoes r
@@ -5169,6 +5214,9 @@ def requisicoes():
 
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
     colaboradores = cur.fetchall()
+
+    from datetime import date
+    hoje = date.today().isoformat()
 
     con.close()
 
@@ -5187,6 +5235,8 @@ def requisicoes():
             <th>Tipo</th>
             <th>Critério</th>
             <th>Responsável</th>
+            <th>Início</th>
+            <th>Fim</th>
             <th>Ações</th>
         </tr>
 
@@ -5200,7 +5250,9 @@ def requisicoes():
                 <select onchange="salvar({{ r.id }})" id="status_{{ r.id }}">
                     <option value=""></option>
                     {% for s in ['ANDAMENTO','ANALISANDO','ANALISADO'] %}
-                        <option value="{{s}}" {% if r.status_analise==s %}selected{% endif %}>{{s}}</option>
+                        <option value="{{ s }}" {% if r.status_analise==s %}selected{% endif %}>
+                            {{ s }}
+                        </option>
                     {% endfor %}
                 </select>
             </td>
@@ -5209,7 +5261,9 @@ def requisicoes():
                 <select onchange="salvar({{ r.id }})" id="tipo_{{ r.id }}">
                     <option value=""></option>
                     {% for t in ['CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO'] %}
-                        <option value="{{t}}" {% if r.tipo==t %}selected{% endif %}>{{t}}</option>
+                        <option value="{{ t }}" {% if r.tipo==t %}selected{% endif %}>
+                            {{ t }}
+                        </option>
                     {% endfor %}
                 </select>
             </td>
@@ -5218,7 +5272,9 @@ def requisicoes():
                 <select onchange="salvar({{ r.id }})" id="criterio_{{ r.id }}">
                     <option value=""></option>
                     {% for c in ['MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA'] %}
-                        <option value="{{c}}" {% if r.criterio==c %}selected{% endif %}>{{c}}</option>
+                        <option value="{{ c }}" {% if r.criterio==c %}selected{% endif %}>
+                            {{ c }}
+                        </option>
                     {% endfor %}
                 </select>
             </td>
@@ -5227,20 +5283,29 @@ def requisicoes():
                 <select onchange="salvar({{ r.id }})" id="servidor_{{ r.id }}">
                     <option value=""></option>
                     {% for col in colaboradores %}
-                        <option value="{{col.id}}" {% if r.servidor_id==col.id %}selected{% endif %}>
-                            {{col.nome}}
+                        <option value="{{ col.id }}" {% if r.servidor_id==col.id %}selected{% endif %}>
+                            {{ col.nome }}
                         </option>
                     {% endfor %}
                 </select>
             </td>
 
-           <td>
-            {% if perfil == 'admin' %}
+            <td>
+                <input type="date"
+                       value="{{ r.data_inicio or hoje }}"
+                       onchange="atualizarCampo({{ r.id }}, 'data_inicio', this.value)">
+            </td>
+
+            <td>
+                <input type="date"
+                       value="{{ r.data_fim or '' }}"
+                       onchange="atualizarCampo({{ r.id }}, 'data_fim', this.value)">
+            </td>
+
+            <td>
                 <a href="/requisicoes/editar/{{ r.id }}">✏️</a>
                 <button onclick="excluir({{ r.id }})">🗑️</button>
-            {% endif %}
-        </td>
-        
+            </td>
         </tr>
         {% endfor %}
     </table>
@@ -5275,6 +5340,17 @@ def requisicoes():
         fetch("/requisicoes",{method:"POST", body:fd})
             .then(()=>location.reload());
     }
+    
+function atualizarCampo(id, campo, valor){
+    let fd = new FormData();
+    fd.append("acao","atualizar_campo");
+    fd.append("id", id);
+    fd.append("campo", campo);
+    fd.append("valor", valor);
+
+    fetch("/requisicoes", { method:"POST", body:fd });
+}
+    
     </script>
     """
 
@@ -5282,9 +5358,12 @@ def requisicoes():
         BASE.replace("{% block content %}{% endblock %}", html),
         rows=rows,
         colaboradores=colaboradores,
+        hoje=hoje,
         user=session["user"],
         perfil=session["perfil"]
     )
+
+
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])
 def editar_requisicao(id):

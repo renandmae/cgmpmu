@@ -4569,14 +4569,13 @@ def minhas_delegacoes():
         return redirect("/")
 
     if session["perfil"] == "admin":
-        return redirect("/delegacoes")
+        return redirect("/requisicoes")
 
     con = get_db()
     cur = con.cursor()
 
-    # ---------------- PAGINAÇÃO ----------------
     limit_param = request.args.get("limit", "50")
-    status_param = request.args.get("status", "Em Andamento")
+    status_param = request.args.get("status", "ANDAMENTO")
 
     if limit_param == "all":
         limite = None
@@ -4587,152 +4586,62 @@ def minhas_delegacoes():
             limite = 50
 
     sql = """
-    SELECT d.*, c.nome AS colaborador
-    FROM delegacoes d
-    LEFT JOIN colaboradores c ON c.id = d.colaborador_id
-    WHERE d.colaborador_id = %s
+        SELECT r.*, o.resumo AS os_resumo
+        FROM requisicoes r
+        LEFT JOIN os o ON o.codigo = r.os_codigo
+        WHERE r.servidor_id = %s
     """
     params = [session["user_id"]]
-    
-    # filtro por status (default = Em Andamento)
+
     if status_param:
-        sql += " AND d.status = %s "
+        sql += " AND r.status_analise = %s "
         params.append(status_param)
-    
-    sql += " ORDER BY d.id DESC "
-    
+
+    sql += " ORDER BY r.data_inicio DESC NULLS LAST "
+
     if limite:
         sql += " LIMIT %s "
         params.append(limite)
 
     cur.execute(sql, tuple(params))
-    delegacoes = cur.fetchall()
+    requisicoes = cur.fetchall()
     con.close()
 
-    html = """
-    <div class="card">
-    <h2>Requisições Delegadas</h2>
-    
-    <!-- PAGINAÇÃO -->
-   <div style="margin-bottom:10px">
-    <strong>Mostrar:</strong><br>
-
-    <a class="btn" href="/minhas_delegacoes?limit=20&status={{ status_param }}">20</a>
-    <a class="btn" href="/minhas_delegacoes?limit=50&status={{ status_param }}">50</a>
-    <a class="btn" href="/minhas_delegacoes?limit=100&status={{ status_param }}">100</a>
-    <a class="btn" href="/minhas_delegacoes?limit=200&status={{ status_param }}">200</a>
-    <a class="btn" href="/minhas_delegacoes?limit=all&status={{ status_param }}">Todos</a>
-
-    <br><br>
-
-    <strong>Filtrar por status:</strong><br>
-
-    <a class="btn"
-       style="background:#ffc107;color:#000;"
-       href="/minhas_delegacoes?status=Em Andamento&limit={{ limit_param }}">
-        Em Andamento
-    </a>
-
-    <a class="btn"
-       style="background:#28a745;"
-       href="/minhas_delegacoes?status=Concluída&limit={{ limit_param }}">
-        Concluídas
-    </a>
-    </div>
-
-    
-    <!-- FILTRO GERAL -->
-    <input type="text" id="filtroGeral"
-           placeholder="Pesquisar em qualquer campo..."
-           style="width:100%; padding:8px; margin-bottom:12px;">
-    
-    {% if delegacoes %}
-    <table id="tabelaDelegacoes">
-        <tr>
-            <th>ID</th>
-            <th>Requisições</th>
-            <th>O.S</th>
-            <th>Data Início</th>
-            <th>Status</th>
-            <th>Tipo</th>
-            <th>Critério</th>
-            <th>Ação</th>
-        </tr>
-    
-        {% for d in delegacoes %}
-        <tr>
-            <td>{{ d.id }}</td>
-            <td class="col-requisicoes">{{ d.requisicoes }}</td>
-            <td>{{ d.os_codigo }}</td>
-            <td>{{fmt(d.data_inicio)}}</td>
-    
-            <td>
-                <select onchange="alterarStatus({{ d.id }}, this.value)">
-                    <option value="Em Andamento"
-                        {% if d.status == "Em Andamento" %}selected{% endif %}>
-                        Em Andamento
-                    </option>
-            
-                    <option value="Concluída"
-                        {% if d.status == "Concluída" %}selected{% endif %}>
-                        Concluída
-                    </option>
-                </select>
-            </td>
-            
-            <td>{{ d.grau }}</td>
-            <td>{{ d.criterio }}</td>
-            <td>
-                <a class="btn" href="/delegacao/{{ d.id }}">Ver</a>
-            </td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-        <p class="small">Nenhuma requisição delegada para você.</p>
-    {% endif %}
-</div>
-    <script>
-    document.getElementById("filtroGeral").addEventListener("keyup", function () {
-        let filtro = this.value.toLowerCase();
-        let linhas = document.querySelectorAll("#tabelaDelegacoes tr");
-
-        linhas.forEach((tr, i) => {
-            if (i === 0) return; // cabeçalho
-            tr.style.display = tr.innerText.toLowerCase().includes(filtro)
-                ? ""
-                : "none";
-        });
-    });
-    
-    function alterarStatus(id, status) {
-        fetch('/alterar_status_delegacao', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                id: id,
-                status: status
-            })
-        })
-        .then(r => r.json())
-        .then(resp => {
-            if (!resp.ok) {
-                alert(resp.msg || "Erro ao atualizar status");
-            }
-        })
-        .catch(() => alert("Erro de comunicação com o servidor"));
-    }
-    </script>
-    """
-
     return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
-        delegacoes=delegacoes,
+        BASE.replace("{% block content %}{% endblock %}", """
+<h2>Minhas Requisições Delegadas</h2>
+
+{% if requisicoes %}
+<table>
+    <tr>
+        <th>Chave</th>
+        <th>OS</th>
+        <th>Início</th>
+        <th>Status</th>
+        <th>Tipo</th>
+        <th>Critério</th>
+        <th>Ação</th>
+    </tr>
+    {% for r in requisicoes %}
+    <tr>
+        <td>{{ r.chave }}</td>
+        <td>{{ r.os_codigo }}</td>
+        <td>{{ fmt(r.data_inicio) }}</td>
+        <td>{{ r.status_analise }}</td>
+        <td>{{ r.tipo }}</td>
+        <td>{{ r.criterio }}</td>
+        <td>
+            <a class="btn" href="/requisicoes/editar/{{ r.id }}">Abrir</a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>Nenhuma requisição delegada para você.</p>
+{% endif %}
+        """),
+        requisicoes=requisicoes,
         fmt=fmt,
-        status_param=status_param,
-        limit_param=limit_param,
         user=session["user"],
         perfil=session["perfil"]
     )

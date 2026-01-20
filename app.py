@@ -2384,7 +2384,13 @@ document.addEventListener("DOMContentLoaded", function () {
         itemInput.value = selected ? selected.dataset.item : "";
 
         // requisições
-        boxReq.style.display = codigoOS ? "block" : "none";
+        if (codigoOS === "1.4/2026" ||
+            codigoOS === "1.1/2026" ||
+            codigoOS === "1.6/2026") {
+            boxReq.style.display = "block";
+        } else {
+            boxReq.style.display = "none";
+        }
 
         // OS específicas
         boxAtendimento.style.display = (codigoOS === "1.15/2026") ? "block" : "none";

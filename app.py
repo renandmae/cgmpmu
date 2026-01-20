@@ -4134,6 +4134,7 @@ def minhas_delegacoes():
     </tr>
     {% endfor %}
 </table>
+
 <script>
 document.querySelectorAll(".status-select").forEach(sel => {
     sel.addEventListener("change", function () {
@@ -4146,13 +4147,23 @@ document.querySelectorAll(".status-select").forEach(sel => {
                 id: this.dataset.id,
                 status_analise: this.value
             })
-        }).then(r => {
-            if (!r.ok) alert("Erro ao atualizar status");
+        })
+        .then(r => r.text())
+        .then(resp => {
+            if (resp !== "OK") {
+                alert("Erro ao atualizar status");
+            }
+        })
+        .catch(err => {
+            alert("Erro de rede");
+            console.error(err);
         });
 
     });
 });
 </script>
+
+
 {% else %}
 <p>Nenhuma requisição delegada para você.</p>
 {% endif %}

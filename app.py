@@ -2607,9 +2607,6 @@ def relatorios():
         if len(obs) > 90:
             obs = obs[:90] + "..."
 
-        duracao_visual = r['duracao'] if r.get('conta_total') else "—"
-        titulo = "Conta no total de horas" if r.get('conta_total') else "Vínculo de requisição (não soma)"
-
         html += f"""
             <tr>
                 <td>{fmt(r['data'])}</td>
@@ -2617,7 +2614,7 @@ def relatorios():
                 <td>{os_visual}</td>
                 <td>{r['atividade']}</td>
                 <td title="{r['observacoes'] or ''}">{obs}</td>
-                <td title="{titulo}">{duracao_visual}</td>
+                <td>{r['duracao']}</td>
                 <td style="white-space: nowrap;">
                 <a class='btn' href='/editar/{r["id"]}'>Editar</a>
                 <a class='btn' style='background:#c0392b; margin-left:5px;'
@@ -2691,10 +2688,6 @@ function exportarFiltrado() {
         user=session['user'],
         perfil=session['perfil']
     )
-
-# -------------------------
-# Editar Registro de Hora
-# -------------------------
 
 # -------------------------
 # Editar Registro de Hora

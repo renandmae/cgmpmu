@@ -5402,8 +5402,27 @@ def requisicoes():
 
     con.close()
 
+    <style>
+    tr.andamento { background:#ffe5e5; }
+    tr.analisando { background:#fff7cc; }
+    tr.analisado { background:#e5ffe5; }
+    
+    .btn.andamento { background:#d9534f; color:#fff }
+    .btn.analisando { background:#f0ad4e }
+    .btn.analisado { background:#5cb85c; color:#fff }
+    .btn.all { background:#0275d8; color:#fff }
+    .btn.ativo { outline:2px solid #000; }
+    </style>
+    
     html = """
     <h3>Requisições</h3>
+    
+    <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn all ativo" onclick="filtrarStatus('')">TODOS</button>
+    <button class="btn andamento" onclick="filtrarStatus('ANDAMENTO')">ANDAMENTO</button>
+    <button class="btn analisando" onclick="filtrarStatus('ANALISANDO')">ANALISANDO</button>
+    <button class="btn analisado" onclick="filtrarStatus('ANALISADO')">ANALISADO</button>
+    </div>
 
     <input type="text" id="filtro" placeholder="Pesquisar..."
            style="width:100%;padding:8px;margin-bottom:10px;">
@@ -5423,13 +5442,15 @@ def requisicoes():
         </tr>
 
         {% for r in rows %}
-        <tr>
+        <tr class="{{ r.status_analise|lower }}">
             <td>{{ r.chave }}</td>
             <td>{{ r.sigla }}</td>
             <td>{{ r.valor_requisicao }}</td>
 
-            <td>
-                <select onchange="salvar({{ r.id }})" id="status_{{ r.id }}">
+            <td style="white-space:nowrap;">
+                <select onchange="salvar({{ r.id }})"
+                        id="status_{{ r.id }}"
+                        style="min-width:130px; padding:4px;">
                     <option value=""></option>
                     {% for s in ['ANDAMENTO','ANALISANDO','ANALISADO'] %}
                         <option value="{{ s }}" {% if r.status_analise==s %}selected{% endif %}>
@@ -5439,8 +5460,10 @@ def requisicoes():
                 </select>
             </td>
 
-            <td>
-                <select onchange="salvar({{ r.id }})" id="tipo_{{ r.id }}">
+            <td style="white-space:nowrap;">
+                <select onchange="salvar({{ r.id }})"
+                        id="tipo_{{ r.id }}"
+                        style="min-width:150px; padding:4px;">
                     <option value=""></option>
                     {% for t in ['CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO'] %}
                         <option value="{{ t }}" {% if r.tipo==t %}selected{% endif %}>
@@ -5450,8 +5473,11 @@ def requisicoes():
                 </select>
             </td>
 
-            <td>
-                <select onchange="salvar({{ r.id }})" id="criterio_{{ r.id }}">
+            <td style="white-space:nowrap;">
+                <select onchange="salvar({{ r.id }})"
+                        id="criterio_{{ r.id }}"
+                        style="min-width:130px; padding:4px;">
+
                     <option value=""></option>
                     {% for c in ['MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA'] %}
                         <option value="{{ c }}" {% if r.criterio==c %}selected{% endif %}>
@@ -5485,36 +5511,19 @@ def requisicoes():
                        onchange="atualizarCampo({{ r.id }}, 'data_fim', this.value)">
             </td>
 
-            <td>
-                <a href="/requisicoes/editar/{{ r.id }}">✏️</a>
-                <button onclick="excluir({{ r.id }})">🗑️</button>
+            <td style="white-space:nowrap;">
+                <a href="/requisicao/{{ r.id }}" title="Ver">🔍</a>
+                &nbsp;
+                <a href="/requisicoes/editar/{{ r.id }}" title="Editar">✏️</a>
+                &nbsp;
+                <button onclick="excluir({{ r.id }})" title="Excluir">🗑️</button>
             </td>
+
         </tr>
         {% endfor %}
     </table>
 
     <script>
-    document.getElementById("filtro").addEventListener("keyup", function () {
-        let f = this.value.toLowerCase();
-    
-        document.querySelectorAll("#tbl tr").forEach((tr, i) => {
-            if (i === 0) return;
-    
-            let texto = tr.innerText.toLowerCase();
-    
-            // incluir selects
-            tr.querySelectorAll("select").forEach(sel => {
-                texto += " " + (sel.value || "").toLowerCase();
-            });
-    
-            // incluir inputs
-            tr.querySelectorAll("input").forEach(inp => {
-                texto += " " + (inp.value || "").toLowerCase();
-            });
-    
-            tr.style.display = texto.includes(f) ? "" : "none";
-        });
-    });
 
     function salvar(id){
         let fd = new FormData();
@@ -5558,7 +5567,45 @@ function atualizarCampo(id, campo, valor){
 
     fetch("/requisicoes", { method:"POST", body:fd });
 }
-    
+
+let statusAtual = "";
+
+function filtrarStatus(status){
+    statusAtual = status;
+
+    document.querySelectorAll(".btn").forEach(b => b.classList.remove("ativo"));
+    event.target.classList.add("ativo");
+
+    aplicarFiltros();
+}
+
+function aplicarFiltros(){
+    let texto = document.getElementById("filtro").value.toLowerCase();
+
+    document.querySelectorAll("#tbl tr").forEach((tr, i) => {
+        if (i === 0) return;
+
+        let conteudo = tr.innerText.toLowerCase();
+
+        // incluir selects
+        tr.querySelectorAll("select").forEach(sel => {
+            conteudo += " " + (sel.value || "").toLowerCase();
+        });
+
+        // incluir inputs
+        tr.querySelectorAll("input").forEach(inp => {
+            conteudo += " " + (inp.value || "").toLowerCase();
+        });
+
+        let matchTexto = conteudo.includes(texto);
+        let matchStatus = !statusAtual || tr.classList.contains(statusAtual.toLowerCase());
+
+        tr.style.display = (matchTexto && matchStatus) ? "" : "none";
+    });
+}
+
+    document.getElementById("filtro")
+        .addEventListener("keyup", aplicarFiltros);
     </script>
     """
 

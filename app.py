@@ -517,6 +517,24 @@ BASE = """
         word-break: break-word;
     }
     
+/* ---------------------- CSS MINHAS DELEGACOES ---------------------- */
+.btn {
+    padding:6px 10px;
+    border:none;
+    cursor:pointer;
+    border-radius:4px;
+    font-weight:bold;
+}
+
+.all { background:#ccc; }
+.andamento { background:#ffb3b3; }
+.analisando { background:#ffe699; }
+.analisado { background:#b6f2c2; }
+
+tr.andamento { background:#ffe5e5; }
+tr.analisando { background:#fff6d6; }
+tr.analisado { background:#e6ffed; }
+
 </style>
 
 
@@ -4102,6 +4120,17 @@ def minhas_delegacoes():
         BASE.replace("{% block content %}{% endblock %}", """
 <h2>Minhas Requisições Delegadas</h2>
 
+<div style="margin-bottom:15px;display:flex;gap:10px;flex-wrap:wrap">
+    <input type="text" id="filtro"
+           placeholder="Pesquisar..."
+           style="flex:1;padding:8px">
+
+    <button onclick="filtrarStatus('')" class="btn all">TODOS</button>
+    <button onclick="filtrarStatus('ANDAMENTO')" class="btn andamento">ANDAMENTO</button>
+    <button onclick="filtrarStatus('ANALISANDO')" class="btn analisando">ANALISANDO</button>
+    <button onclick="filtrarStatus('ANALISADO')" class="btn analisado">ANALISADO</button>
+</div>
+
 {% if requisicoes %}
 <table>
     <tr>
@@ -4114,7 +4143,7 @@ def minhas_delegacoes():
         <th>Ação</th>
     </tr>
     {% for r in requisicoes %}
-    <tr>
+    <tr class="{{ r.status_analise|lower }}">
         <td>{{ r.chave }}</td>
         <td>{{ r.os_codigo }}</td>
         <td>{{ fmt(r.data_inicio) }}</td>
@@ -4152,7 +4181,10 @@ document.querySelectorAll(".status-select").forEach(sel => {
         .then(resp => {
             if (resp !== "OK") {
                 alert("Erro ao atualizar status");
+                return;
             }
+            let tr = this.closest("tr");
+            tr.className = this.value.toLowerCase();
         })
         .catch(err => {
             alert("Erro de rede");
@@ -4161,6 +4193,28 @@ document.querySelectorAll(".status-select").forEach(sel => {
 
     });
 });
+
+let statusAtual = "";
+
+document.getElementById("filtro").addEventListener("keyup", aplicarFiltros);
+
+function filtrarStatus(status){
+    statusAtual = status;
+    aplicarFiltros();
+}
+
+function aplicarFiltros(){
+    let texto = document.getElementById("filtro").value.toLowerCase();
+
+    document.querySelectorAll("table tr").forEach((tr, i) => {
+        if (i === 0) return;
+
+        let matchTexto = tr.innerText.toLowerCase().includes(texto);
+        let matchStatus = !statusAtual || tr.classList.contains(statusAtual.toLowerCase());
+
+        tr.style.display = (matchTexto && matchStatus) ? "" : "none";
+    });
+}
 </script>
 
 

@@ -5657,7 +5657,6 @@ function atualizarCampo(id, campo, valor){
         perfil=session["perfil"],
         page=page,
         status=status,
-        has_more=has_more
     )
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])

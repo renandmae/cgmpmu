@@ -5383,10 +5383,10 @@ def requisicoes():
             con.close()
 
     # ======================
-    # LISTAGEM (SEM ÍNDICES)
+    # LISTAGEM (OTIMIZADA)
     # ======================
     page = int(request.args.get("page", 1))
-    per_page = int(request.args.get("per_page", 500))
+    per_page = int(request.args.get("per_page", 200))  # 200 é o ideal
     offset = (page - 1) * per_page
     
     status = request.args.get("status")
@@ -5415,12 +5415,9 @@ def requisicoes():
         like = f"%{q}%"
         params.extend([like, like, like, like])
     
-    # TOTAL (para última página)
-    cur.execute(f"SELECT COUNT(*) {base_sql}", params)
-    total = cur.fetchone()["count"]
-    total_pages = max(1, (total + per_page - 1) // per_page)
-    
-    # REGISTROS DA PÁGINA
+    # =================================================
+    # BUSCA UMA A MAIS PARA SABER SE TEM PRÓXIMA PÁGINA
+    # =================================================
     cur.execute(
         f"""
         SELECT r.*, c.nome AS servidor
@@ -5428,16 +5425,25 @@ def requisicoes():
         ORDER BY r.created_at DESC
         LIMIT %s OFFSET %s
         """,
-        params + [per_page, offset]
+        params + [per_page + 1, offset]
     )
+    
     rows = cur.fetchall()
-
+    
+    # Detecta se existe próxima página
+    tem_proxima = len(rows) > per_page
+    rows = rows[:per_page]
+    
+    # Detecta se existe página anterior
+    tem_anterior = page > 1
+    
+    # Colaboradores (mantém como está)
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
     colaboradores = cur.fetchall()
-
+    
     from datetime import date
     hoje = date.today().isoformat()
-
+    
     con.close()
 
     html = """
@@ -5477,30 +5483,27 @@ def requisicoes():
                style="width:100%;padding:8px;">
     </form>
 
-   <div style="margin:10px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <a href="?page=1{% if status %}&status={{status}}{% endif %}{% if q %}&q={{q}}{% endif %}">
-            ⏮ Primeira
-        </a>
+      <div style="margin:10px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
     
         {% if page > 1 %}
+            <a href="?page=1{% if status %}&status={{status}}{% endif %}{% if q %}&q={{q}}{% endif %}">
+                ⏮ Primeira
+            </a>
+    
             <a href="?page={{ page-1 }}{% if status %}&status={{status}}{% endif %}{% if q %}&q={{q}}{% endif %}">
                 ◀ Anterior
             </a>
         {% endif %}
     
-        <span>Página {{ page }} de {{ total_pages }}</span>
+        <span>Página {{ page }}</span>
     
-        {% if page < total_pages %}
+        {% if tem_proxima %}
             <a href="?page={{ page+1 }}{% if status %}&status={{status}}{% endif %}{% if q %}&q={{q}}{% endif %}">
                 Próxima ▶
             </a>
         {% endif %}
     
-        <a href="?page={{ total_pages }}{% if status %}&status={{status}}{% endif %}{% if q %}&q={{q}}{% endif %}">
-            Última ⏭
-        </a>
     </div>
-
 
     <table id="tbl">
         <tr>
@@ -5653,9 +5656,9 @@ function atualizarCampo(id, campo, valor){
         user=session["user"],
         perfil=session["perfil"],
         page=page,
-        total_pages=total_pages,   # ✅ ESSENCIAL
+        tem_proxima=tem_proxima,  # ✅ substitui total_pages
         status=status,
-        q=q,                       # ✅ para manter busca
+        q=q,                     # ✅ mantém busca
     )
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])

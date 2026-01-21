@@ -3830,33 +3830,33 @@ def export_csv():
     ])
 
 
-   for r in rows:
-    try:
-        data_fmt = r["data"].strftime("%d/%m/%Y")
-    except:
-        data_fmt = r["data"]
+    for r in rows:
+        try:
+            data_fmt = r["data"].strftime("%d/%m/%Y")
+        except:
+            data_fmt = r["data"]
 
-    cw.writerow([
-        r["hora_id"],
-        r["colaborador"],
-        data_fmt,
-        r["hora_inicio"],
-        r["hora_fim"],
-        r["item_paint"],
-        r["os_codigo"],
-        r["atividade"],
-        r["duracao"],
-        r["duracao_minutos"],
-        r["observacoes"],
-        r["requisicoes"] or "",
-        r["qtd_requisicoes"] or 0,
-        f"{r['valor_total_requisicoes']:.2f}",
-        r["data_inicio_requisicao"],
-        r["data_fim_requisicao"],
-        r["status_requisicao"],
-        r["tipo_requisicao"],
-        r["criterio_requisicao"],
-    ])
+        cw.writerow([
+            r["hora_id"],
+            r["colaborador"],
+            data_fmt,
+            r["hora_inicio"],
+            r["hora_fim"],
+            r["item_paint"],
+            r["os_codigo"],
+            r["atividade"],
+            r["duracao"],
+            r["duracao_minutos"],
+            r["observacoes"],
+            r["requisicoes"] or "",
+            r["qtd_requisicoes"] or 0,
+            f"{r['valor_total_requisicoes']:.2f}",
+            r["data_inicio_requisicao"],
+            r["data_fim_requisicao"],
+            r["status_requisicao"],
+            r["tipo_requisicao"],
+            r["criterio_requisicao"],
+        ])
 
     output = io.BytesIO()
     output.write("\ufeff".encode("utf-8"))

@@ -5459,11 +5459,11 @@ def requisicoes():
      <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
         <a class="btn all {% if not status %}ativo{% endif %}" href="/requisicoes">TODOS</a>
         <a class="btn andamento {% if status=='ANDAMENTO' %}ativo{% endif %}"
-           href="/requisicoes?status=ANDAMENTO">ANDAMENTO</a>
+           href="/requisicoes?status=ANDAMENTO{% if q %}&q={{ q }}{% endif %}">ANDAMENTO</a>
         <a class="btn analisando {% if status=='ANALISANDO' %}ativo{% endif %}"
-           href="/requisicoes?status=ANALISANDO">ANALISANDO</a>
+           href="/requisicoes?status=ANALISANDO{% if q %}&q={{ q }}{% endif %}">ANALISANDO</a>
         <a class="btn analisado {% if status=='ANALISADO' %}ativo{% endif %}"
-           href="/requisicoes?status=ANALISADO">ANALISADO</a>
+           href="/requisicoes?status=ANALISADO{% if q %}&q={{ q }}{% endif %}">ANALISADO</a>
     </div>
 
     <form method="get" style="margin-bottom:10px;">
@@ -5642,9 +5642,6 @@ function atualizarCampo(id, campo, valor){
 
     fetch("/requisicoes", { method:"POST", body:fd });
 }
-
-    document.getElementById("filtro")
-        .addEventListener("keyup", aplicarFiltros);
     </script>
     """
 
@@ -5656,7 +5653,9 @@ function atualizarCampo(id, campo, valor){
         user=session["user"],
         perfil=session["perfil"],
         page=page,
+        total_pages=total_pages,   # ✅ ESSENCIAL
         status=status,
+        q=q,                       # ✅ para manter busca
     )
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])

@@ -5403,14 +5403,21 @@ def requisicoes():
         sql += " AND r.status_analise = %s"
         params.append(status)
     
-    sql += " ORDER BY r.created_at DESC LIMIT %s OFFSET %s"
-    params.extend([per_page + 1, offset])  # +1 para saber se tem próxima
+    sql += " ORDER BY r.created_at DESC"
+
+    if status:
+        sql += " LIMIT %s OFFSET %s"
+        params.extend([per_page + 1, offset])
+
     
     cur.execute(sql, params)
     rows = cur.fetchall()
-    
-    has_more = len(rows) > per_page
-    rows = rows[:per_page]
+
+    if status:
+        has_more = len(rows) > per_page
+        rows = rows[:per_page]
+    else:
+    has_more = False
 
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
     colaboradores = cur.fetchall()
@@ -5484,7 +5491,7 @@ def requisicoes():
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
                         id="status_{{ r.id }}"
-                        style="min-width:80px; padding:3px;">
+                        style="min-width:60px; padding:2px;">
                     <option value=""></option>
                     {% for s in ['ANDAMENTO','ANALISANDO','ANALISADO'] %}
                         <option value="{{ s }}" {% if r.status_analise==s %}selected{% endif %}>
@@ -5497,7 +5504,7 @@ def requisicoes():
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
                         id="tipo_{{ r.id }}"
-                        style="min-width:80px; padding:3px;">
+                        style="min-width:60px; padding:2px;">
                     <option value=""></option>
                     {% for t in ['CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO'] %}
                         <option value="{{ t }}" {% if r.tipo==t %}selected{% endif %}>
@@ -5510,7 +5517,7 @@ def requisicoes():
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
                         id="criterio_{{ r.id }}"
-                        style="min-width:80px; padding:3px;">
+                        style="min-width:60px; padding:2px;">
 
                     <option value=""></option>
                     {% for c in ['MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA'] %}

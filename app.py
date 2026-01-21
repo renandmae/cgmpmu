@@ -5650,17 +5650,17 @@ function aplicarFiltros(){
     </script>
     """
 
-   return render_template_string(
-    BASE.replace("{% block content %}{% endblock %}", html),
-    rows=rows,
-    colaboradores=colaboradores,
-    hoje=hoje,
-    user=session["user"],
-    perfil=session["perfil"],
-    page=page,
-    status=status,
-    has_more=has_more
-)
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        rows=rows,
+        colaboradores=colaboradores,
+        hoje=hoje,
+        user=session["user"],
+        perfil=session["perfil"],
+        page=page,
+        status=status,
+        has_more=has_more
+    )
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])
 def editar_requisicao(id):

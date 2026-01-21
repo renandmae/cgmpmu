@@ -4161,7 +4161,7 @@ tr.analisado td:first-child::before {
            placeholder="Pesquisar..."
            style="flex:1;padding:8px">
 
-    <button onclick="location.href='?limit=all'" class="btn all" id = "btn-all">TODOS</button>
+    <button onclick="filtrarStatus('')" class="btn all" id="btn-all">TODOS</button>
     <button onclick="filtrarStatus('ANDAMENTO')" class="btn andamento" id = "btn-andamento" >ANDAMENTO</button>
     <button onclick="filtrarStatus('ANALISANDO')" class="btn analisando" id = "btn-analisando">ANALISANDO</button>
     <button onclick="filtrarStatus('ANALISADO')" class="btn analisado" id = "btn-analisado">ANALISADO</button>

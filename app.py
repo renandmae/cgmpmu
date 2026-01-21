@@ -5402,6 +5402,8 @@ def requisicoes():
 
     con.close()
 
+    html = """
+    
     <style>
     tr.andamento { background:#ffe5e5; }
     tr.analisando { background:#fff7cc; }
@@ -5414,7 +5416,6 @@ def requisicoes():
     .btn.ativo { outline:2px solid #000; }
     </style>
     
-    html = """
     <h3>Requisições</h3>
     
     <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">

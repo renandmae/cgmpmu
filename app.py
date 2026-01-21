@@ -4083,8 +4083,8 @@ def minhas_delegacoes():
     con = get_db()
     cur = con.cursor()
 
-    limit_param = request.args.get("limit", "50")
-    status_param = request.args.get("status", "ANDAMENTO")
+    limit_param = request.args.get("limit", "100")
+    status_param = request.args.get("status")
 
     if limit_param == "all":
         limite = None
@@ -4092,7 +4092,7 @@ def minhas_delegacoes():
         try:
             limite = int(limit_param)
         except:
-            limite = 50
+            limite = 100
 
     sql = """
         SELECT r.*, o.resumo AS os_resumo
@@ -4119,13 +4119,43 @@ def minhas_delegacoes():
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", """
 <h2>Minhas Requisições Delegadas</h2>
+<style>
+tr.andamento {
+    background-color: #ffe5e5; /* vermelho claro */
+    
+}
+
+tr.analisando {
+    background-color: #fff7cc; /* amarelo claro */
+}
+
+tr.analisado {
+    background-color: #e5ffe5; /* verde claro */
+}
+tr.andamento td:first-child::before {
+    content:"🔴 ";
+}
+tr.analisando td:first-child::before {
+    content:"🟡 ";
+}
+tr.analisado td:first-child::before {
+    content:"🟢 ";
+}
+
+
+/* Botões */
+.btn.andamento { background:#d9534f; color:#fff }
+.btn.analisando { background:#f0ad4e; color:#000 }
+.btn.analisado { background:#5cb85c; color:#fff }
+.btn.all { background:#0275d8; color:#fff }
+</style>
 
 <div style="margin-bottom:15px;display:flex;gap:10px;flex-wrap:wrap">
     <input type="text" id="filtro"
            placeholder="Pesquisar..."
            style="flex:1;padding:8px">
 
-    <button onclick="filtrarStatus('')" class="btn all">TODOS</button>
+    <button onclick="location.href='?limit=all'" class="btn all">TODOS</button>
     <button onclick="filtrarStatus('ANDAMENTO')" class="btn andamento">ANDAMENTO</button>
     <button onclick="filtrarStatus('ANALISANDO')" class="btn analisando">ANALISANDO</button>
     <button onclick="filtrarStatus('ANALISADO')" class="btn analisado">ANALISADO</button>

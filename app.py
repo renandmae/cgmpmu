@@ -5417,7 +5417,7 @@ def requisicoes():
         has_more = len(rows) > per_page
         rows = rows[:per_page]
     else:
-    has_more = False
+        has_more = False
 
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
     colaboradores = cur.fetchall()

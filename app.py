@@ -5383,16 +5383,16 @@ def requisicoes():
             con.close()
 
     # ======================
-    # LISTAGEM
+    # LISTAGEM (SEM ÍNDICES)
     # ======================
     page = int(request.args.get("page", 1))
-    per_page = int(request.args.get("per_page", 50))
+    per_page = int(request.args.get("per_page", 500))
     offset = (page - 1) * per_page
     
-    status = request.args.get("status")  # ANDAMENTO | ANALISADO | ANALISANDO | None
+    status = request.args.get("status")
+    q = request.args.get("q")
     
-    sql = """
-    SELECT r.*, c.nome AS servidor
+    base_sql = """
     FROM requisicoes r
     LEFT JOIN colaboradores c ON c.id = r.servidor_id
     WHERE 1=1
@@ -5400,24 +5400,37 @@ def requisicoes():
     params = []
     
     if status:
-        sql += " AND r.status_analise = %s"
+        base_sql += " AND r.status_analise = %s"
         params.append(status)
     
-    sql += " ORDER BY r.created_at DESC"
-
-    if status:
-        sql += " LIMIT %s OFFSET %s"
-        params.extend([per_page + 1, offset])
-
+    if q:
+        base_sql += """
+        AND (
+            r.chave ILIKE %s OR
+            r.sigla ILIKE %s OR
+            r.valor_requisicao::text ILIKE %s OR
+            c.nome ILIKE %s
+        )
+        """
+        like = f"%{q}%"
+        params.extend([like, like, like, like])
     
-    cur.execute(sql, params)
+    # TOTAL (para última página)
+    cur.execute(f"SELECT COUNT(*) {base_sql}", params)
+    total = cur.fetchone()["count"]
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    
+    # REGISTROS DA PÁGINA
+    cur.execute(
+        f"""
+        SELECT r.*, c.nome AS servidor
+        {base_sql}
+        ORDER BY r.created_at DESC
+        LIMIT %s OFFSET %s
+        """,
+        params + [per_page, offset]
+    )
     rows = cur.fetchall()
-
-    if status:
-        has_more = len(rows) > per_page
-        rows = rows[:per_page]
-    else:
-        has_more = False
 
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
     colaboradores = cur.fetchall()
@@ -5453,20 +5466,41 @@ def requisicoes():
            href="/requisicoes?status=ANALISADO">ANALISADO</a>
     </div>
 
+    <form method="get" style="margin-bottom:10px;">
+        {% if status %}
+            <input type="hidden" name="status" value="{{ status }}">
+        {% endif %}
+        <input type="text"
+               name="q"
+               value="{{ q or '' }}"
+               placeholder="Pesquisar em todas as requisições..."
+               style="width:100%;padding:8px;">
+    </form>
 
-    <input type="text" id="filtro" placeholder="Pesquisar..."
-           style="width:100%;padding:8px;margin-bottom:10px;">
-    <div style="margin-top:10px">
-    {% if page > 1 %}
-        <a href="?page={{ page-1 }}{% if status %}&status={{ status }}{% endif %}">⬅ Anterior</a>
-    {% endif %}
-
-    <span>Página {{ page }}</span>
-
-    {% if has_more %}
-        <a href="?page={{ page+1 }}{% if status %}&status={{ status }}{% endif %}">Próxima ➡</a>
-    {% endif %}
+   <div style="margin:10px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <a href="?page=1{% if status %}&status={{status}}{% endif %}{% if q %}&q={{q}}{% endif %}">
+            ⏮ Primeira
+        </a>
+    
+        {% if page > 1 %}
+            <a href="?page={{ page-1 }}{% if status %}&status={{status}}{% endif %}{% if q %}&q={{q}}{% endif %}">
+                ◀ Anterior
+            </a>
+        {% endif %}
+    
+        <span>Página {{ page }} de {{ total_pages }}</span>
+    
+        {% if page < total_pages %}
+            <a href="?page={{ page+1 }}{% if status %}&status={{status}}{% endif %}{% if q %}&q={{q}}{% endif %}">
+                Próxima ▶
+            </a>
+        {% endif %}
+    
+        <a href="?page={{ total_pages }}{% if status %}&status={{status}}{% endif %}{% if q %}&q={{q}}{% endif %}">
+            Última ⏭
+        </a>
     </div>
+
 
     <table id="tbl">
         <tr>
@@ -5607,42 +5641,6 @@ function atualizarCampo(id, campo, valor){
     fd.append("valor", valor);
 
     fetch("/requisicoes", { method:"POST", body:fd });
-}
-
-let statusAtual = "";
-
-function filtrarStatus(status){
-    statusAtual = status;
-
-    document.querySelectorAll(".btn").forEach(b => b.classList.remove("ativo"));
-    event.target.classList.add("ativo");
-
-    aplicarFiltros();
-}
-
-function aplicarFiltros(){
-    let texto = document.getElementById("filtro").value.toLowerCase();
-
-    document.querySelectorAll("#tbl tr").forEach((tr, i) => {
-        if (i === 0) return;
-
-        let conteudo = tr.innerText.toLowerCase();
-
-        // incluir selects
-        tr.querySelectorAll("select").forEach(sel => {
-            conteudo += " " + (sel.value || "").toLowerCase();
-        });
-
-        // incluir inputs
-        tr.querySelectorAll("input").forEach(inp => {
-            conteudo += " " + (inp.value || "").toLowerCase();
-        });
-
-        let matchTexto = conteudo.includes(texto);
-        let matchStatus = !statusAtual || tr.classList.contains(statusAtual.toLowerCase());
-
-        tr.style.display = (matchTexto && matchStatus) ? "" : "none";
-    });
 }
 
     document.getElementById("filtro")

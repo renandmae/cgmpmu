@@ -5382,17 +5382,35 @@ def requisicoes():
         finally:
             con.close()
 
-    # ======================================================
+    # ======================
     # LISTAGEM
-    # ======================================================
-    cur.execute("""
-        SELECT r.*, c.nome AS servidor
-        FROM requisicoes r
-        LEFT JOIN colaboradores c ON c.id = r.servidor_id
-        ORDER BY r.created_at DESC
-        LIMIT 500
-    """)
+    # ======================
+    page = int(request.args.get("page", 1))
+    per_page = int(request.args.get("per_page", 50))
+    offset = (page - 1) * per_page
+    
+    status = request.args.get("status")  # ANDAMENTO | ANALISADO | ANALISANDO | None
+    
+    sql = """
+    SELECT r.*, c.nome AS servidor
+    FROM requisicoes r
+    LEFT JOIN colaboradores c ON c.id = r.servidor_id
+    WHERE 1=1
+    """
+    params = []
+    
+    if status:
+        sql += " AND r.status_analise = %s"
+        params.append(status)
+    
+    sql += " ORDER BY r.created_at DESC LIMIT %s OFFSET %s"
+    params.extend([per_page + 1, offset])  # +1 para saber se tem próxima
+    
+    cur.execute(sql, params)
     rows = cur.fetchall()
+    
+    has_more = len(rows) > per_page
+    rows = rows[:per_page]
 
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
     colaboradores = cur.fetchall()
@@ -5418,15 +5436,30 @@ def requisicoes():
     
     <h3>Requisições</h3>
     
-    <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn all ativo" onclick="filtrarStatus('')">TODOS</button>
-    <button class="btn andamento" onclick="filtrarStatus('ANDAMENTO')">ANDAMENTO</button>
-    <button class="btn analisando" onclick="filtrarStatus('ANALISANDO')">ANALISANDO</button>
-    <button class="btn analisado" onclick="filtrarStatus('ANALISADO')">ANALISADO</button>
+     <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn all {% if not status %}ativo{% endif %}" href="/requisicoes">TODOS</a>
+        <a class="btn andamento {% if status=='ANDAMENTO' %}ativo{% endif %}"
+           href="/requisicoes?status=ANDAMENTO">ANDAMENTO</a>
+        <a class="btn analisando {% if status=='ANALISANDO' %}ativo{% endif %}"
+           href="/requisicoes?status=ANALISANDO">ANALISANDO</a>
+        <a class="btn analisado {% if status=='ANALISADO' %}ativo{% endif %}"
+           href="/requisicoes?status=ANALISADO">ANALISADO</a>
     </div>
+
 
     <input type="text" id="filtro" placeholder="Pesquisar..."
            style="width:100%;padding:8px;margin-bottom:10px;">
+    <div style="margin-top:10px">
+    {% if page > 1 %}
+        <a href="?page={{ page-1 }}{% if status %}&status={{ status }}{% endif %}">⬅ Anterior</a>
+    {% endif %}
+
+    <span>Página {{ page }}</span>
+
+    {% if has_more %}
+        <a href="?page={{ page+1 }}{% if status %}&status={{ status }}{% endif %}">Próxima ➡</a>
+    {% endif %}
+    </div>
 
     <table id="tbl">
         <tr>
@@ -5451,7 +5484,7 @@ def requisicoes():
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
                         id="status_{{ r.id }}"
-                        style="min-width:130px; padding:4px;">
+                        style="min-width:80px; padding:3px;">
                     <option value=""></option>
                     {% for s in ['ANDAMENTO','ANALISANDO','ANALISADO'] %}
                         <option value="{{ s }}" {% if r.status_analise==s %}selected{% endif %}>
@@ -5464,7 +5497,7 @@ def requisicoes():
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
                         id="tipo_{{ r.id }}"
-                        style="min-width:150px; padding:4px;">
+                        style="min-width:80px; padding:3px;">
                     <option value=""></option>
                     {% for t in ['CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO'] %}
                         <option value="{{ t }}" {% if r.tipo==t %}selected{% endif %}>
@@ -5477,7 +5510,7 @@ def requisicoes():
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
                         id="criterio_{{ r.id }}"
-                        style="min-width:130px; padding:4px;">
+                        style="min-width:80px; padding:3px;">
 
                     <option value=""></option>
                     {% for c in ['MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA'] %}
@@ -5610,14 +5643,17 @@ function aplicarFiltros(){
     </script>
     """
 
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
-        rows=rows,
-        colaboradores=colaboradores,
-        hoje=hoje,
-        user=session["user"],
-        perfil=session["perfil"]
-    )
+   return render_template_string(
+    BASE.replace("{% block content %}{% endblock %}", html),
+    rows=rows,
+    colaboradores=colaboradores,
+    hoje=hoje,
+    user=session["user"],
+    perfil=session["perfil"],
+    page=page,
+    status=status,
+    has_more=has_more
+)
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])
 def editar_requisicao(id):

@@ -571,7 +571,7 @@ tr.analisado { background:#e6ffed; }
         <a href='/lancar'>Lançar Horas</a>
         <a href='/relatorios'>Relatórios</a>
         {% if perfil != 'admin' %}
-            <a href="/minhas_delegacoes">Requisições Delegadas</a>
+            <a href="/minhas_delegacoes">Requisições</a>
         {% endif %}
         {% if perfil == 'admin' %}
           <a href='/atendimentos'>Todos Atendimentos</a>
@@ -588,7 +588,7 @@ tr.analisado { background:#e6ffed; }
             <a href='/paint'>Projetos PAINT</a>
             <a href='/os'>O.S</a>
             <a href="/requisicoes">Requisições</a>
-            <a href='/admin_projetos'>Gerenciar Projetos</a>
+            <a href='/admin_projetos'>Projetos</a>
             <a href='/visao'>Visão Consolidada</a>
         {% endif %}
 
@@ -2229,12 +2229,34 @@ def lancar():
         <input type="text" id="busca_req" placeholder="Pesquisar..."
                style="width:100%; margin-bottom:6px;">
 
-        <div id="lista_reqs" style="max-height:200px; overflow:auto;">
+        <div id="lista_reqs" style="
+            max-height:200px;
+            overflow:auto;
+        ">
+            <style>
+                .req_item:hover {
+                    background:#f0f0f0;
+                }
+                .req_item input:checked + span {
+                    font-weight:bold;
+                }
+            </style>
             {% for r in requisicoes %}
-                <label class="req_item">
-                    <input type="checkbox" name="requisicoes[]" value="{{ r.id }}">
-                    {{ r.chave }} | {{ r.tipo }} | {{ r.criterio }}
-                </label><br>
+                <label class="req_item" style="
+                    display:flex;
+                    align-items:center;
+                    gap:8px;
+                    padding:6px 8px;
+                    cursor:pointer;
+                    border-radius:4px;
+                ">
+                    <input type="checkbox" name="requisicoes[]" value="{{ r.id }}"
+                           style="margin:0;">
+                    <span>
+                        <strong>{{ r.chave }}</strong>
+                        &nbsp;| {{ r.tipo }} | {{ r.criterio }}
+                    </span>
+                </label>
             {% endfor %}
         </div>
     </div>

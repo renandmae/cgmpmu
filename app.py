@@ -4119,6 +4119,7 @@ def minhas_delegacoes():
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", """
 <h2>Minhas Requisições Delegadas</h2>
+
 <style>
 tr.andamento {
     background-color: #ffe5e5; /* vermelho claro */
@@ -4148,6 +4149,11 @@ tr.analisado td:first-child::before {
 .btn.analisando { background:#f0ad4e; color:#000 }
 .btn.analisado { background:#5cb85c; color:#fff }
 .btn.all { background:#0275d8; color:#fff }
+.btn.ativo {
+    outline: 3px solid #000;
+    transform: scale(1.05);
+    font-weight: bold;
+}
 </style>
 
 <div style="margin-bottom:15px;display:flex;gap:10px;flex-wrap:wrap">
@@ -4155,10 +4161,10 @@ tr.analisado td:first-child::before {
            placeholder="Pesquisar..."
            style="flex:1;padding:8px">
 
-    <button onclick="location.href='?limit=all'" class="btn all">TODOS</button>
-    <button onclick="filtrarStatus('ANDAMENTO')" class="btn andamento">ANDAMENTO</button>
-    <button onclick="filtrarStatus('ANALISANDO')" class="btn analisando">ANALISANDO</button>
-    <button onclick="filtrarStatus('ANALISADO')" class="btn analisado">ANALISADO</button>
+    <button onclick="location.href='?limit=all'" class="btn all" id = "btn-all">TODOS</button>
+    <button onclick="filtrarStatus('ANDAMENTO')" class="btn andamento" id = "btn-andamento" >ANDAMENTO</button>
+    <button onclick="filtrarStatus('ANALISANDO')" class="btn analisando" id = "btn-analisando">ANALISANDO</button>
+    <button onclick="filtrarStatus('ANALISADO')" class="btn analisado" id = "btn-analisado">ANALISADO</button>
 </div>
 
 {% if requisicoes %}
@@ -4224,12 +4230,23 @@ document.querySelectorAll(".status-select").forEach(sel => {
     });
 });
 
-let statusAtual = "";
+let statusAtual = "ANDAMENTO"; // padrão
+
+function ativarBotao(status){
+    document.querySelectorAll(".btn").forEach(b => b.classList.remove("ativo"));
+
+    if(status === ""){
+        document.getElementById("btn-all").classList.add("ativo");
+    } else {
+        document.getElementById("btn-" + status.toLowerCase()).classList.add("ativo");
+    }
+}
 
 document.getElementById("filtro").addEventListener("keyup", aplicarFiltros);
 
 function filtrarStatus(status){
     statusAtual = status;
+    ativarBotao(status);
     aplicarFiltros();
 }
 
@@ -4245,6 +4262,12 @@ function aplicarFiltros(){
         tr.style.display = (matchTexto && matchStatus) ? "" : "none";
     });
 }
+
+/* APLICA O FILTRO AO CARREGAR A PÁGINA */
+document.addEventListener("DOMContentLoaded", () => {
+    ativarBotao("ANDAMENTO");
+    aplicarFiltros();
+});
 </script>
 
 

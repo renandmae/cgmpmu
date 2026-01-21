@@ -3775,27 +3775,42 @@ def export_csv():
     cur = con.cursor()
 
     cur.execute("""
-        SELECT
-            h.id,
-            c.nome AS colaborador,
-            h.data,
-            h.hora_inicio,
-            h.hora_fim,
-            h.item_paint,
-            h.os_codigo,
-            h.atividade,
-            h.duracao,
-            h.observacoes,
-            d.data_inicio AS data_inicio_delegacao,
-            d.data_fim AS data_fim_delegacao,
-            d.requisicoes,
-            d.status AS status_delegacao,
-            d.grau AS grau_delegacao,
-            d.id as delegacao_id
-        FROM horas h
-        LEFT JOIN colaboradores c ON c.id = h.colaborador_id
-        LEFT JOIN delegacoes d ON d.id = h.delegacao_id
-        ORDER BY h.data
+            SELECT
+        h.id AS hora_id,
+        c.nome AS colaborador,
+        h.data,
+        h.hora_inicio,
+        h.hora_fim,
+        h.item_paint,
+        h.os_codigo,
+        h.atividade,
+        h.duracao,
+        h.duracao_minutos,
+        h.observacoes,
+    
+        -- dados agregados das requisições
+        string_agg(r.chave, ', ') AS requisicoes,
+        COUNT(r.id)               AS qtd_requisicoes,
+        COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
+    
+        MIN(r.data_inicio)        AS data_inicio_requisicao,
+        MAX(r.data_fim)           AS data_fim_requisicao,
+        string_agg(DISTINCT r.status_analise, ', ') AS status_requisicao,
+        string_agg(DISTINCT r.tipo, ', ')            AS tipo_requisicao,
+        string_agg(DISTINCT r.criterio, ', ')        AS criterio_requisicao
+    
+    FROM horas h
+    JOIN colaboradores c ON c.id = h.colaborador_id
+    LEFT JOIN horas_requisicoes hr ON hr.hora_id = h.id
+    LEFT JOIN requisicoes r ON r.id = hr.requisicao_id
+    
+    GROUP BY
+        h.id, c.nome, h.data, h.hora_inicio, h.hora_fim,
+        h.item_paint, h.os_codigo, h.atividade,
+        h.duracao, h.duracao_minutos, h.observacoes
+    
+    ORDER BY h.data;
+
     """)
     rows = cur.fetchall()
     con.close()
@@ -3805,42 +3820,43 @@ def export_csv():
 
     # Cabeçalho
     cw.writerow([
-        "ID", "Colaborador", "Data", "Hora Início", "Hora Fim",
-        "Item PAINT", "OS", "Atividade", "Duração", "Obs",
-        "Data Início Delegação", "Data Fim Delegação",
-        "Requisições", "Qtd Requisições",
-        "Status Delegação", "Grau", "delegacao_id"
+        "Hora ID", "Colaborador", "Data",
+        "Hora Início", "Hora Fim",
+        "Item PAINT", "OS", "Atividade",
+        "Duração", "Minutos", "Obs",
+        "Requisições", "Qtd Requisições", "Valor Total",
+        "Data Início Req", "Data Fim Req",
+        "Status Req", "Tipo Req", "Critério Req"
     ])
 
-    for r in rows:
-        requisicoes = r["requisicoes"] or ""
-        qtd_req = len([x for x in requisicoes.split(",") if x.strip()]) if requisicoes else 0
 
-        # formatar data
-        try:
-            data_fmt = datetime.strptime(r["data"], "%Y-%m-%d").strftime("%d/%m/%Y")
-        except:
-            data_fmt = r["data"]
+   for r in rows:
+    try:
+        data_fmt = r["data"].strftime("%d/%m/%Y")
+    except:
+        data_fmt = r["data"]
 
-        cw.writerow([
-            r["id"],
-            r["colaborador"],
-            data_fmt,
-            r["hora_inicio"],
-            r["hora_fim"],
-            r["item_paint"],
-            r["os_codigo"],
-            r["atividade"],
-            r["duracao"],
-            r["observacoes"],
-            r["data_inicio_delegacao"],
-            r["data_fim_delegacao"],
-            requisicoes,
-            qtd_req,
-            r["status_delegacao"],
-            r["grau_delegacao"],
-            r["delegacao_id"]
-        ])
+    cw.writerow([
+        r["hora_id"],
+        r["colaborador"],
+        data_fmt,
+        r["hora_inicio"],
+        r["hora_fim"],
+        r["item_paint"],
+        r["os_codigo"],
+        r["atividade"],
+        r["duracao"],
+        r["duracao_minutos"],
+        r["observacoes"],
+        r["requisicoes"] or "",
+        r["qtd_requisicoes"] or 0,
+        f"{r['valor_total_requisicoes']:.2f}",
+        r["data_inicio_requisicao"],
+        r["data_fim_requisicao"],
+        r["status_requisicao"],
+        r["tipo_requisicao"],
+        r["criterio_requisicao"],
+    ])
 
     output = io.BytesIO()
     output.write("\ufeff".encode("utf-8"))
@@ -5528,7 +5544,7 @@ def requisicoes():
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
                         id="status_{{ r.id }}"
-                        style="min-width:60px; padding:2px;">
+                        style="min-width:90px; padding:2px;">
                     <option value=""></option>
                     {% for s in ['ANDAMENTO','ANALISANDO','ANALISADO'] %}
                         <option value="{{ s }}" {% if r.status_analise==s %}selected{% endif %}>
@@ -5541,7 +5557,7 @@ def requisicoes():
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
                         id="tipo_{{ r.id }}"
-                        style="min-width:60px; padding:2px;">
+                        style="min-width:70px; padding:2px;">
                     <option value=""></option>
                     {% for t in ['CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO'] %}
                         <option value="{{ t }}" {% if r.tipo==t %}selected{% endif %}>
@@ -5554,7 +5570,7 @@ def requisicoes():
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
                         id="criterio_{{ r.id }}"
-                        style="min-width:60px; padding:2px;">
+                        style="min-width:70px; padding:2px;">
 
                     <option value=""></option>
                     {% for c in ['MATERIALIDADE','RELEVÂNCIA','RISCO','ENGENHARIA'] %}

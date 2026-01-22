@@ -575,6 +575,7 @@ tr.analisado { background:#e6ffed; }
         <a href='/menu'>Menu</a>
         <a href='/lancar'>Lançar Horas</a>
         <a href='/relatorios'>Relatórios</a>
+        <a href='/admin_projetos'>Projetos</a>
         {% if perfil != 'admin' %}
             <a href="/minhas_delegacoes">Requisições</a>
         {% endif %}
@@ -593,7 +594,6 @@ tr.analisado { background:#e6ffed; }
             <a href='/paint'>PAINT</a>
             <a href='/os'>O.S</a>
             <a href="/requisicoes">Requisições</a>
-            <a href='/admin_projetos'>Projetos</a>
             <a href='/visao'>Visão/h</a>
         {% endif %}
 
@@ -3086,7 +3086,7 @@ def excluir_hora(id):
 # -------- ADMIN - GERENCIAR PROJETOS --------
 @app.route("/admin_projetos")
 def admin_projetos():
-    if session.get("perfil") != "admin":
+    if session.get("perfil") not in ["admin", "comum"]:
         return redirect("/")
 
     def icon(v):

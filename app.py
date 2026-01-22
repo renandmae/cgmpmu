@@ -2815,11 +2815,12 @@ def editar(hid):
     # Requisições
     # -------------------------
     cur.execute("""
-        SELECT id, chave, tipo, criterio, status_analise
-        FROM requisicoes
-        WHERE servidor_id = %s
-        ORDER BY chave
-    """, (base["colaborador_id"],))
+        SELECT DISTINCT r.id, r.chave, r.tipo, r.criterio, r.status_analise
+        FROM requisicoes r
+        JOIN horas_requisicoes hr ON hr.requisicao_id = r.id
+        WHERE hr.hora_id = ANY(%s)
+        ORDER BY r.chave
+    """, (ids_horas,))
 
     requisicoes = [dict(r) for r in cur.fetchall()]
     # 🔀 Ordena: marcadas primeiro, depois as demais

@@ -2772,21 +2772,40 @@ def editar(hid):
     # 👉 SOMENTE o que aparece como agrupado no relatório
     # -------------------------
     cur.execute("""
-        SELECT *
-        FROM horas
-        WHERE colaborador_id = %s
-          AND data = %s
-          AND os_codigo = %s
-          AND atividade = %s
-          AND COALESCE(observacoes,'') = COALESCE(%s,'')
-        ORDER BY hora_inicio
+        SELECT requisicao_id
+        FROM horas_requisicoes
+        WHERE hora_id = %s
+    """, (hid,))
+
+    reqs_base = sorted([r["requisicao_id"] for r in cur.fetchall()])
+    sem_reqs = len(reqs_base) == 0
+    
+    cur.execute("""
+        SELECT h.*
+        FROM horas h
+        LEFT JOIN horas_requisicoes hr ON hr.hora_id = h.id
+        WHERE h.colaborador_id = %s
+          AND h.data = %s
+          AND h.os_codigo = %s
+          AND h.atividade = %s
+          AND COALESCE(h.observacoes,'') = COALESCE(%s,'')
+        GROUP BY h.id
+        HAVING
+            CASE
+                WHEN %s THEN COUNT(hr.requisicao_id) = 0
+                ELSE array_agg(hr.requisicao_id ORDER BY hr.requisicao_id) = %s
+            END
+        ORDER BY h.hora_inicio
     """, (
         base["colaborador_id"],
         base["data"],
         base["os_codigo"],
         base["atividade"],
-        base["observacoes"]
+        base["observacoes"],
+        sem_reqs,
+        reqs_base
     ))
+
     registros = cur.fetchall()
 
     if not registros:
@@ -2798,9 +2817,9 @@ def editar(hid):
     cur.execute("""
         SELECT DISTINCT requisicao_id
         FROM horas_requisicoes
-        WHERE hora_id = ANY(%s)
+        WHERE hora_id = ANY(%s::int[])
     """, (ids_horas,))
-    
+
     reqs_vinculadas = {r["requisicao_id"] for r in cur.fetchall()}
     
     primeiro = registros[0]

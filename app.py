@@ -3796,7 +3796,7 @@ def export_csv():
         -- dados agregados das requisições
         string_agg(r.chave, ', ') AS requisicoes,
         COUNT(r.id)               AS qtd_requisicoes,
-        --COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
+        COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
     
         MIN(r.data_inicio)        AS data_inicio_requisicao,
         MAX(r.data_fim)           AS data_fim_requisicao,
@@ -3829,8 +3829,7 @@ def export_csv():
         "Hora Início", "Hora Fim",
         "Item PAINT", "OS", "Atividade",
         "Duração", "Minutos", "Obs",
-        "Requisições", "Qtd Requisições", 
-        --"Valor Total",
+        "Requisições", "Qtd Requisições", "Valor Total",
         "Data Início Req", "Data Fim Req",
         "Status Req", "Tipo Req", "Critério Req"
     ])
@@ -3856,7 +3855,7 @@ def export_csv():
             r["observacoes"],
             r["requisicoes"] or "",
             r["qtd_requisicoes"] or 0,
-            --f"{r['valor_total_requisicoes']:.2f}",
+            f"{r['valor_total_requisicoes']:.2f}",
             r["data_inicio_requisicao"],
             r["data_fim_requisicao"],
             r["status_requisicao"],
@@ -3885,18 +3884,19 @@ def export_filtrado():
     if not ids_raw:
         return "Nenhum ID recebido.", 400
 
-    ids = ids_raw.split(",")
+    ids = [x.strip() for x in ids_raw.split(",") if x.strip()]
 
-    import csv
-    from io import StringIO
+    import csv, io
     from datetime import datetime
+    from flask import Response
 
     con = get_db()
     cur = con.cursor()
 
     sql = f"""
         SELECT
-            h.id,
+            h.id AS hora_id,
+            c.nome AS colaborador,
             h.data,
             h.hora_inicio,
             h.hora_fim,
@@ -3904,45 +3904,64 @@ def export_filtrado():
             h.os_codigo,
             h.atividade,
             h.duracao,
+            h.duracao_minutos,
             h.observacoes,
-            d.data_inicio AS data_inicio_delegacao,
-            d.data_fim AS data_fim_delegacao,
-            d.requisicoes,
-            d.status AS status_delegacao,
-            d.grau AS grau_delegacao
+
+            -- dados agregados das requisições
+            string_agg(r.chave, ', ') AS requisicoes,
+            COUNT(r.id)               AS qtd_requisicoes,
+            -- COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
+
+            MIN(r.data_inicio)        AS data_inicio_requisicao,
+            MAX(r.data_fim)           AS data_fim_requisicao,
+            string_agg(DISTINCT r.status_analise, ', ') AS status_requisicao,
+            string_agg(DISTINCT r.tipo, ', ')            AS tipo_requisicao,
+            string_agg(DISTINCT r.criterio, ', ')        AS criterio_requisicao
+
         FROM horas h
-        LEFT JOIN delegacoes d ON d.id = h.delegacao_id
+        JOIN colaboradores c ON c.id = h.colaborador_id
+        LEFT JOIN horas_requisicoes hr ON hr.hora_id = h.id
+        LEFT JOIN requisicoes r ON r.id = hr.requisicao_id
+
         WHERE h.id IN ({",".join(["%s"] * len(ids))})
-        ORDER BY h.id
+
+        GROUP BY
+            h.id, c.nome, h.data, h.hora_inicio, h.hora_fim,
+            h.item_paint, h.os_codigo, h.atividade,
+            h.duracao, h.duracao_minutos, h.observacoes
+
+        ORDER BY h.data
     """
 
     cur.execute(sql, ids)
     rows = cur.fetchall()
     con.close()
 
-    output = StringIO()
-    output.write("\ufeff")
+    # ---------- CSV ----------
+    output = io.StringIO()
+    output.write("\ufeff")  # BOM Excel
     writer = csv.writer(output, delimiter=";")
 
     writer.writerow([
-        "ID", "Data", "Hora Início", "Hora Fim",
-        "Item PAINT", "OS", "Atividade", "Duração", "Obs",
-        "Data Início Delegação", "Data Fim Delegação",
+        "Hora ID", "Colaborador", "Data",
+        "Hora Início", "Hora Fim",
+        "Item PAINT", "OS", "Atividade",
+        "Duração", "Minutos", "Obs",
         "Requisições", "Qtd Requisições",
-        "Status Delegação", "Grau"
+        # "Valor Total",
+        "Data Início Req", "Data Fim Req",
+        "Status Req", "Tipo Req", "Critério Req"
     ])
 
     for r in rows:
-        requisicoes = r["requisicoes"] or ""
-        qtd_req = len([x for x in requisicoes.split(",") if x.strip()]) if requisicoes else 0
-
         try:
-            data_fmt = datetime.strptime(r["data"], "%Y-%m-%d").strftime("%d/%m/%Y")
+            data_fmt = r["data"].strftime("%d/%m/%Y")
         except:
             data_fmt = r["data"]
 
         writer.writerow([
-            r["id"],
+            r["hora_id"],
+            r["colaborador"],
             data_fmt,
             r["hora_inicio"],
             r["hora_fim"],
@@ -3950,21 +3969,25 @@ def export_filtrado():
             r["os_codigo"],
             r["atividade"],
             r["duracao"],
+            r["duracao_minutos"],
             r["observacoes"],
-            r["data_inicio_delegacao"],
-            r["data_fim_delegacao"],
-            requisicoes,
-            qtd_req,
-            r["status_delegacao"],
-            r["grau_delegacao"]
+            r["requisicoes"] or "",
+            r["qtd_requisicoes"] or 0,
+            # f"{r['valor_total_requisicoes']:.2f}",
+            r["data_inicio_requisicao"],
+            r["data_fim_requisicao"],
+            r["status_requisicao"],
+            r["tipo_requisicao"],
+            r["criterio_requisicao"],
         ])
 
     return Response(
         output.getvalue(),
         mimetype="text/csv; charset=utf-8",
-        headers={"Content-Disposition": "attachment; filename=horas_filtradas_completo.csv"}
+        headers={
+            "Content-Disposition": "attachment; filename=horas_filtradas_completo.csv"
+        }
     )
-
 
 def minutos_para_hhmm(minutos):
     horas = minutos // 60
@@ -3985,32 +4008,35 @@ def export_preventivas():
     cur = con.cursor()
 
     cur.execute("""
-        SELECT
-            r.id AS requisicao_id,
-            r.chave,
-            r.valor_requisicao,
-            r.status_analise,
-            r.tipo,
-            r.criterio,
-            r.data_inicio,
-            r.data_fim,
+    SELECT
+        r.id AS requisicao_id,
+        r.chave,
+        r.valor_requisicao,
+        r.status_analise,
+        r.tipo,
+        r.criterio,
+        r.os_codigo,
+        r.data_inicio,
+        r.data_fim,
 
-            c.nome AS colaborador,
+        c.nome AS colaborador,
 
-            h.os_codigo,
-            h.data,
-            h.hora_inicio,
-            h.hora_fim,
-            h.duracao_minutos
+        h.data,
+        h.hora_inicio,
+        h.hora_fim,
+        h.duracao_minutos
 
         FROM requisicoes r
-
-        LEFT JOIN colaboradores c ON c.id = r.servidor_id
+    
+        JOIN colaboradores c ON c.id = r.servidor_id      -- 👈 garante que está atribuída
         LEFT JOIN horas_requisicoes hr ON hr.requisicao_id = r.id
         LEFT JOIN horas h ON h.id = hr.hora_id
-
+    
+        WHERE r.servidor_id IS NOT NULL                    -- 👈 filtro explícito
+    
         ORDER BY r.id, h.data, h.hora_inicio
     """)
+
 
     rows = cur.fetchall()
     con.close()

@@ -6058,11 +6058,25 @@ def dashboard():
 <!DOCTYPE html>
 <html>
 <head>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <meta charset="utf-8">
 <title>Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
+.chart-box {
+    background:white;
+    padding:15px;
+    border-radius:12px;
+    box-shadow:0 6px 14px rgba(0,0,0,.08);
+    height:320px;
+}
+
+.chart-box canvas {
+    width:100% !important;
+    height:100% !important;
+}
+
 body { font-family: 'Segoe UI', sans-serif; background:#f4f6fa; padding:20px; }
 .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:20px; }
 .card {
@@ -6133,45 +6147,60 @@ canvas { background:white; padding:10px; border-radius:12px;
 </table>
 
 <div class="grid">
-<canvas id="pizza" height="180"></canvas>
-<canvas id="tipo" height="180"></canvas>
-<canvas id="empilhado" height="220"></canvas>
-<canvas id="valor" height="220"></canvas>
+    <div class="chart-box"><canvas id="pizza"></canvas></div>
+    <div class="chart-box"><canvas id="tipo"></canvas></div>
+    <div class="chart-box"><canvas id="empilhado"></canvas></div>
+    <div class="chart-box"><canvas id="valor"></canvas></div>
 </div>
 
 <script>
 /* ============================
    1 - PIZZA CRITÉRIO
 ============================ */
-new Chart(
-    document.getElementById("pizza"),
-    {
-        type: 'pie',
-        data: {
-            labels: {{ pizza_criterio | map(attribute='criterio') | list | safe }},
-            datasets: [{
-                data: {{ pizza_criterio | map(attribute='qtd') | list | safe }}
-            }]
+new Chart(document.getElementById("pizza"), {
+    type: 'pie',
+    data: {
+        labels: {{ pizza_criterio | map(attribute='criterio') | list | safe }},
+        datasets: [{
+            data: {{ pizza_criterio | map(attribute='qtd') | list | safe }}
+        }]
+    },
+    options: {
+        plugins: {
+            datalabels: {
+                formatter: v => v,
+                color: '#fff',
+                font: { weight: 'bold' }
+            }
         }
-    }
-);
+    },
+    plugins: [ChartDataLabels]
+});
+
 
 /* ============================
    5 - QTD POR TIPO
 ============================ */
-new Chart(
-    document.getElementById("tipo"),
-    {
-        type: 'bar',
-        data: {
-            labels: {{ graf_tipo | map(attribute='tipo') | list | safe }},
-            datasets: [{
-                label: 'Quantidade Analisada',
-                data: {{ graf_tipo | map(attribute='qtd') | list | safe }}
-            }]
+new Chart(document.getElementById("tipo"), {
+    type: 'pie',
+    data: {
+        labels: {{ graf_tipo | map(attribute='tipo') | list | safe }},
+        datasets: [{
+            data: {{ graf_tipo | map(attribute='qtd') | list | safe }}
+        }]
+    },
+    options: {
+        plugins: {
+            datalabels: {
+                formatter: v => v,
+                color: '#fff',
+                font: { weight: 'bold' }
+            }
         }
-    }
-);
+    },
+    plugins: [ChartDataLabels]
+});
+
 
 /* ============================
    6 - EMPILHADO CRITÉRIO x SIGLA
@@ -6180,52 +6209,62 @@ const dadosEmpilhado = {{ empilhado | tojson }};
 const siglas = [...new Set(dadosEmpilhado.map(e => e.sigla))];
 const criterios = [...new Set(dadosEmpilhado.map(e => e.criterio))];
 
-new Chart(
-    document.getElementById("empilhado"),
-    {
-        type: 'bar',
-        data: {
-            labels: siglas,
-            datasets: criterios.map(c => ({
-                label: c,
-                data: siglas.map(s => {
-                    const achado = dadosEmpilhado.find(
-                        e => e.sigla === s && e.criterio === c
-                    );
-                    return achado ? achado.qtd : 0;
-                }),
-                stack: 'stack1'
-            }))
+new Chart(document.getElementById("empilhado"), {
+    type: 'bar',
+    data: {
+        labels: siglas,
+        datasets: criterios.map(c => ({
+            label: c,
+            data: siglas.map(s => {
+                const r = dadosEmpilhado.find(
+                    e => e.sigla === s && e.criterio === c
+                );
+                return r ? Number(r.qtd) : 0;
+            }),
+            stack: 'stack1'
+        }))
+    },
+    options: {
+        responsive: true,
+        scales: {
+            x: { stacked: true },
+            y: { stacked: true }
         },
-        options: {
-            responsive: true,
-            scales: {
-                x: { stacked: true },
-                y: { stacked: true }
+        plugins: {
+            datalabels: {
+                display: false
             }
         }
-    }
-);
+    },
+    plugins: [ChartDataLabels]
+});
+
 
 /* ============================
    7 - VALOR POR CRITÉRIO (HORIZONTAL)
 ============================ */
-new Chart(
-    document.getElementById("valor"),
-    {
-        type: 'bar',
-        data: {
-            labels: {{ barras_valor | map(attribute='criterio') | list | safe }},
-            datasets: [{
-                label: 'Valor Analisado',
-                data: {{ barras_valor | map(attribute='valor') | list | safe }}
-            }]
-        },
-        options: {
-            indexAxis: 'y'
+new Chart(document.getElementById("valor"), {
+    type: 'bar',
+    data: {
+        labels: {{ barras_valor | map(attribute='criterio') | list | safe }},
+        datasets: [{
+            label: 'Valor Analisado (R$)',
+            data: {{ barras_valor | map(attribute='valor') | list | safe }}.map(v => Number(v)),
+        }]
+    },
+    options: {
+        indexAxis: 'y',
+        plugins: {
+            datalabels: {
+                anchor: 'end',
+                align: 'right',
+                formatter: v =>
+                    'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+            }
         }
-    }
-);
+    },
+    plugins: [ChartDataLabels]
+});
 </script>
 
 

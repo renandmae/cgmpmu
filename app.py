@@ -6140,44 +6140,94 @@ canvas { background:white; padding:10px; border-radius:12px;
 </div>
 
 <script>
-new Chart(pizza,{
- type:'pie',
- data:{labels:{{ pizza_criterio|map(attribute='criterio')|list|safe }},
- datasets:[{data:{{ pizza_criterio|map(attribute='qtd')|list|safe }}]}
-});
+/* ============================
+   1 - PIZZA CRITÉRIO
+============================ */
+new Chart(
+    document.getElementById("pizza"),
+    {
+        type: 'pie',
+        data: {
+            labels: {{ pizza_criterio | map(attribute='criterio') | list | safe }},
+            datasets: [{
+                data: {{ pizza_criterio | map(attribute='qtd') | list | safe }}
+            }]
+        }
+    }
+);
 
-new Chart(tipo,{
- type:'bar',
- data:{labels:{{ graf_tipo|map(attribute='tipo')|list|safe }},
- datasets:[{data:{{ graf_tipo|map(attribute='qtd')|list|safe }}]}
-});
+/* ============================
+   5 - QTD POR TIPO
+============================ */
+new Chart(
+    document.getElementById("tipo"),
+    {
+        type: 'bar',
+        data: {
+            labels: {{ graf_tipo | map(attribute='tipo') | list | safe }},
+            datasets: [{
+                label: 'Quantidade Analisada',
+                data: {{ graf_tipo | map(attribute='qtd') | list | safe }}
+            }]
+        }
+    }
+);
 
-const emp = {{ empilhado|tojson }};
-const siglas=[...new Set(emp.map(e=>e.sigla))];
-const criterios=[...new Set(emp.map(e=>e.criterio))];
+/* ============================
+   6 - EMPILHADO CRITÉRIO x SIGLA
+============================ */
+const dadosEmpilhado = {{ empilhado | tojson }};
+const siglas = [...new Set(dadosEmpilhado.map(e => e.sigla))];
+const criterios = [...new Set(dadosEmpilhado.map(e => e.criterio))];
 
-new Chart(empilhado,{
- type:'bar',
- data:{
-  labels:siglas,
-  datasets:criterios.map(c=>({
-    label:c,
-    data:siglas.map(s=>{
-      const f=emp.find(e=>e.sigla==s&&e.criterio==c);
-      return f?f.qtd:0;
-    }),
-    stack:'x'
-  }))
- }
-});
+new Chart(
+    document.getElementById("empilhado"),
+    {
+        type: 'bar',
+        data: {
+            labels: siglas,
+            datasets: criterios.map(c => ({
+                label: c,
+                data: siglas.map(s => {
+                    const achado = dadosEmpilhado.find(
+                        e => e.sigla === s && e.criterio === c
+                    );
+                    return achado ? achado.qtd : 0;
+                }),
+                stack: 'stack1'
+            }))
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true }
+            }
+        }
+    }
+);
 
-new Chart(valor,{
- type:'bar',
- data:{labels:{{ barras_valor|map(attribute='criterio')|list|safe }},
- datasets:[{data:{{ barras_valor|map(attribute='valor')|list|safe }}]}},
- options:{indexAxis:'y'}
-});
+/* ============================
+   7 - VALOR POR CRITÉRIO (HORIZONTAL)
+============================ */
+new Chart(
+    document.getElementById("valor"),
+    {
+        type: 'bar',
+        data: {
+            labels: {{ barras_valor | map(attribute='criterio') | list | safe }},
+            datasets: [{
+                label: 'Valor Analisado',
+                data: {{ barras_valor | map(attribute='valor') | list | safe }}
+            }]
+        },
+        options: {
+            indexAxis: 'y'
+        }
+    }
+);
 </script>
+
 
 </body>
 </html>

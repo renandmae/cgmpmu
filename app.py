@@ -2754,9 +2754,6 @@ def editar(hid):
     con = get_db()
     cur = con.cursor()
 
-    # -------------------------
-    # Registro base (o que veio do relatório)
-    # -------------------------
     cur.execute("SELECT * FROM horas WHERE id=%s", (hid,))
     base = cur.fetchone()
     if not base:
@@ -2796,6 +2793,16 @@ def editar(hid):
         con.close()
         return "Registro não encontrado."
 
+    ids_horas = [r["id"] for r in registros]
+    
+    cur.execute("""
+        SELECT DISTINCT requisicao_id
+        FROM horas_requisicoes
+        WHERE hora_id = ANY(%s)
+    """, (ids_horas,))
+    
+    reqs_vinculadas = {r["requisicao_id"] for r in cur.fetchall()}
+    
     primeiro = registros[0]
 
     # -------------------------
@@ -2805,39 +2812,16 @@ def editar(hid):
     oss = cur.fetchall()
 
     # -------------------------
-    # Delegações
+    # Requisições
     # -------------------------
     cur.execute("""
-        SELECT id, requisicoes, os_codigo, grau, data_inicio
-        FROM delegacoes
-        WHERE colaborador_id = %s
-          AND status = 'Em Andamento'
+        SELECT id, chave, tipo, criterio
+        FROM requisicoes
+        WHERE servidor_id = %s
+          AND status_analise = 'ANDAMENTO'
+        ORDER BY chave
     """, (base["colaborador_id"],))
-
-    delegacoes = []
-    ids = set()
-    delegacao_atual_id = primeiro.get("delegacao_id")
-
-    for d in cur.fetchall():
-        row = dict(d)
-        if isinstance(row.get("data_inicio"), (datetime, date)):
-            row["data_inicio"] = row["data_inicio"].isoformat()
-        delegacoes.append(row)
-        ids.add(row["id"])
-
-    # Caso a delegação usada esteja fora do status
-    if delegacao_atual_id and delegacao_atual_id not in ids:
-        cur.execute("""
-            SELECT id, requisicoes, os_codigo, grau, data_inicio
-            FROM delegacoes
-            WHERE id = %s
-        """, (delegacao_atual_id,))
-        d = cur.fetchone()
-        if d:
-            row = dict(d)
-            if isinstance(row.get("data_inicio"), (datetime, date)):
-                row["data_inicio"] = row["data_inicio"].isoformat()
-            delegacoes.append(row)
+    requisicoes = [dict(r) for r in cur.fetchall()]
 
     # -------------------------
     # POST
@@ -2847,39 +2831,40 @@ def editar(hid):
         os_codigo = request.form.get("os")
         item = request.form.get("item")
         atividade = request.form.get("atividade")
-        delegacao_id = request.form.get("delegacao_id") or None
         observacoes = request.form.get("observacoes")
-
+    
+        requisicoes_ids = request.form.getlist("requisicoes[]")  # ✅ AQUI
+    
         ids_form = request.form.getlist("hora_id[]")
         datas = request.form.getlist("data[]")
         horas_ini = request.form.getlist("hora_ini[]")
         horas_fim = request.form.getlist("hora_fim[]")
-
+    
         if not datas:
             con.close()
             return "Nenhum registro enviado."
-
+    
         # 🔐 trava ano
         for d in datas:
             if datetime.strptime(d, "%Y-%m-%d").year != 2026:
                 con.close()
                 return "Só é permitido editar registros de 2026."
-
+    
         ids_existentes = {r["id"] for r in registros}
         ids_enviados = set()
-
+    
         for i in range(len(datas)):
             hid_atual = ids_form[i] or None
-
+    
             ini = datetime.strptime(horas_ini[i], "%H:%M")
             fim = datetime.strptime(horas_fim[i], "%H:%M")
             minutos = (fim - ini).seconds // 60
             duracao = f"{minutos//60:02d}:{minutos%60:02d}"
-
+    
             if hid_atual:
                 hid_atual = int(hid_atual)
                 ids_enviados.add(hid_atual)
-
+    
                 cur.execute("""
                     UPDATE horas SET
                         data=%s,
@@ -2890,7 +2875,6 @@ def editar(hid):
                         os_codigo=%s,
                         item_paint=%s,
                         atividade=%s,
-                        delegacao_id=%s,
                         observacoes=%s
                     WHERE id=%s
                 """, (
@@ -2902,35 +2886,47 @@ def editar(hid):
                     os_codigo,
                     item,
                     atividade,
-                    delegacao_id,
                     observacoes,
                     hid_atual
                 ))
+    
+                hora_id = hid_atual
+    
             else:
                 cur.execute("""
                     INSERT INTO horas
-                    (colaborador_id, data, item_paint, os_codigo, atividade,
-                     delegacao_id, hora_inicio, hora_fim,
+                    (colaborador_id, data, item_paint, os_codigo, atividade, hora_inicio, hora_fim,
                      duracao, duracao_minutos, observacoes)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    RETURNING id
                 """, (
                     base["colaborador_id"],
                     datas[i],
                     item,
                     os_codigo,
                     atividade,
-                    delegacao_id,
                     horas_ini[i],
                     horas_fim[i],
                     duracao,
                     minutos,
                     observacoes
                 ))
-
-        # 🗑️ remove os apagados pelo usuário
+    
+                hora_id = cur.fetchone()["id"]
+    
+            # 🔁 REQUISIÇÕES (apaga e recria)
+            cur.execute("DELETE FROM horas_requisicoes WHERE hora_id = %s", (hora_id,))
+    
+            for req_id in requisicoes_ids:
+                cur.execute("""
+                    INSERT INTO horas_requisicoes (hora_id, requisicao_id)
+                    VALUES (%s, %s)
+                """, (hora_id, req_id))
+    
+        # 🗑️ remove os apagados
         for hid_del in ids_existentes - ids_enviados:
             cur.execute("DELETE FROM horas WHERE id=%s", (hid_del,))
-
+    
         con.commit()
         con.close()
         return redirect("/relatorios")
@@ -2976,14 +2972,21 @@ def editar(hid):
 Item:
 <input name="item" id="item_paint" value="{{ primeiro.item_paint }}" readonly>
 
-<br>
-<div id="box_delegacao" style="display:none;">
-<label>Delegação:</label>
-<select name="delegacao_id" id="delegacao_select">
-<option value=""></option>
-</select>
+<div id="box_requisicoes">
+  <label>Requisições:</label>
+  <div style="max-height:200px; overflow:auto; border:1px solid #ccc; padding:5px;">
+    {% for r in requisicoes %}
+      <label style="display:block;">
+        <input type="checkbox"
+               name="requisicoes[]"
+               value="{{ r.id }}"
+               {% if r.id in reqs_vinculadas %}checked{% endif %}>
+        {{ r.chave }} — {{ r.tipo }} — {{ r.criterio }}
+      </label>
+    {% endfor %}
+  </div>
 </div>
-
+<br>
 <br>
 Atividade:
 <select name="atividade">
@@ -3003,37 +3006,6 @@ Observações:
 <script>
 const osSelect = document.getElementById("os_select");
 const itemInput = document.getElementById("item_paint");
-const delSelect = document.getElementById("delegacao_select");
-const box = document.getElementById("box_delegacao");
-
-const delegacoes = {{ delegacoes | tojson }};
-const delegacaoAtual = {{ primeiro.delegacao_id if primeiro.delegacao_id else "null" }};
-
-function atualizarDelegacoes() {
-    delSelect.innerHTML = "<option value=''></option>";
-    box.style.display = "none";
-    let achou = false;
-
-    delegacoes.forEach(d => {
-        if (d.os_codigo === osSelect.value) {
-            achou = true;
-            let opt = document.createElement("option");
-            opt.value = d.id;
-            opt.textContent = "Reqs: " + d.requisicoes + " | Grau: " + d.grau;
-            if (d.id == delegacaoAtual) opt.selected = true;
-            delSelect.appendChild(opt);
-        }
-    });
-
-    if (achou) box.style.display = "block";
-}
-
-osSelect.addEventListener("change", function () {
-    itemInput.value = this.selectedOptions[0]?.dataset.item || "";
-    atualizarDelegacoes();
-});
-
-atualizarDelegacoes();
 
 function adicionar() {
     const base = document.querySelector(".registro");
@@ -3060,12 +3032,13 @@ function remover(btn) {
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
         registros=registros,
-        delegacoes=delegacoes,
         primeiro=primeiro,
         hid=hid,
         oss=oss,
         user=session["user"],
-        perfil=session["perfil"]
+        perfil=session["perfil"],
+        reqs_vinculadas=reqs_vinculadas,
+        requisicoes=requisicoes,
     )
 
 # -------------------------

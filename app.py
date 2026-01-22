@@ -6089,7 +6089,8 @@ new Chart(document.getElementById('graficoCriterio'), {
     """,
     cards=cards,
     tabela=tabela,
-    pizza_criterio=pizza_criterio
+    pizza_criterio=pizza_criterio,
+    fmt_br=fmt_br
     )
 
 

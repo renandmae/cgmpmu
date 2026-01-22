@@ -579,22 +579,22 @@ tr.analisado { background:#e6ffed; }
             <a href="/minhas_delegacoes">Requisições</a>
         {% endif %}
         {% if perfil == 'admin' %}
-          <a href='/atendimentos'>Todos Atendimentos</a>
+          <a href='/atendimentos'>Atendimentos</a>
         {% else %}
           <a href='/atendimentos'>Meus Atendimentos</a>
         {% endif %}
         {% if perfil == 'admin' %}
-          <a href='/consultorias'>Todas Consultorias</a>
+          <a href='/consultorias'>Consultorias</a>
         {% else %}
           <a href='/consultorias'>Minhas Consultorias</a>
         {% endif %}
         {% if perfil=='admin' %}
             <a href='/colaboradores'>Colaboradores</a>
-            <a href='/paint'>Projetos PAINT</a>
+            <a href='/paint'>PAINT</a>
             <a href='/os'>O.S</a>
             <a href="/requisicoes">Requisições</a>
             <a href='/admin_projetos'>Projetos</a>
-            <a href='/visao'>Visão Consolidada</a>
+            <a href='/visao'>Visão/h</a>
         {% endif %}
 
         <a href='/logout'>Sair</a>
@@ -2686,10 +2686,10 @@ def relatorios():
     </a>
             </div>
 
-            <form id='formExportFiltrad
-            o' method='POST' action='/export_filtrado'>
-                <input type='hidden' name='ids' id='ids_filtrados'>
+            <form id="formExportFiltrado" method="POST" action="/export_filtrado">
+                <input type="hidden" name="ids" id="ids_filtrados">
             </form>
+
         """
 
     # ---------------- SCRIPTS ----------------
@@ -2708,13 +2708,19 @@ def relatorios():
 
 
 function exportarFiltrado() {
-    let ids = [];
-    document.querySelectorAll("#tabelaMarcacoes tr").forEach((tr, i) => {
-        if (i === 0) return; // pula cabeçalho
-        if (tr.style.display === "none") return; // pula linhas ocultas
+    const ids = [];
 
-        let id = tr.querySelector("a").href.split("/editar/")[1];
-        if (id) ids.push(id);
+    document.querySelectorAll("#tabelaMarcacoes tr").forEach((tr, i) => {
+        if (i === 0) return;
+        if (tr.style.display === "none") return;
+
+        const link = tr.querySelector("a");
+        if (!link) return;
+
+        const partes = link.href.split("/editar/");
+        if (partes.length < 2) return;
+
+        ids.push(partes[1]);
     });
 
     if (ids.length === 0) {
@@ -2725,6 +2731,7 @@ function exportarFiltrado() {
     document.getElementById("ids_filtrados").value = ids.join(",");
     document.getElementById("formExportFiltrado").submit();
 }
+
     </script>
     """
 

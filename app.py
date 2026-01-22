@@ -64,9 +64,17 @@ def fmt_br(valor):
     except:
         return "0,00"
 
+def parse_hora(h):
+    if not h:
+        return None
+    h = h.strip()
+    if len(h) == 5:        # HH:MM
+        return datetime.strptime(h, "%H:%M")
+    else:                 # HH:MM:SS
+        return datetime.strptime(h, "%H:%M:%S")
+
 app = Flask(__name__)
 app.secret_key = 'troque_esta_chave'
-
 
 # -------------------------
 # Helpers
@@ -2464,8 +2472,6 @@ function remover(btn) {
         perfil=session['perfil']
     )
 
-
-
 # -------------------------
 # Relatórios
 # -------------------------
@@ -2880,8 +2886,8 @@ def editar(hid):
         for i in range(len(datas)):
             hid_atual = ids_form[i] or None
     
-            ini = datetime.strptime(horas_ini[i], "%H:%M")
-            fim = datetime.strptime(horas_fim[i], "%H:%M")
+            ini = parse_hora(horas_ini[i])
+            fim = parse_hora(horas_fim[i])
             minutos = (fim - ini).seconds // 60
             duracao = f"{minutos//60:02d}:{minutos%60:02d}"
     

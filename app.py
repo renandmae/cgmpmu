@@ -5911,6 +5911,188 @@ def editar_requisicao(id):
         fmt_br=fmt_br,
     )
 
+@app.route("/dashboard")
+def dashboard():
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # =========================
+    # CARDS – UNIVERSO (DISTINTO POR CHAVE)
+    # =========================
+    cur.execute("""
+        WITH universo AS (
+            SELECT DISTINCT ON (chave)
+                chave,
+                valor_requisicao,
+                status_analise
+            FROM requisicoes
+            ORDER BY chave, created_at DESC
+        )
+        SELECT
+            COUNT(*) AS qtd_universo,
+            COALESCE(SUM(valor_requisicao),0) AS valor_universo,
+            COUNT(*) FILTER (WHERE status_analise = 'ANALISADO') AS qtd_analisadas,
+            COALESCE(
+                SUM(valor_requisicao)
+                FILTER (WHERE status_analise = 'ANALISADO'),0
+            ) AS valor_analisado
+        FROM universo;
+    """)
+    cards = cur.fetchone()
+
+    # =========================
+    # TABELA POR SIGLA
+    # =========================
+    cur.execute("""
+        WITH universo AS (
+            SELECT DISTINCT ON (chave)
+                chave,
+                sigla,
+                valor_requisicao,
+                status_analise
+            FROM requisicoes
+            ORDER BY chave, created_at DESC
+        )
+        SELECT
+            sigla,
+            COUNT(*) AS qtd_requisicoes,
+            COUNT(*) FILTER (WHERE status_analise = 'ANALISADO') AS qtd_analisadas,
+            SUM(valor_requisicao) AS valor_requisicoes,
+            SUM(valor_requisicao)
+                FILTER (WHERE status_analise = 'ANALISADO') AS valor_analisado
+        FROM universo
+        GROUP BY sigla
+        ORDER BY sigla;
+    """)
+    tabela = cur.fetchall()
+
+    # =========================
+    # GRÁFICO – CRITÉRIO
+    # =========================
+    cur.execute("""
+        WITH universo AS (
+            SELECT DISTINCT ON (chave)
+                chave,
+                criterio,
+                status_analise
+            FROM requisicoes
+            ORDER BY chave, created_at DESC
+        )
+        SELECT criterio, COUNT(*) AS qtd
+        FROM universo
+        WHERE status_analise = 'ANALISADO'
+        GROUP BY criterio;
+    """)
+    pizza_criterio = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    # =========================
+    # HTML EMBUTIDO
+    # =========================
+    return render_template_string("""
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard Requisições</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .cards { display: flex; gap: 20px; margin-bottom: 30px; }
+        .card {
+            background: #f3f3f3;
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 200px;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: right;
+        }
+        th:first-child, td:first-child {
+            text-align: left;
+        }
+        th { background: #eee; }
+    </style>
+</head>
+<body>
+
+<h2>📊 Dashboard Geral</h2>
+
+<div class="cards">
+    <div class="card">
+        <h4>Qtd Universo</h4>
+        <strong>{{ cards.qtd_universo }}</strong>
+    </div>
+    <div class="card">
+        <h4>Qtd Analisadas</h4>
+        <strong>{{ cards.qtd_analisadas }}</strong>
+    </div>
+    <div class="card">
+        <h4>Valor Universo</h4>
+        <strong>{{ fmt_br(cards.valor_universo) }}</strong>
+    </div>
+    <div class="card">
+        <h4>Valor Analisado</h4>
+        <strong>{{ fmt_br(cards.valor_analisado) }}</strong>
+    </div>
+</div>
+
+<h3>📋 Comparativo por Sigla</h3>
+
+<table>
+    <tr>
+        <th>Sigla</th>
+        <th>Qtd Req.</th>
+        <th>Qtd Anal.</th>
+        <th>Valor Req.</th>
+        <th>Valor Anal.</th>
+    </tr>
+    {% for r in tabela %}
+    <tr>
+        <td>{{ r.sigla }}</td>
+        <td>{{ r.qtd_requisicoes }}</td>
+        <td>{{ r.qtd_analisadas }}</td>
+        <td>{{ fmt_br(r.valor_requisicoes) }}</td>
+        <td>{{ fmt_br(r.valor_analisado) }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<h3>📌 Distribuição por Critério (Analisadas)</h3>
+
+<canvas id="graficoCriterio" height="120"></canvas>
+
+<script>
+new Chart(document.getElementById('graficoCriterio'), {
+    type: 'pie',
+    data: {
+        labels: {{ pizza_criterio | map(attribute='criterio') | list | safe }},
+        datasets: [{
+            data: {{ pizza_criterio | map(attribute='qtd') | list | safe }}
+        }]
+    }
+});
+</script>
+
+</body>
+</html>
+    """,
+    cards=cards,
+    tabela=tabela,
+    pizza_criterio=pizza_criterio
+    )
+
+
 @app.route("/seed")
 def seed():
     executar_seed()

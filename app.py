@@ -58,6 +58,11 @@ def fmt(d):
 
     return str(d)
 
+def fmt_br(valor):
+    try:
+        return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "0,00"
 
 app = Flask(__name__)
 app.secret_key = 'troque_esta_chave'
@@ -3791,7 +3796,7 @@ def export_csv():
         -- dados agregados das requisições
         string_agg(r.chave, ', ') AS requisicoes,
         COUNT(r.id)               AS qtd_requisicoes,
-        COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
+        --COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
     
         MIN(r.data_inicio)        AS data_inicio_requisicao,
         MAX(r.data_fim)           AS data_fim_requisicao,
@@ -3824,7 +3829,8 @@ def export_csv():
         "Hora Início", "Hora Fim",
         "Item PAINT", "OS", "Atividade",
         "Duração", "Minutos", "Obs",
-        "Requisições", "Qtd Requisições", "Valor Total",
+        "Requisições", "Qtd Requisições", 
+        --"Valor Total",
         "Data Início Req", "Data Fim Req",
         "Status Req", "Tipo Req", "Critério Req"
     ])
@@ -3850,7 +3856,7 @@ def export_csv():
             r["observacoes"],
             r["requisicoes"] or "",
             r["qtd_requisicoes"] or 0,
-            f"{r['valor_total_requisicoes']:.2f}",
+            --f"{r['valor_total_requisicoes']:.2f}",
             r["data_inicio_requisicao"],
             r["data_fim_requisicao"],
             r["status_requisicao"],
@@ -3971,7 +3977,7 @@ def export_preventivas():
         return redirect('/')
 
     import csv, io
-    from datetime import datetime
+    from datetime import datetime, date
     from collections import defaultdict
     from flask import Response
 
@@ -3980,85 +3986,76 @@ def export_preventivas():
 
     cur.execute("""
         SELECT
+            r.id AS requisicao_id,
+            r.chave,
+            r.valor_requisicao,
+            r.status_analise,
+            r.tipo,
+            r.criterio,
+            r.data_inicio,
+            r.data_fim,
+
             c.nome AS colaborador,
-            -- horas (podem ser NULL)
+
+            h.os_codigo,
             h.data,
             h.hora_inicio,
             h.hora_fim,
-            h.duracao_minutos,
-            -- delegação
-            d.id AS delegacao_id,
-            d.data_inicio,
-            d.data_fim,
-            d.requisicoes,
-            d.status,
-            d.grau,
-            d.criterio,
-            d.os_codigo,
-            -- OS
-            o.item_paint
-    
-        FROM delegacoes d
-        
-        JOIN colaboradores c ON c.id = d.colaborador_id
-        -- OS é obrigatória para a delegação
-        LEFT JOIN os o ON o.codigo = d.os_codigo
-        -- horas são opcionais
-        LEFT JOIN horas h ON h.delegacao_id = d.id
-    
-        ORDER BY d.id, h.data, h.hora_inicio
+            h.duracao_minutos
+
+        FROM requisicoes r
+
+        LEFT JOIN colaboradores c ON c.id = r.servidor_id
+        LEFT JOIN horas_requisicoes hr ON hr.requisicao_id = r.id
+        LEFT JOIN horas h ON h.id = hr.hora_id
+
+        ORDER BY r.id, h.data, h.hora_inicio
     """)
 
     rows = cur.fetchall()
     con.close()
 
-    # ---------------- AGRUPAR POR DELEGAÇÃO ----------------
+    # ---------------- AGRUPAR POR REQUISIÇÃO ----------------
     grupos = defaultdict(lambda: {
+        "chave": "",
+        "valor": 0,
+        "status": "",
+        "tipo": "",
+        "criterio": "",
+        "os": "",
         "colaborador": "",
         "data_inicio": "",
         "data_fim": "",
         "datas": [],
         "hora_ini": [],
         "hora_fim": [],
-        "duracao_total_min": 0,
-        "os": "",
-        "item": "",
-        "requisicoes": "",
-        "qtd_req": 0,
-        "grau": "",
-        "criterio": "",
-        "status": ""
+        "duracao_total_min": 0
     })
 
     for r in rows:
-        g = grupos[r["delegacao_id"]]
+        g = grupos[r["requisicao_id"]]
 
+        g["chave"] = r["chave"]
+        g["valor"] = r["valor_requisicao"] or 0
+        g["status"] = r["status_analise"]
+        g["tipo"] = r["tipo"]
+        g["criterio"] = r["criterio"]
+        g["os"] = r["os_codigo"]
         g["colaborador"] = r["colaborador"]
         g["data_inicio"] = r["data_inicio"]
         g["data_fim"] = r["data_fim"]
-        g["os"] = r["os_codigo"]
-        g["item"] = r["item_paint"]
-        g["requisicoes"] = r["requisicoes"] or ""
-        g["grau"] = r["grau"]
-        g["criterio"] = r["criterio"]
-        g["status"] = r["status"]
 
-        # 👉 só adiciona se existir hora lançada
+        # horas (opcional)
         if r["data"]:
             if isinstance(r["data"], (datetime, date)):
                 data_fmt = r["data"].strftime("%d/%m/%Y")
             else:
                 data_fmt = str(r["data"])
-        
+
             g["datas"].append(data_fmt)
             g["hora_ini"].append(str(r["hora_inicio"]))
             g["hora_fim"].append(str(r["hora_fim"]))
-        
             g["duracao_total_min"] += r["duracao_minutos"] or 0
-
-
-        if g["requisicoes"]:
-            g["qtd_req"] = len([x for x in g["requisicoes"].split(",") if x.strip()])
 
     # ---------------- GERAR CSV ----------------
     output = io.StringIO()
@@ -4066,47 +4063,45 @@ def export_preventivas():
     writer = csv.writer(output, delimiter=";")
 
     writer.writerow([
+        "Chave Requisição",
+        "Valor Requisição",
         "Colaborador",
-        "Data Início Delegação",
-        "Data Fim Delegação",
+        "Data Início",
+        "Data Fim",
         "Datas Trabalhadas",
         "Horas Início",
         "Horas Fim",
         "Horas Totais",
-        "Qtd Requisições",
-        "Requisições",
-        "Grau",
-        "Criterio",
         "Status",
-        "OS",
-        "Item PAINT"
+        "Tipo",
+        "Critério",
+        "OS"
     ])
 
     for g in grupos.values():
         duracao_total = minutos_para_hhmm(g["duracao_total_min"])
 
         writer.writerow([
+            g["chave"],
+            fmt_br(g["valor"]),                 # <<< formato BR
             g["colaborador"],
             g["data_inicio"],
             g["data_fim"],
-            "\n".join(g["datas"]),        # ALT + ENTER
-            "\n".join(g["hora_ini"]),     # ALT + ENTER
-            "\n".join(g["hora_fim"]),     # ALT + ENTER
+            "\n".join(g["datas"]),
+            "\n".join(g["hora_ini"]),
+            "\n".join(g["hora_fim"]),
             duracao_total,
-            g["qtd_req"],
-            g["requisicoes"].replace(",", "\n"),  # opcional: reqs em linhas
-            g["grau"],
-            g["criterio"],
             g["status"],
-            g["os"],
-            g["item"]
+            g["tipo"],
+            g["criterio"],
+            g["os"]
         ])
 
     return Response(
         output.getvalue(),
         mimetype="text/csv; charset=utf-8",
         headers={
-            "Content-Disposition": "attachment; filename=preventivas.csv"
+            "Content-Disposition": "attachment; filename=requisicoes.csv"
         }
     )
 
@@ -5539,7 +5534,7 @@ def requisicoes():
         <tr class="{{ r.status_analise|lower }}">
             <td>{{ r.chave }}</td>
             <td>{{ r.sigla }}</td>
-            <td>{{ r.valor_requisicao }}</td>
+            <td>{{ fmt_br(r.valor_requisicao) }}</td>
 
             <td style="white-space:nowrap;">
                 <select onchange="salvar({{ r.id }})"
@@ -5675,6 +5670,7 @@ function atualizarCampo(id, campo, valor){
         tem_proxima=tem_proxima,  # ✅ substitui total_pages
         status=status,
         q=q,                     # ✅ mantém busca
+        fmt_br=fmt_br,
     )
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])
@@ -5732,7 +5728,7 @@ def editar_requisicao(id):
     <tr><td><b>Sigla</b></td><td>{{ r.sigla }}</td></tr>
     <tr><td><b>Secretaria</b></td><td>{{ r.secretaria }}</td></tr>
     <tr><td><b>Tipo Documento</b></td><td>{{ r.tipo_documento }}</td></tr>
-    <tr><td><b>Valor</b></td><td>{{ r.valor_requisicao }}</td></tr>
+    <tr><td><b>Valor</b></td><td>{{ fmt_br(r.valor_requisicao) }}</td></tr>
     <tr><td><b>Solicitante</b></td><td>{{ r.nome_solicitante }}</td></tr>
     <tr><td><b>Status Atual</b></td><td>{{ r.status_atual }}</td></tr>
     <tr><td><b>Data Criação</b></td><td>{{ r.data_criacao }}</td></tr>
@@ -5808,7 +5804,8 @@ def editar_requisicao(id):
         r=r,
         colaboradores=colaboradores,
         user=session["user"],
-        perfil=session["perfil"]
+        perfil=session["perfil"],
+        fmt_br=fmt_br,
     )
 
 @app.route("/seed")

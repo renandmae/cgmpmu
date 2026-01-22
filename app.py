@@ -2767,6 +2767,15 @@ def editar(hid):
         con.close()
         return "Acesso negado."
 
+    # 🔎 Requisições do registro base (hid clicado)
+    cur.execute("""
+        SELECT requisicao_id
+        FROM horas_requisicoes
+        WHERE hora_id = %s
+    """, (hid,))
+    
+    reqs_base = sorted([r["requisicao_id"] for r in cur.fetchall()])
+    
     # -------------------------
     # Registros a editar
     # 👉 SOMENTE o que aparece como agrupado no relatório

@@ -2815,13 +2815,17 @@ def editar(hid):
     # Requisições
     # -------------------------
     cur.execute("""
-        SELECT id, chave, tipo, criterio
+        SELECT id, chave, tipo, criterio, status_analise
         FROM requisicoes
         WHERE servidor_id = %s
-          AND status_analise = 'ANDAMENTO'
         ORDER BY chave
     """, (base["colaborador_id"],))
+
     requisicoes = [dict(r) for r in cur.fetchall()]
+    # 🔀 Ordena: marcadas primeiro, depois as demais
+    requisicoes.sort(
+        key=lambda r: (r["id"] not in reqs_vinculadas, r["chave"])
+    )
 
     # -------------------------
     # POST
@@ -2937,6 +2941,46 @@ def editar(hid):
     # HTML
     # -------------------------
     html = """
+<style>
+.req-box {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.req-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+}
+
+.req-item:last-child {
+    border-bottom: none;
+}
+
+.req-item:hover {
+    background: #f5f7fa;
+}
+
+.req-item input {
+    cursor: pointer;
+}
+
+.req-item.selecionada {
+    background: #e8f0ff;
+    font-weight: 600;
+}
+
+.req-text small {
+    color: #666;
+    font-weight: normal;
+}
+</style>
+
 <h3>Editar Registro #{{ hid }}</h3>
 
 <form method="post" style="max-width:650px">
@@ -2974,18 +3018,30 @@ Item:
 
 <div id="box_requisicoes">
   <label>Requisições:</label>
-  <div style="max-height:200px; overflow:auto; border:1px solid #ccc; padding:5px;">
+
+  <input type="text" id="filtroReq"
+         placeholder="🔍 Pesquisar chave, tipo ou critério..."
+         style="width:100%; margin-bottom:6px; padding:6px;">
+
+  <div class="req-box">
     {% for r in requisicoes %}
-      <label style="display:block;">
+      <label class="req-item {% if r.id in reqs_vinculadas %}selecionada{% endif %}"
+             data-text="{{ (r.chave ~ ' ' ~ r.tipo ~ ' ' ~ r.criterio)|lower }}">
+        
         <input type="checkbox"
                name="requisicoes[]"
                value="{{ r.id }}"
                {% if r.id in reqs_vinculadas %}checked{% endif %}>
-        {{ r.chave }} — {{ r.tipo }} — {{ r.criterio }}
+        
+        <span class="req-text">
+          {{ r.chave }} — {{ r.tipo }} — {{ r.criterio }}
+          <small>({{ r.status_analise }})</small>
+        </span>
       </label>
     {% endfor %}
   </div>
 </div>
+
 <br>
 <br>
 Atividade:
@@ -3025,6 +3081,21 @@ function remover(btn) {
         alert("É necessário manter pelo menos um registro.");
     }
 }
+
+document.getElementById("filtroReq").addEventListener("keyup", function () {
+    const termo = this.value.toLowerCase();
+    document.querySelectorAll(".req-item").forEach(el => {
+        el.style.display = el.dataset.text.includes(termo) ? "flex" : "none";
+    });
+});
+
+// destaca ao clicar
+document.querySelectorAll(".req-item input").forEach(chk => {
+    chk.addEventListener("change", function () {
+        this.closest(".req-item")
+            .classList.toggle("selecionada", this.checked);
+    });
+});
 
 </script>
 """

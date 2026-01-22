@@ -2767,42 +2767,25 @@ def editar(hid):
         con.close()
         return "Acesso negado."
 
-    # 🔎 Requisições do registro base (hid clicado)
-    cur.execute("""
-        SELECT requisicao_id
-        FROM horas_requisicoes
-        WHERE hora_id = %s
-    """, (hid,))
-    
-    reqs_base = sorted([r["requisicao_id"] for r in cur.fetchall()])
-    
     # -------------------------
     # Registros a editar
     # 👉 SOMENTE o que aparece como agrupado no relatório
     # -------------------------
     cur.execute("""
-        SELECT h.*
-        FROM horas h
-        LEFT JOIN horas_requisicoes hr ON hr.hora_id = h.id
-        WHERE h.colaborador_id = %s
-          AND h.data = %s
-          AND h.os_codigo = %s
-          AND h.atividade = %s
-          AND COALESCE(h.observacoes,'') = COALESCE(%s,'')
-        GROUP BY h.id
-        HAVING
-            COALESCE(
-                array_agg(hr.requisicao_id ORDER BY hr.requisicao_id),
-                '{}'
-            ) = %s
-        ORDER BY h.hora_inicio
+        SELECT *
+        FROM horas
+        WHERE colaborador_id = %s
+          AND data = %s
+          AND os_codigo = %s
+          AND atividade = %s
+          AND COALESCE(observacoes,'') = COALESCE(%s,'')
+        ORDER BY hora_inicio
     """, (
         base["colaborador_id"],
         base["data"],
         base["os_codigo"],
         base["atividade"],
-        base["observacoes"],
-        reqs_base
+        base["observacoes"]
     ))
     registros = cur.fetchall()
 

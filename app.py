@@ -6058,6 +6058,7 @@ def dashboard():
 <!DOCTYPE html>
 <html>
 <head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <meta charset="utf-8">
 <title>Dashboard</title>
@@ -6154,6 +6155,10 @@ canvas { background:white; padding:10px; border-radius:12px;
 </div>
 
 <script>
+Chart.register(ChartDataLabels);
+</script>
+
+<script>
 /* ============================
    1 - PIZZA CRITÉRIO
 ============================ */
@@ -6166,17 +6171,17 @@ new Chart(document.getElementById("pizza"), {
         }]
     },
     options: {
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
             datalabels: {
-                formatter: v => v,
                 color: '#fff',
-                font: { weight: 'bold' }
+                font: { weight: 'bold' },
+                formatter: v => v
             }
         }
-    },
-    plugins: [ChartDataLabels]
+    }
 });
-
 
 /* ============================
    5 - QTD POR TIPO
@@ -6190,17 +6195,17 @@ new Chart(document.getElementById("tipo"), {
         }]
     },
     options: {
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
             datalabels: {
-                formatter: v => v,
                 color: '#fff',
-                font: { weight: 'bold' }
+                font: { weight: 'bold' },
+                formatter: v => v
             }
         }
-    },
-    plugins: [ChartDataLabels]
+    }
 });
-
 
 /* ============================
    6 - EMPILHADO CRITÉRIO x SIGLA
@@ -6226,19 +6231,20 @@ new Chart(document.getElementById("empilhado"), {
     },
     options: {
         responsive: true,
+        maintainAspectRatio: false,
         scales: {
             x: { stacked: true },
             y: { stacked: true }
         },
         plugins: {
             datalabels: {
-                display: false
+                color: '#000',
+                font: { weight: 'bold' },
+                formatter: v => v
             }
         }
-    },
-    plugins: [ChartDataLabels]
+    }
 });
-
 
 /* ============================
    7 - VALOR POR CRITÉRIO (HORIZONTAL)
@@ -6253,20 +6259,23 @@ new Chart(document.getElementById("valor"), {
         }]
     },
     options: {
+        responsive: true,
+        maintainAspectRatio: false,
         indexAxis: 'y',
         plugins: {
             datalabels: {
+                color: '#000',
+                font: { weight: 'bold' },
                 anchor: 'end',
                 align: 'right',
                 formatter: v =>
                     'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
             }
         }
-    },
-    plugins: [ChartDataLabels]
+    }
 });
-</script>
 
+</script>
 
 </body>
 </html>

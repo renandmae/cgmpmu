@@ -6052,44 +6052,46 @@ def dashboard():
     """)
     barras_valor = cur.fetchall()
 
-    
     # =====================================================
-    # 8 – GRÁFICO COLABORADOR
+    # 8 – TABELA / GRÁFICO POR COLABORADOR
     # =====================================================
-    WITH base AS (
-        SELECT DISTINCT ON (r.chave)
-            r.chave,
-            r.servidor_id,
-            r.valor_requisicao
-        FROM requisicoes r
-        WHERE r.status_analise = 'ANALISADO'
-          AND r.servidor_id IS NOT NULL
-        ORDER BY r.chave, r.created_at DESC
-    ),
-    agregado AS (
+    cur.execute("""
+        WITH base AS (
+            SELECT DISTINCT ON (r.chave)
+                r.chave,
+                r.servidor_id,
+                r.valor_requisicao
+            FROM requisicoes r
+            WHERE r.status_analise = 'ANALISADO'
+              AND r.servidor_id IS NOT NULL
+            ORDER BY r.chave, r.created_at DESC
+        ),
+        agregado AS (
+            SELECT
+                c.nome AS colaborador,
+                COUNT(*) AS qtd_analisada,
+                SUM(b.valor_requisicao) AS valor_analisado
+            FROM base b
+            JOIN colaboradores c ON c.id = b.servidor_id
+            GROUP BY c.nome
+        ),
+        totais AS (
+            SELECT
+                SUM(qtd_analisada) AS total_qtd,
+                SUM(valor_analisado) AS total_valor
+            FROM agregado
+        )
         SELECT
-            c.nome AS colaborador,
-            COUNT(*) AS qtd_analisada,
-            SUM(b.valor_requisicao) AS valor_analisado
-        FROM base b
-        JOIN colaboradores c ON c.id = b.servidor_id
-        GROUP BY c.nome
-    ),
-    totais AS (
-        SELECT
-            SUM(qtd_analisada) AS total_qtd,
-            SUM(valor_analisado) AS total_valor
-        FROM agregado
-    )
-    SELECT
-        a.colaborador,
-        a.qtd_analisada,
-        ROUND(a.qtd_analisada::numeric / t.total_qtd * 100, 2) AS perc_qtd,
-        a.valor_analisado,
-        ROUND(a.valor_analisado / t.total_valor * 100, 2) AS perc_valor
-    FROM agregado a
-    CROSS JOIN totais t
-    ORDER BY a.qtd_analisada DESC;
+            a.colaborador,
+            a.qtd_analisada,
+            ROUND(a.qtd_analisada::numeric / t.total_qtd * 100, 2) AS perc_qtd,
+            a.valor_analisado,
+            ROUND(a.valor_analisado / t.total_valor * 100, 2) AS perc_valor
+        FROM agregado a
+        CROSS JOIN totais t
+        ORDER BY a.qtd_analisada DESC;
+    """)
+    tabela_colaboradores = cur.fetchall()
 
     cur.close()
     conn.close()
@@ -6356,6 +6358,7 @@ pizza_criterio=pizza_criterio,
 graf_tipo=graf_tipo,
 empilhado=empilhado,
 barras_valor=barras_valor,
+tabela_colaboradores=tabela_colaboradores,  # 👈 FALTAVA ISSO
 fmt_br=fmt_br
 )
 

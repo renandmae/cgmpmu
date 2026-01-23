@@ -6088,15 +6088,32 @@ def dashboard():
                 SUM(valor_analisado) AS total_valor
             FROM agregado
         )
+        
+        -- 🔹 linhas por colaborador
         SELECT
             a.colaborador,
             a.qtd_analisada,
             ROUND(a.qtd_analisada::numeric / t.total_qtd * 100, 2) AS perc_qtd,
             a.valor_analisado,
-            ROUND(a.valor_analisado / t.total_valor * 100, 2) AS perc_valor
+            ROUND(a.valor_analisado / t.total_valor * 100, 2) AS perc_valor,
+            1 AS ordem
         FROM agregado a
         CROSS JOIN totais t
-        ORDER BY a.qtd_analisada DESC;
+        
+        UNION ALL
+        
+        -- 🔹 linha TOTAL GERAL
+        SELECT
+            'TOTAL GERAL' AS colaborador,
+            t.total_qtd,
+            100.00 AS perc_qtd,
+            t.total_valor,
+            100.00 AS perc_valor,
+            2 AS ordem
+        FROM totais t
+        
+        ORDER BY ordem, qtd_analisada DESC;
+
     """)
     tabela_colaboradores = cur.fetchall()
 
@@ -6213,6 +6230,7 @@ canvas { background:white; border-radius:12px;
 <h3>👥 Análise por Colaborador</h3>
 
 <table>
+<thead>
 <tr>
     <th>Colaborador</th>
     <th>Qtd Analisada</th>
@@ -6220,8 +6238,10 @@ canvas { background:white; border-radius:12px;
     <th>Valor Analisado</th>
     <th>% Valor</th>
 </tr>
+</thead>
 
-{% for r in tabela_colaboradores %}
+<tbody>
+{% for r in tabela_colaboradores if r.colaborador != 'TOTAL GERAL' %}
 <tr>
     <td>{{ r.colaborador }}</td>
     <td>{{ r.qtd_analisada }}</td>
@@ -6230,6 +6250,19 @@ canvas { background:white; border-radius:12px;
     <td>{{ r.perc_valor }}%</td>
 </tr>
 {% endfor %}
+</tbody>
+
+<tfoot>
+{% for r in tabela_colaboradores if r.colaborador == 'TOTAL GERAL' %}
+<tr>
+    <td>{{ r.colaborador }}</td>
+    <td>{{ r.qtd_analisada }}</td>
+    <td>{{ r.perc_qtd }}%</td>
+    <td>R$ {{ fmt_br(r.valor_analisado) }}</td>
+    <td>{{ r.perc_valor }}%</td>
+</tr>
+{% endfor %}
+</tfoot>
 </table>
 
 <div class="grid">

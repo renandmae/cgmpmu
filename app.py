@@ -6237,7 +6237,24 @@ canvas { background:white; border-radius:12px;
 
 <script>
 Chart.register(ChartDataLabels);
+
+/* ============================
+   DADOS (ANTES DOS GRÁFICOS)
+============================ */
+const pizzaLabels = {{ pizza_criterio | map(attribute='criterio') | list | tojson }};
+const pizzaData   = {{ pizza_criterio | map(attribute='qtd') | list | tojson }};
+
+const tipoLabels  = {{ graf_tipo | map(attribute='tipo') | list | tojson }};
+const tipoData    = {{ graf_tipo | map(attribute='qtd') | list | tojson }};
+
+const dadosEmpilhado = {{ empilhado | tojson }};
+const siglas = [...new Set(dadosEmpilhado.map(d => d.sigla))];
+const criterios = [...new Set(dadosEmpilhado.map(d => d.criterio))];
+
+const valorLabels = {{ barras_valor | map(attribute='criterio') | list | tojson }};
+const valorData   = {{ barras_valor | map(attribute='valor') | list | tojson }};
 </script>
+
 
 <script>
 /* ============================
@@ -6297,19 +6314,6 @@ new Chart(document.getElementById("tipo"), {
 /* ============================
    6 - EMPILHADO CRITÉRIO x SIGLA
 ============================ */
-const pizzaLabels = {{ pizza_criterio | map(attribute='criterio') | list | tojson }};
-const pizzaData   = {{ pizza_criterio | map(attribute='qtd') | list | tojson }};
-
-const tipoLabels  = {{ graf_tipo | map(attribute='tipo') | list | tojson }};
-const tipoData    = {{ graf_tipo | map(attribute='qtd') | list | tojson }};
-
-const dadosEmpilhado = {{ empilhado | tojson }};
-const siglas = [...new Set(dadosEmpilhado.map(d => d.sigla))];
-const criterios = [...new Set(dadosEmpilhado.map(d => d.criterio))];
-
-const valorLabels = {{ barras_valor | map(attribute='criterio') | list | tojson }};
-const valorData   = {{ barras_valor | map(attribute='valor') | list | tojson }};
-
 new Chart(document.getElementById("empilhado"), {
     type: 'bar',
     data: {

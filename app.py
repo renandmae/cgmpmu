@@ -5983,7 +5983,7 @@ def dashboard():
     # 4 – PIZZA CRITÉRIO (ANALISADAS)
     # =====================================================
     cur.execute("""
-            WITH universo AS (
+    WITH universo AS (
         SELECT DISTINCT ON (chave)
             chave, criterio
         FROM requisicoes
@@ -6023,39 +6023,39 @@ def dashboard():
     # 6 – CRITÉRIO × SIGLA (EMPILHADO)
     # =====================================================
     cur.execute("""
-    WITH universo AS (
-        SELECT DISTINCT ON (chave)
-            chave, sigla, criterio
-        FROM requisicoes
-        WHERE status_analise='ANALISADO'
-          AND criterio IS NOT NULL
-        ORDER BY chave, created_at DESC
-    )
-    SELECT sigla, criterio, COUNT(*)::int AS qtd
-    FROM universo
-    GROUP BY sigla, criterio
-    ORDER BY sigla, criterio;
-    """)
+        WITH universo AS (
+            SELECT DISTINCT ON (chave)
+                chave, sigla, criterio
+            FROM requisicoes
+            WHERE status_analise='ANALISADO'
+              AND criterio IS NOT NULL
+            ORDER BY chave, created_at DESC
+        )
+        SELECT sigla, criterio, COUNT(*)::int AS qtd
+        FROM universo
+        GROUP BY sigla, criterio
+        ORDER BY sigla, criterio;
+        """)
     empilhado = cur.fetchall()
 
     # =====================================================
     # 7 – VALOR ANALISADO POR CRITÉRIO
     # =====================================================
     cur.execute("""
-    WITH universo AS (
-        SELECT DISTINCT ON (chave)
-            chave, criterio, valor_requisicao
-        FROM requisicoes
-        WHERE status_analise='ANALISADO'
-          AND criterio IS NOT NULL
-        ORDER BY chave, created_at DESC
-    )
-    SELECT criterio, SUM(valor_requisicao) AS valor
-    FROM universo
-    GROUP BY criterio
-    ORDER BY criterio;
-
-    """)
+        WITH universo AS (
+            SELECT DISTINCT ON (chave)
+                chave, criterio, valor_requisicao
+            FROM requisicoes
+            WHERE status_analise='ANALISADO'
+              AND criterio IS NOT NULL
+            ORDER BY chave, created_at DESC
+        )
+        SELECT criterio, SUM(valor_requisicao) AS valor
+        FROM universo
+        GROUP BY criterio
+        ORDER BY criterio;
+    
+        """)
     barras_valor = cur.fetchall()
 
     # =====================================================
@@ -6243,12 +6243,13 @@ Chart.register(ChartDataLabels);
 /* ============================
    1 - PIZZA CRITÉRIO
 ============================ */
+
 new Chart(document.getElementById("pizza"), {
     type: 'pie',
     data: {
-        labels: {{ pizza_criterio | map(attribute='criterio') | list | safe }},
+        labels: pizzaLabels,
         datasets: [{
-            data: {{ pizza_criterio | map(attribute='qtd') | list | safe }},
+            data: pizzaData,
             backgroundColor: ['#1a3c8b','#4caf50','#ff9800','#e53935']
         }]
     },
@@ -6258,11 +6259,10 @@ new Chart(document.getElementById("pizza"), {
         plugins: {
             datalabels: {
                 color: '#fff',
-                font: { weight: 'bold', size: 14 },
-                formatter: (value, ctx) => {
-                    const total = ctx.chart.data.datasets[0].data
-                        .reduce((a,b)=>a+b,0);
-                    return ((value/total)*100).toFixed(0) + '%';
+                font: { weight: 'bold' },
+                formatter: (v, ctx) => {
+                    const total = ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+                    return total ? ((v/total)*100).toFixed(0)+'%' : '';
                 }
             }
         }
@@ -6276,9 +6276,9 @@ new Chart(document.getElementById("pizza"), {
 new Chart(document.getElementById("tipo"), {
     type: 'pie',
     data: {
-        labels: {{ graf_tipo | map(attribute='tipo') | list | safe }},
+        labels: tipoLabels,
         datasets: [{
-            data: {{ graf_tipo | map(attribute='qtd') | list | safe }},
+            data: tipoData,
             backgroundColor: ['#2196f3','#9c27b0','#ff5722']
         }]
     },
@@ -6288,30 +6288,41 @@ new Chart(document.getElementById("tipo"), {
         plugins: {
             datalabels: {
                 color: '#fff',
-                font: { weight: 'bold', size: 14 },
-                formatter: v => v
+                font: { weight: 'bold' }
             }
         }
     }
 });
 
-
 /* ============================
    6 - EMPILHADO CRITÉRIO x SIGLA
 ============================ */
+const pizzaLabels = {{ pizza_criterio | map(attribute='criterio') | list | tojson }};
+const pizzaData   = {{ pizza_criterio | map(attribute='qtd') | list | tojson }};
+
+const tipoLabels  = {{ graf_tipo | map(attribute='tipo') | list | tojson }};
+const tipoData    = {{ graf_tipo | map(attribute='qtd') | list | tojson }};
+
+const dadosEmpilhado = {{ empilhado | tojson }};
+const siglas = [...new Set(dadosEmpilhado.map(d => d.sigla))];
+const criterios = [...new Set(dadosEmpilhado.map(d => d.criterio))];
+
+const valorLabels = {{ barras_valor | map(attribute='criterio') | list | tojson }};
+const valorData   = {{ barras_valor | map(attribute='valor') | list | tojson }};
+
 new Chart(document.getElementById("empilhado"), {
     type: 'bar',
     data: {
         labels: siglas,
-        datasets: criterios.map((c,i) => ({
+        datasets: criterios.map((c, i) => ({
             label: c,
             data: siglas.map(s => {
                 const r = dadosEmpilhado.find(
-                    e => e.sigla === s && e.criterio === c
+                    d => d.sigla === s && d.criterio === c
                 );
                 return r ? Number(r.qtd) : 0;
             }),
-            backgroundColor: ['#1a3c8b','#4caf50','#ff9800','#e53935'][i],
+            backgroundColor: ['#1a3c8b','#4caf50','#ff9800','#e53935'][i % 4],
             stack: 'stack1'
         }))
     },
@@ -6320,22 +6331,10 @@ new Chart(document.getElementById("empilhado"), {
         maintainAspectRatio: false,
         scales: {
             x: { stacked: true },
-            y: {
-                stacked: true,
-                beginAtZero: true,
-                ticks: { stepSize: 1 }
-            }
-        },
-        plugins: {
-            datalabels: {
-                color: '#fff',
-                font: { weight: 'bold' },
-                formatter: v => v > 0 ? v : ''
-            }
+            y: { stacked: true, beginAtZero: true }
         }
     }
 });
-
 
 /* ============================
    7 - VALOR POR CRITÉRIO (HORIZONTAL)
@@ -6343,10 +6342,10 @@ new Chart(document.getElementById("empilhado"), {
 new Chart(document.getElementById("valor"), {
     type: 'bar',
     data: {
-        labels: {{ barras_valor | map(attribute='criterio') | list | safe }},
+        labels: valorLabels,
         datasets: [{
             label: 'Valor Analisado (R$)',
-            data: {{ barras_valor | map(attribute='valor') | list | safe }}.map(Number),
+            data: valorData.map(Number),
             backgroundColor: '#1a3c8b'
         }]
     },
@@ -6359,17 +6358,14 @@ new Chart(document.getElementById("valor"), {
         },
         plugins: {
             datalabels: {
-                color: '#000',
                 anchor: 'end',
                 align: 'right',
-                font: { weight: 'bold' },
                 formatter: v =>
                     'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2})
             }
         }
     }
 });
-
 </script>
 
 </body>

@@ -602,6 +602,7 @@ tr.analisado { background:#e6ffed; }
             <a href='/paint'>PAINT</a>
             <a href='/os'>O.S</a>
             <a href="/requisicoes">Requisições</a>
+            <a href="/requisicoes/importar">Import</a>
             <a href='/visao'>Visão/h</a>
         {% endif %}
 
@@ -6113,7 +6114,6 @@ def dashboard():
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <meta charset="utf-8">
 <title>Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 th, td {
@@ -6126,14 +6126,18 @@ th, td {
     border-radius:12px;
     box-shadow:0 6px 14px rgba(0,0,0,.08);
     height:280px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
+
+    /* ❌ REMOVER */
+    /* display:flex;
+       align-items:center;
+       justify-content:center; */
+
+    position: relative;
 }
 
 .chart-box canvas {
-    max-width:100%;
-    max-height:100%;
+    width:100% !important;
+    height:100% !important;
 }
 
 
@@ -6261,115 +6265,130 @@ const valorData   = {{ barras_valor | map(attribute='valor') | list | tojson }};
    1 - PIZZA CRITÉRIO
 ============================ */
 
-new Chart(document.getElementById("pizza"), {
-    type: 'pie',
-    data: {
-        labels: pizzaLabels,
-        datasets: [{
-            data: pizzaData,
-            backgroundColor: ['#1a3c8b','#4caf50','#ff9800','#e53935']
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            datalabels: {
-                color: '#fff',
-                font: { weight: 'bold' },
-                formatter: (v, ctx) => {
-                    const total = ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
-                    return total ? ((v/total)*100).toFixed(0)+'%' : '';
+if (pizzaData.length) {
+    new Chart(document.getElementById("pizza"), {
+        type: 'pie',
+        data: {
+            labels: pizzaLabels,
+            datasets: [{
+                data: pizzaData,
+                backgroundColor: ['#1a3c8b','#4caf50','#ff9800','#e53935']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold' },
+                    formatter: (v, ctx) => {
+                        const total = ctx.chart.data.datasets[0].data
+                            .reduce((a,b)=>a+b,0);
+                        return total
+                            ? ((v/total)*100).toFixed(0)+'%'
+                            : '';
+                    }
                 }
             }
         }
-    }
-});
-
+    });
+}
 
 /* ============================
    5 - QTD POR TIPO
 ============================ */
-new Chart(document.getElementById("tipo"), {
-    type: 'pie',
-    data: {
-        labels: tipoLabels,
-        datasets: [{
-            data: tipoData,
-            backgroundColor: ['#2196f3','#9c27b0','#ff5722']
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            datalabels: {
-                color: '#fff',
-                font: { weight: 'bold' }
+
+if (tipoData.length) {
+    new Chart(document.getElementById("tipo"), {
+        type: 'pie',
+        data: {
+            labels: tipoLabels,
+            datasets: [{
+                data: tipoData,
+                backgroundColor: ['#2196f3','#9c27b0','#ff5722']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold' }
+                }
             }
         }
-    }
-});
+    });
+}
+
 
 /* ============================
    6 - EMPILHADO CRITÉRIO x SIGLA
 ============================ */
-new Chart(document.getElementById("empilhado"), {
-    type: 'bar',
-    data: {
-        labels: siglas,
-        datasets: criterios.map((c, i) => ({
-            label: c,
-            data: siglas.map(s => {
-                const r = dadosEmpilhado.find(
-                    d => d.sigla === s && d.criterio === c
-                );
-                return r ? Number(r.qtd) : 0;
-            }),
-            backgroundColor: ['#1a3c8b','#4caf50','#ff9800','#e53935'][i % 4],
-            stack: 'stack1'
-        }))
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            x: { stacked: true },
-            y: { stacked: true, beginAtZero: true }
+
+if (siglas.length && criterios.length) {
+    new Chart(document.getElementById("empilhado"), {
+        type: 'bar',
+        data: {
+            labels: siglas,
+            datasets: criterios.map((c, i) => ({
+                label: c,
+                data: siglas.map(s => {
+                    const r = dadosEmpilhado.find(
+                        d => d.sigla === s && d.criterio === c
+                    );
+                    return r ? Number(r.qtd) : 0;
+                }),
+                backgroundColor: ['#1a3c8b','#4caf50','#ff9800','#e53935'][i % 4],
+                stack: 'stack1'
+            }))
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true, beginAtZero: true }
+            }
         }
-    }
-});
+    });
+}
 
 /* ============================
    7 - VALOR POR CRITÉRIO (HORIZONTAL)
 ============================ */
-new Chart(document.getElementById("valor"), {
-    type: 'bar',
-    data: {
-        labels: valorLabels,
-        datasets: [{
-            label: 'Valor Analisado (R$)',
-            data: valorData.map(Number),
-            backgroundColor: '#1a3c8b'
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: 'y',
-        scales: {
-            x: { beginAtZero: true }
+if (valorData.length) {
+    new Chart(document.getElementById("valor"), {
+        type: 'bar',
+        data: {
+            labels: valorLabels,
+            datasets: [{
+                label: 'Valor Analisado (R$)',
+                data: valorData.map(Number),
+                backgroundColor: '#1a3c8b'
+            }]
         },
-        plugins: {
-            datalabels: {
-                anchor: 'end',
-                align: 'right',
-                formatter: v =>
-                    'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2})
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            scales: {
+                x: { beginAtZero: true }
+            },
+            plugins: {
+                datalabels: {
+                    anchor: 'end',
+                    align: 'right',
+                    formatter: v =>
+                        'R$ ' + v.toLocaleString('pt-BR',
+                            { minimumFractionDigits:2 })
+                }
             }
         }
-    }
-});
+    });
+}
+
 </script>
 
 </body>
@@ -6385,7 +6404,6 @@ barras_valor=barras_valor,
 tabela_colaboradores=tabela_colaboradores,  # 👈 FALTAVA ISSO
 fmt_br=fmt_br
 )
-
 
 @app.route("/seed")
 def seed():

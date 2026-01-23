@@ -5983,17 +5983,19 @@ def dashboard():
     # 4 – PIZZA CRITÉRIO (ANALISADAS)
     # =====================================================
     cur.execute("""
-        WITH universo AS (
-            SELECT DISTINCT ON (chave)
-                chave, criterio, status_analise
-            FROM requisicoes
-            ORDER BY chave, created_at DESC
-        )
-        SELECT criterio, COUNT(*) qtd
-        FROM universo
-        WHERE status_analise='ANALISADO'
-            AND criterio IS NOT NULL
-        GROUP BY criterio;
+            WITH universo AS (
+        SELECT DISTINCT ON (chave)
+            chave, criterio
+        FROM requisicoes
+        WHERE status_analise = 'ANALISADO'
+          AND criterio IS NOT NULL
+        ORDER BY chave, created_at DESC
+    )
+    SELECT criterio, COUNT(*)::int AS qtd
+    FROM universo
+    GROUP BY criterio
+    ORDER BY criterio;
+
     """)
     pizza_criterio = cur.fetchall()
 
@@ -6001,17 +6003,19 @@ def dashboard():
     # 5 – QTD ANALISADA POR TIPO
     # =====================================================
     cur.execute("""
-        WITH universo AS (
-            SELECT DISTINCT ON (chave)
-                chave, tipo, status_analise
-            FROM requisicoes
-            ORDER BY chave, created_at DESC
-        )
-        SELECT tipo, COUNT(*) qtd
-        FROM universo
+    WITH universo AS (
+        SELECT DISTINCT ON (chave)
+            chave, tipo
+        FROM requisicoes
         WHERE status_analise='ANALISADO'
-            AND tipo IS NOT NULL
-        GROUP BY tipo;
+          AND tipo IS NOT NULL
+        ORDER BY chave, created_at DESC
+    )
+    SELECT tipo, COUNT(*)::int AS qtd
+    FROM universo
+    GROUP BY tipo
+    ORDER BY tipo;
+
     """)
     graf_tipo = cur.fetchall()
 
@@ -6019,18 +6023,18 @@ def dashboard():
     # 6 – CRITÉRIO × SIGLA (EMPILHADO)
     # =====================================================
     cur.execute("""
-        WITH universo AS (
-            SELECT DISTINCT ON (chave)
-                chave, sigla, criterio, status_analise
-            FROM requisicoes
-            ORDER BY chave, created_at DESC
-        )
-        SELECT sigla, criterio, COUNT(*) qtd
-        FROM universo
+    WITH universo AS (
+        SELECT DISTINCT ON (chave)
+            chave, sigla, criterio
+        FROM requisicoes
         WHERE status_analise='ANALISADO'
-            AND criterio IS NOT NULL
-        GROUP BY sigla, criterio
-        ORDER BY sigla;
+          AND criterio IS NOT NULL
+        ORDER BY chave, created_at DESC
+    )
+    SELECT sigla, criterio, COUNT(*)::int AS qtd
+    FROM universo
+    GROUP BY sigla, criterio
+    ORDER BY sigla, criterio;
     """)
     empilhado = cur.fetchall()
 
@@ -6038,17 +6042,19 @@ def dashboard():
     # 7 – VALOR ANALISADO POR CRITÉRIO
     # =====================================================
     cur.execute("""
-        WITH universo AS (
-            SELECT DISTINCT ON (chave)
-                chave, criterio, valor_requisicao, status_analise
-            FROM requisicoes
-            ORDER BY chave, created_at DESC
-        )
-        SELECT criterio, SUM(valor_requisicao) valor
-        FROM universo
+    WITH universo AS (
+        SELECT DISTINCT ON (chave)
+            chave, criterio, valor_requisicao
+        FROM requisicoes
         WHERE status_analise='ANALISADO'
-            AND criterio IS NOT NULL
-        GROUP BY criterio;
+          AND criterio IS NOT NULL
+        ORDER BY chave, created_at DESC
+    )
+    SELECT criterio, SUM(valor_requisicao) AS valor
+    FROM universo
+    GROUP BY criterio
+    ORDER BY criterio;
+
     """)
     barras_valor = cur.fetchall()
 
@@ -6116,16 +6122,20 @@ th, td {
 
 .chart-box {
     background:white;
-    padding:15px;
+    padding:10px;
     border-radius:12px;
     box-shadow:0 6px 14px rgba(0,0,0,.08);
-    height:320px;
+    height:280px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
 }
 
 .chart-box canvas {
-    width:100% !important;
-    height:100% !important;
+    max-width:100%;
+    max-height:100%;
 }
+
 
 body { font-family: 'Segoe UI', sans-serif; background:#f4f6fa; padding:20px; }
 .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:20px; }
@@ -6149,7 +6159,7 @@ th,td { padding:10px; border-bottom:1px solid #eee; }
 th { background:#1a3c8b; color:white; }
 tfoot td { font-weight:bold; background:#eef2ff; }
 
-canvas { background:white; padding:10px; border-radius:12px;
+canvas { background:white; border-radius:12px;
          box-shadow:0 6px 14px rgba(0,0,0,.08); }
 .grid { display:grid; grid-template-columns:1fr 1fr; gap:25px; margin-top:25px; }
 </style>
@@ -6238,7 +6248,8 @@ new Chart(document.getElementById("pizza"), {
     data: {
         labels: {{ pizza_criterio | map(attribute='criterio') | list | safe }},
         datasets: [{
-            data: {{ pizza_criterio | map(attribute='qtd') | list | safe }}
+            data: {{ pizza_criterio | map(attribute='qtd') | list | safe }},
+            backgroundColor: ['#1a3c8b','#4caf50','#ff9800','#e53935']
         }]
     },
     options: {
@@ -6247,12 +6258,17 @@ new Chart(document.getElementById("pizza"), {
         plugins: {
             datalabels: {
                 color: '#fff',
-                font: { weight: 'bold' },
-                formatter: v => v
+                font: { weight: 'bold', size: 14 },
+                formatter: (value, ctx) => {
+                    const total = ctx.chart.data.datasets[0].data
+                        .reduce((a,b)=>a+b,0);
+                    return ((value/total)*100).toFixed(0) + '%';
+                }
             }
         }
     }
 });
+
 
 /* ============================
    5 - QTD POR TIPO
@@ -6262,7 +6278,8 @@ new Chart(document.getElementById("tipo"), {
     data: {
         labels: {{ graf_tipo | map(attribute='tipo') | list | safe }},
         datasets: [{
-            data: {{ graf_tipo | map(attribute='qtd') | list | safe }}
+            data: {{ graf_tipo | map(attribute='qtd') | list | safe }},
+            backgroundColor: ['#2196f3','#9c27b0','#ff5722']
         }]
     },
     options: {
@@ -6271,25 +6288,22 @@ new Chart(document.getElementById("tipo"), {
         plugins: {
             datalabels: {
                 color: '#fff',
-                font: { weight: 'bold' },
+                font: { weight: 'bold', size: 14 },
                 formatter: v => v
             }
         }
     }
 });
 
+
 /* ============================
    6 - EMPILHADO CRITÉRIO x SIGLA
 ============================ */
-const dadosEmpilhado = {{ empilhado | tojson }};
-const siglas = [...new Set(dadosEmpilhado.map(e => e.sigla))];
-const criterios = [...new Set(dadosEmpilhado.map(e => e.criterio))];
-
 new Chart(document.getElementById("empilhado"), {
     type: 'bar',
     data: {
         labels: siglas,
-        datasets: criterios.map(c => ({
+        datasets: criterios.map((c,i) => ({
             label: c,
             data: siglas.map(s => {
                 const r = dadosEmpilhado.find(
@@ -6297,6 +6311,7 @@ new Chart(document.getElementById("empilhado"), {
                 );
                 return r ? Number(r.qtd) : 0;
             }),
+            backgroundColor: ['#1a3c8b','#4caf50','#ff9800','#e53935'][i],
             stack: 'stack1'
         }))
     },
@@ -6305,17 +6320,22 @@ new Chart(document.getElementById("empilhado"), {
         maintainAspectRatio: false,
         scales: {
             x: { stacked: true },
-            y: { stacked: true }
+            y: {
+                stacked: true,
+                beginAtZero: true,
+                ticks: { stepSize: 1 }
+            }
         },
         plugins: {
             datalabels: {
-                color: '#000',
+                color: '#fff',
                 font: { weight: 'bold' },
-                formatter: v => v
+                formatter: v => v > 0 ? v : ''
             }
         }
     }
 });
+
 
 /* ============================
    7 - VALOR POR CRITÉRIO (HORIZONTAL)
@@ -6326,21 +6346,25 @@ new Chart(document.getElementById("valor"), {
         labels: {{ barras_valor | map(attribute='criterio') | list | safe }},
         datasets: [{
             label: 'Valor Analisado (R$)',
-            data: {{ barras_valor | map(attribute='valor') | list | safe }}.map(v => Number(v)),
+            data: {{ barras_valor | map(attribute='valor') | list | safe }}.map(Number),
+            backgroundColor: '#1a3c8b'
         }]
     },
     options: {
         responsive: true,
         maintainAspectRatio: false,
         indexAxis: 'y',
+        scales: {
+            x: { beginAtZero: true }
+        },
         plugins: {
             datalabels: {
                 color: '#000',
-                font: { weight: 'bold' },
                 anchor: 'end',
                 align: 'right',
+                font: { weight: 'bold' },
                 formatter: v =>
-                    'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+                    'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2})
             }
         }
     }

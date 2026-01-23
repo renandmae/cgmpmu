@@ -5992,6 +5992,7 @@ def dashboard():
         SELECT criterio, COUNT(*) qtd
         FROM universo
         WHERE status_analise='ANALISADO'
+            AND criterio IS NOT NULL
         GROUP BY criterio;
     """)
     pizza_criterio = cur.fetchall()
@@ -6009,6 +6010,7 @@ def dashboard():
         SELECT tipo, COUNT(*) qtd
         FROM universo
         WHERE status_analise='ANALISADO'
+            AND tipo IS NOT NULL
         GROUP BY tipo;
     """)
     graf_tipo = cur.fetchall()
@@ -6026,6 +6028,7 @@ def dashboard():
         SELECT sigla, criterio, COUNT(*) qtd
         FROM universo
         WHERE status_analise='ANALISADO'
+            AND criterio IS NOT NULL
         GROUP BY sigla, criterio
         ORDER BY sigla;
     """)
@@ -6044,9 +6047,49 @@ def dashboard():
         SELECT criterio, SUM(valor_requisicao) valor
         FROM universo
         WHERE status_analise='ANALISADO'
+            AND criterio IS NOT NULL
         GROUP BY criterio;
     """)
     barras_valor = cur.fetchall()
+
+    
+    # =====================================================
+    # 8 – GRÁFICO COLABORADOR
+    # =====================================================
+    WITH base AS (
+        SELECT DISTINCT ON (r.chave)
+            r.chave,
+            r.servidor_id,
+            r.valor_requisicao
+        FROM requisicoes r
+        WHERE r.status_analise = 'ANALISADO'
+          AND r.servidor_id IS NOT NULL
+        ORDER BY r.chave, r.created_at DESC
+    ),
+    agregado AS (
+        SELECT
+            c.nome AS colaborador,
+            COUNT(*) AS qtd_analisada,
+            SUM(b.valor_requisicao) AS valor_analisado
+        FROM base b
+        JOIN colaboradores c ON c.id = b.servidor_id
+        GROUP BY c.nome
+    ),
+    totais AS (
+        SELECT
+            SUM(qtd_analisada) AS total_qtd,
+            SUM(valor_analisado) AS total_valor
+        FROM agregado
+    )
+    SELECT
+        a.colaborador,
+        a.qtd_analisada,
+        ROUND(a.qtd_analisada::numeric / t.total_qtd * 100, 2) AS perc_qtd,
+        a.valor_analisado,
+        ROUND(a.valor_analisado / t.total_valor * 100, 2) AS perc_valor
+    FROM agregado a
+    CROSS JOIN totais t
+    ORDER BY a.qtd_analisada DESC;
 
     cur.close()
     conn.close()
@@ -6065,6 +6108,10 @@ def dashboard():
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
+th, td {
+    text-align: left;
+}
+
 .chart-box {
     background:white;
     padding:15px;
@@ -6145,6 +6192,28 @@ canvas { background:white; padding:10px; border-radius:12px;
 <td>{{ total.perc_valor }}%</td>
 </tr>
 </tfoot>
+</table>
+
+<h3>👥 Análise por Colaborador</h3>
+
+<table>
+<tr>
+    <th>Colaborador</th>
+    <th>Qtd Analisada</th>
+    <th>% Qtd</th>
+    <th>Valor Analisado</th>
+    <th>% Valor</th>
+</tr>
+
+{% for r in tabela_colaboradores %}
+<tr>
+    <td>{{ r.colaborador }}</td>
+    <td>{{ r.qtd_analisada }}</td>
+    <td>{{ r.perc_qtd }}%</td>
+    <td>R$ {{ fmt_br(r.valor_analisado) }}</td>
+    <td>{{ r.perc_valor }}%</td>
+</tr>
+{% endfor %}
 </table>
 
 <div class="grid">

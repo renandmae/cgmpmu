@@ -5237,10 +5237,9 @@ def exportar_consultorias():
     )
 
 from datetime import datetime
-from flask import request, redirect, session, render_template_string
+from flask import request, redirect, session, render_template_string, flash, jsonify
 import threading
 import io
-from datetime import datetime
 
 importando_requisicoes = False
 
@@ -5481,7 +5480,7 @@ def importar_requisicoes():
 
 @app.route("/requisicoes/importar/status")
 def status_importacao():
-    return progresso_import
+    return jsonify(progresso_import)
 
 
 @app.route("/requisicoes", methods=["GET", "POST"])

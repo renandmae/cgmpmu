@@ -5238,9 +5238,24 @@ def exportar_consultorias():
 
 from datetime import datetime
 from flask import request, redirect, session, render_template_string
+import threading
+import io
+from datetime import datetime
 
-@app.route("/requisicoes/importar", methods=["GET", "POST"])
-def importar_requisicoes():
+importando_requisicoes = False
+
+progresso_import = {
+    "total": 0,
+    "processados": 0,
+    "inseridos": 0,
+    "duplicados": 0,
+    "erros": 0,
+    "finalizado": False,
+    "mensagem": ""
+}
+
+def importar_requisicoes_background(arquivo_bytes, data_corte):
+    global importando_requisicoes, progresso_import
 
     SIGLAS = {
         "02": "SEGOV", "03": "SMGAS", "04": "PGM", "05": "SMA",
@@ -5256,85 +5271,78 @@ def importar_requisicoes():
 
     def parse_data_excel(valor):
         if not valor:
-            return ""
+            return None
         if isinstance(valor, datetime):
-            return valor.strftime("%Y-%m-%d %H:%M:%S")
+            return valor
         for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
             try:
-                return datetime.strptime(str(valor).strip(), fmt).strftime("%Y-%m-%d %H:%M:%S")
+                return datetime.strptime(str(valor).strip(), fmt)
             except:
                 pass
-        return ""
+        return None
 
-    if "user" not in session:
-        return redirect("/")
-    if session["perfil"] != "admin":
-        return "Acesso negado", 403
-
-    msg = None
-
-    if request.method == "POST":
+    try:
         from openpyxl import load_workbook
-        import io
 
-        arquivo = request.files["arquivo"]
-        data_corte = request.form["data_corte"]
-
-        wb = load_workbook(arquivo, read_only=True, data_only=True)
+        wb = load_workbook(io.BytesIO(arquivo_bytes), read_only=True, data_only=True)
         ws = wb.active
 
-        con = get_db()
-        cur = con.cursor()
+        conn = get_db()
+        cur = conn.cursor()
 
-        # limpa staging
         cur.execute("TRUNCATE requisicoes_staging")
 
         buffer = io.StringIO()
-        linhas = 0
         BATCH = 2000
 
-        for row in ws.iter_rows(min_row=2, values_only=True):
+        rows = ws.iter_rows(min_row=2, values_only=True)
+        progresso_import["total"] = ws.max_row - 1
+        
+        for idx, row in enumerate(rows, start=1):
+            progresso_import["processados"] = idx
+            
+            try:
+                secretaria = row[0]
+                num = row[1]
+                if not secretaria or not num:
+                    continue
 
-            secretaria = row[0]
-            num = row[1]
-            if not secretaria or not num:
-                continue
+                codigo = str(secretaria)[:2]
+                sigla = SIGLAS.get(codigo)
+                if not sigla:
+                    continue
 
-            codigo = str(secretaria)[:2]
-            sigla = SIGLAS.get(codigo)
-            if not sigla:
-                continue
+                chave = f"{num}/{sigla}"
 
-            chave = f"{num}/{sigla}"
+                linha = [
+                    chave, num, sigla,
+                    row[0], row[2], row[3], row[4],
+                    parse_data_excel(row[5]),
+                    row[6],
+                    parse_data_excel(row[7]),
+                    row[8], row[9], row[11],
+                    row[12], row[13],
+                    parse_data_excel(row[14]),
+                    parse_data_excel(row[15]),
+                    row[16], row[17],
+                    data_corte
+                ]
 
-            linha = [
-                chave, num, sigla,
-                row[0], row[2], row[3], row[4],
-                parse_data_excel(row[5]),
-                row[6],
-                parse_data_excel(row[7]),
-                row[8], row[9], row[11],
-                row[12], row[13],
-                parse_data_excel(row[14]),
-                parse_data_excel(row[15]),
-                row[16], row[17],
-                data_corte
-            ]
+                buffer.write("\t".join("" if v is None else str(v) for v in linha) + "\n")
 
-            buffer.write("\t".join("" if v is None else str(v) for v in linha) + "\n")
-            linhas += 1
+                if idx % BATCH == 0:
+                    buffer.seek(0)
+                    cur.copy_from(buffer, "requisicoes_staging", sep="\t", null="")
+                    buffer.close()
+                    buffer = io.StringIO()
 
-            if linhas % BATCH == 0:
-                buffer.seek(0)
-                cur.copy_from(buffer, "requisicoes_staging", sep="\t", null="")
-                buffer.close()
-                buffer = io.StringIO()
+            except Exception:
+                progresso_import["erros"] += 1
 
         buffer.seek(0)
         cur.copy_from(buffer, "requisicoes_staging", sep="\t", null="")
         buffer.close()
 
-        # move para tabela final
         cur.execute("""
             INSERT INTO requisicoes (
                 chave, requisicao_num, sigla,
@@ -5357,28 +5365,124 @@ def importar_requisicoes():
             ON CONFLICT (chave) DO NOTHING
         """)
 
-        inseridos = cur.rowcount
-        con.commit()
-        con.close()
+        progresso_import["inseridos"] = cur.rowcount
+        progresso_import["duplicados"] = progresso_import["total"] - cur.rowcount
 
-        msg = f"Importação concluída — {inseridos} novos registros"
+        conn.commit()
+        conn.close()
+
+        progresso_import["finalizado"] = True
+        progresso_import["mensagem"] = "Importação concluída com sucesso."
+
+    finally:
+        importando_requisicoes = False
+
+@app.route("/requisicoes/importar", methods=["GET", "POST"])
+def importar_requisicoes():
+    global importando_requisicoes, progresso_import
+
+    if "user" not in session or session["perfil"] != "admin":
+        return "Acesso negado", 403
+
+    if request.method == "POST":
+
+        if importando_requisicoes:
+            flash("⚠ Já existe uma importação em andamento.")
+            return redirect(request.url)
+
+        arquivo = request.files.get("arquivo")
+        data_corte = request.form.get("data_corte")
+
+        if not arquivo or not data_corte:
+            flash("Arquivo e data de corte são obrigatórios.")
+            return redirect(request.url)
+
+        progresso_import = {
+            "total": 0,
+            "processados": 0,
+            "inseridos": 0,
+            "duplicados": 0,
+            "erros": 0,
+            "finalizado": False,
+            "mensagem": ""
+        }
+
+        importando_requisicoes = True
+
+        t = threading.Thread(
+            target=importar_requisicoes_background,
+            args=(arquivo.read(), data_corte)
+        )
+        t.start()
+
+        flash("⏳ Importação iniciada em background.")
+        return redirect(request.url)
 
     html = """
-    <h3>Importar Requisições</h3>
-    {% if msg %}<p><b>{{ msg }}</b></p>{% endif %}
+    <h3>📥 Importar Requisições</h3>
+
+    {% with msgs = get_flashed_messages() %}
+      {% if msgs %}
+        <div style="background:#fff3cd;padding:10px;border-left:4px solid #f59e0b;margin-bottom:15px">
+          {% for m in msgs %}{{ m }}<br>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
     <form method="post" enctype="multipart/form-data">
         <input type="file" name="arquivo" required><br><br>
         <input type="date" name="data_corte" required><br><br>
         <button class="btn">Importar</button>
     </form>
+
+    <hr>
+
+    <div id="progresso-box" style="display:none;background:#f9fafb;padding:15px;border-radius:8px;">
+        <p><b>Processados:</b> <span id="proc">0</span> / <span id="total">0</span></p>
+        <p><b>Inseridos:</b> <span id="ins">0</span></p>
+        <p><b>Duplicados:</b> <span id="dup">0</span></p>
+        <p><b>Erros:</b> <span id="err">0</span></p>
+
+        <progress id="barra" value="0" max="100" style="width:100%;height:20px;"></progress>
+    </div>
+
+    <script>
+    function atualizarStatus() {
+        fetch("/requisicoes/importar/status")
+            .then(r => r.json())
+            .then(d => {
+                if (d.total > 0) {
+                    document.getElementById("progresso-box").style.display = "block";
+                    document.getElementById("proc").innerText = d.processados;
+                    document.getElementById("total").innerText = d.total;
+                    document.getElementById("ins").innerText = d.inseridos;
+                    document.getElementById("dup").innerText = d.duplicados;
+                    document.getElementById("err").innerText = d.erros;
+
+                    let perc = Math.round((d.processados / d.total) * 100);
+                    document.getElementById("barra").value = perc;
+                }
+
+                if (!d.finalizado) {
+                    setTimeout(atualizarStatus, 1000);
+                }
+            });
+    }
+
+    atualizarStatus();
+    </script>
     """
 
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
-        msg=msg,
         user=session["user"],
         perfil=session["perfil"]
     )
+
+@app.route("/requisicoes/importar/status")
+def status_importacao():
+    return progresso_import
+
 
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():

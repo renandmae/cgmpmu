@@ -5499,87 +5499,124 @@ def importar_requisicoes_completa_background(arquivo_bytes):
 
     from openpyxl import load_workbook
 
-    def parse_data(valor):
-        if not valor:
-            return None
-        if isinstance(valor, datetime):
-            return valor
-        for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
-            try:
-                return datetime.strptime(str(valor).strip(), fmt)
-            except:
-                pass
-        return None
-
-    def parse_valor(valor):
-        if not valor:
-            return None
-        return float(
-            str(valor)
-            .replace(".", "")
-            .replace(",", ".")
-        )
-
     try:
-        wb = load_workbook(io.BytesIO(arquivo_bytes), data_only=True)
+        wb = load_workbook(io.BytesIO(arquivo_bytes), read_only=True, data_only=True)
         ws = wb.active
 
         conn = get_db()
         cur = conn.cursor()
 
-        rows = list(ws.iter_rows(min_row=2, values_only=True))
-        progresso_import["total"] = len(rows)
+        # 1️⃣ Limpa staging
+        cur.execute("TRUNCATE requisicoes_staging_completa")
 
-        for idx, r in enumerate(rows, start=1):
-            progresso_import["processados"] = idx
+        buffer = io.StringIO()
+        BATCH = 2000
+
+        total = ws.max_row - 1
+        progresso_import["total"] = total
+
+        # 2️⃣ Excel → staging
+        for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=1):
+            progresso_import["processados"] = i
 
             try:
-                criterio = r[22]
-                servidor_nome = str(r[23]).strip().upper() if r[23] else None
+                linha = [
+                    r[0], r[1], r[2], r[3], r[4], r[5],
+                    r[6], r[7], r[8], r[9], r[10], r[11],
+                    r[13], r[14], r[15], r[16], r[17],
+                    r[18], r[19], r[20], r[22], r[23],
+                    r[24], r[25], r[26], r[27], r[29],
+                    r[30]
+                ]
 
-                servidor_id = SERVIDORES_MAP.get(servidor_nome)
-                status_analise = "ANALISADO" if criterio else None
+                buffer.write(
+                    "\t".join("" if v is None else str(v) for v in linha) + "\n"
+                )
 
-                cur.execute("""
-                    INSERT INTO requisicoes (
-                        chave, data_corte, secretaria, requisicao_num,
-                        tipo_documento, valor_requisicao, nome_solicitante,
-                        data_criacao, status_atual, data_tramitacao,
-                        natureza_despesa, item_despesa, nome_fornecedor,
-                        edital, contrato, data_medicao, data_liquidacao,
-                        empenho, ficha_despesa, tipo,
-                        criterio, servidor_id, nota, num_nota,
-                        oficio, monitoramento, monitoramento_resposta,
-                        observacoes, status_analise
+                if i % BATCH == 0:
+                    buffer.seek(0)
+                    cur.copy_from(
+                        buffer,
+                        "requisicoes_staging_completa",
+                        sep="\t",
+                        null=""
                     )
-                    VALUES (
-                        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                        %s,%s,%s,%s,%s,%s,%s,%s,%s
-                    )
-                    ON CONFLICT (chave) DO NOTHING
-                """, (
-                    r[0], parse_data(r[1]), r[2], r[3],
-                    r[4], parse_valor(r[5]), r[6],
-                    parse_data(r[7]), r[8], parse_data(r[9]),
-                    r[10], r[11], r[13],
-                    r[14], r[15], parse_data(r[16]),
-                    parse_data(r[17]), r[18], r[19], r[20],
-                    criterio, servidor_id, r[24], r[25],
-                    r[26], r[27], r[29],
-                    r[30], status_analise
-                ))
+                    buffer = io.StringIO()
 
-                progresso_import["inseridos"] += cur.rowcount
-
-            except:
+            except Exception:
                 progresso_import["erros"] += 1
+
+        buffer.seek(0)
+        cur.copy_from(buffer, "requisicoes_staging_completa", sep="\t", null="")
+        buffer.close()
+
+        # 3️⃣ STAGING → TABELA FINAL
+        cur.execute("""
+            INSERT INTO requisicoes (
+                chave, data_corte, secretaria, requisicao_num,
+                tipo_documento, valor_requisicao, nome_solicitante,
+                data_criacao, status_atual, data_tramitacao,
+                natureza_despesa, item_despesa, nome_fornecedor,
+                edital, contrato, data_medicao, data_liquidacao,
+                empenho, ficha_despesa, tipo,
+                criterio, servidor_id, nota, num_nota,
+                oficio, monitoramento, monitoramento_resposta,
+                observacoes, status_analise
+            )
+            SELECT
+                s.chave,
+                s.data_corte,
+                s.secretaria,
+                s.requisicao_num,
+                s.tipo_documento,
+                s.valor_requisicao,
+                s.nome_solicitante,
+                s.data_criacao,
+                s.status_atual,
+                s.data_tramitacao,
+                s.natureza_despesa,
+                s.item_despesa,
+                s.nome_fornecedor,
+                s.edital,
+                s.contrato,
+                s.data_medicao,
+                s.data_liquidacao,
+                s.empenho,
+                s.ficha_despesa,
+                s.tipo,
+                s.criterio,
+                CASE UPPER(s.servidor_nome)
+                    WHEN 'ANA PAULA' THEN 1
+                    WHEN 'ALEXANDRA' THEN 2
+                    WHEN 'MARIANA CAVANHA' THEN 3
+                    WHEN 'MICHELLE' THEN 4
+                    WHEN 'PAULA' THEN 5
+                    WHEN 'PRISCILLA' THEN 6
+                    WHEN 'SYRIA' THEN 7
+                    WHEN 'THAMY' THEN 8
+                END,
+                s.nota,
+                s.num_nota,
+                s.oficio,
+                s.monitoramento,
+                s.monitoramento_resposta,
+                s.observacoes,
+                CASE
+                    WHEN s.criterio IS NOT NULL AND s.criterio <> ''
+                    THEN 'ANALISADO'
+                END
+            FROM requisicoes_staging_completa s
+            ON CONFLICT (chave) DO NOTHING
+        """)
+
+        progresso_import["inseridos"] = cur.rowcount
+        progresso_import["duplicados"] = progresso_import["total"] - cur.rowcount
 
         conn.commit()
         conn.close()
 
         progresso_import["finalizado"] = True
-        progresso_import["mensagem"] = "Importação completa finalizada."
+        progresso_import["mensagem"] = "Importação completa concluída com sucesso."
 
     finally:
         importando_requisicoes = False
@@ -5598,7 +5635,6 @@ def importar_requisicoes_completo():
             return redirect(request.url)
 
         arquivo = request.files.get("arquivo")
-
         if not arquivo:
             flash("Arquivo obrigatório.")
             return redirect(request.url)
@@ -5615,11 +5651,10 @@ def importar_requisicoes_completo():
 
         importando_requisicoes = True
 
-        t = threading.Thread(
+        threading.Thread(
             target=importar_requisicoes_completa_background,
             args=(arquivo.read(),)
-        )
-        t.start()
+        ).start()
 
         flash("⏳ Importação completa iniciada.")
         return redirect(request.url)
@@ -5628,8 +5663,7 @@ def importar_requisicoes_completo():
     <h2>📥 Importação de Requisições</h2>
 
     <form method="POST" enctype="multipart/form-data">
-        <input type="file" name="arquivo" required>
-        <br><br>
+        <input type="file" name="arquivo" required><br><br>
 
         <button formaction="/requisicoes/importar" class="btn btn-primary">
             Importar por Arquivo
@@ -5643,7 +5677,6 @@ def importar_requisicoes_completo():
     </form>
 
     <hr>
-
     <div id="status"></div>
 
     <script>
@@ -5654,13 +5687,15 @@ def importar_requisicoes_completo():
                 document.getElementById("status").innerHTML = `
                     Processados: ${d.processados}/${d.total}<br>
                     Inseridos: ${d.inseridos}<br>
+                    Duplicados: ${d.duplicados}<br>
                     Erros: ${d.erros}<br>
                     ${d.finalizado ? "✅ Finalizado" : "⏳ Em andamento"}
                 `;
             });
-    }, 2000);
+    }, 1500);
     </script>
     """)
+
 
 
 @app.route("/requisicoes", methods=["GET", "POST"])

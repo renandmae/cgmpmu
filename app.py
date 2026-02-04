@@ -5483,6 +5483,186 @@ def status_importacao():
     return jsonify(progresso_import)
 
 
+SERVIDORES_MAP = {
+    "ANA PAULA": 1,
+    "ALEXANDRA": 2,
+    "MARIANA CAVANHA": 3,
+    "MICHELLE": 4,
+    "PAULA": 5,
+    "PRISCILLA": 6,
+    "SYRIA": 7,
+    "THAMY": 8
+}
+
+def importar_requisicoes_completa_background(arquivo_bytes):
+    global importando_requisicoes, progresso_import
+
+    from openpyxl import load_workbook
+
+    def parse_data(valor):
+        if not valor:
+            return None
+        if isinstance(valor, datetime):
+            return valor
+        for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(str(valor).strip(), fmt)
+            except:
+                pass
+        return None
+
+    def parse_valor(valor):
+        if not valor:
+            return None
+        return float(
+            str(valor)
+            .replace(".", "")
+            .replace(",", ".")
+        )
+
+    try:
+        wb = load_workbook(io.BytesIO(arquivo_bytes), data_only=True)
+        ws = wb.active
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+        progresso_import["total"] = len(rows)
+
+        for idx, r in enumerate(rows, start=1):
+            progresso_import["processados"] = idx
+
+            try:
+                criterio = r[22]
+                servidor_nome = str(r[23]).strip().upper() if r[23] else None
+
+                servidor_id = SERVIDORES_MAP.get(servidor_nome)
+                status_analise = "ANALISADO" if criterio else None
+
+                cur.execute("""
+                    INSERT INTO requisicoes (
+                        chave, data_corte, secretaria, requisicao_num,
+                        tipo_documento, valor_requisicao, nome_solicitante,
+                        data_criacao, status_atual, data_tramitacao,
+                        natureza_despesa, item_despesa, nome_fornecedor,
+                        edital, contrato, data_medicao, data_liquidacao,
+                        empenho, ficha_despesa, tipo,
+                        criterio, servidor_id, nota, num_nota,
+                        oficio, monitoramento, monitoramento_resposta,
+                        observacoes, status_analise
+                    )
+                    VALUES (
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s
+                    )
+                    ON CONFLICT (chave) DO NOTHING
+                """, (
+                    r[0], parse_data(r[1]), r[2], r[3],
+                    r[4], parse_valor(r[5]), r[6],
+                    parse_data(r[7]), r[8], parse_data(r[9]),
+                    r[10], r[11], r[13],
+                    r[14], r[15], parse_data(r[16]),
+                    parse_data(r[17]), r[18], r[19], r[20],
+                    criterio, servidor_id, r[24], r[25],
+                    r[26], r[27], r[29],
+                    r[30], status_analise
+                ))
+
+                progresso_import["inseridos"] += cur.rowcount
+
+            except:
+                progresso_import["erros"] += 1
+
+        conn.commit()
+        conn.close()
+
+        progresso_import["finalizado"] = True
+        progresso_import["mensagem"] = "Importação completa finalizada."
+
+    finally:
+        importando_requisicoes = False
+
+@app.route("/requisicoes/importar-completo", methods=["GET", "POST"])
+def importar_requisicoes_completo():
+    global importando_requisicoes, progresso_import
+
+    if "user" not in session or session["perfil"] != "admin":
+        return "Acesso negado", 403
+
+    if request.method == "POST":
+
+        if importando_requisicoes:
+            flash("⚠ Já existe uma importação em andamento.")
+            return redirect(request.url)
+
+        arquivo = request.files.get("arquivo")
+
+        if not arquivo:
+            flash("Arquivo obrigatório.")
+            return redirect(request.url)
+
+        progresso_import = {
+            "total": 0,
+            "processados": 0,
+            "inseridos": 0,
+            "duplicados": 0,
+            "erros": 0,
+            "finalizado": False,
+            "mensagem": ""
+        }
+
+        importando_requisicoes = True
+
+        t = threading.Thread(
+            target=importar_requisicoes_completa_background,
+            args=(arquivo.read(),)
+        )
+        t.start()
+
+        flash("⏳ Importação completa iniciada.")
+        return redirect(request.url)
+
+    return render_template_string("""
+    <h2>📥 Importação de Requisições</h2>
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="arquivo" required>
+        <br><br>
+
+        <button formaction="/requisicoes/importar" class="btn btn-primary">
+            Importar por Arquivo
+        </button>
+
+        <button formaction="/requisicoes/importar-completo"
+                class="btn btn-danger"
+                onclick="return confirm('Confirma importação COMPLETA?')">
+            Importação Completa
+        </button>
+    </form>
+
+    <hr>
+
+    <div id="status"></div>
+
+    <script>
+    setInterval(() => {
+        fetch("/requisicoes/importar/status")
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById("status").innerHTML = `
+                    Processados: ${d.processados}/${d.total}<br>
+                    Inseridos: ${d.inseridos}<br>
+                    Erros: ${d.erros}<br>
+                    ${d.finalizado ? "✅ Finalizado" : "⏳ Em andamento"}
+                `;
+            });
+    }, 2000);
+    </script>
+    """)
+
+
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
     if "user" not in session:

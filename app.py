@@ -5482,22 +5482,11 @@ def importar_requisicoes():
 def status_importacao():
     return jsonify(progresso_import)
 
-
-SERVIDORES_MAP = {
-    "ANA PAULA": 1,
-    "ALEXANDRA": 2,
-    "MARIANA CAVANHA": 3,
-    "MICHELLE": 4,
-    "PAULA": 5,
-    "PRISCILLA": 6,
-    "SYRIA": 7,
-    "THAMY": 8
-}
-
 def importar_requisicoes_completa_background(arquivo_bytes):
     global importando_requisicoes, progresso_import
 
     from openpyxl import load_workbook
+    import io
 
     try:
         wb = load_workbook(io.BytesIO(arquivo_bytes), read_only=True, data_only=True)
@@ -5506,7 +5495,7 @@ def importar_requisicoes_completa_background(arquivo_bytes):
         conn = get_db()
         cur = conn.cursor()
 
-        # 1️⃣ Limpa staging
+        # Limpa staging
         cur.execute("TRUNCATE requisicoes_staging_completa")
 
         buffer = io.StringIO()
@@ -5515,22 +5504,43 @@ def importar_requisicoes_completa_background(arquivo_bytes):
         total = ws.max_row - 1
         progresso_import["total"] = total
 
-        # 2️⃣ Excel → staging
         for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=1):
             progresso_import["processados"] = i
 
             try:
                 linha = [
-                    r[0], r[1], r[2], r[3], r[4], r[5],
-                    r[6], r[7], r[8], r[9], r[10], r[11],
-                    r[13], r[14], r[15], r[16], r[17],
-                    r[18], r[19], r[20], r[22], r[23],
-                    r[24], r[25], r[26], r[27], r[29],
-                    r[30]
+                    r[0],   # 1 chave
+                    r[1],   # 2 data_corte
+                    r[2],   # 3 secretaria
+                    r[3],   # 4 requisicao_num
+                    r[4],   # 5 tipo_documento
+                    r[5],   # 6 valor_requisicao
+                    r[6],   # 7 nome_solicitante
+                    r[7],   # 8 data_criacao
+                    r[8],   # 9 status_atual
+                    r[9],   # 10 data_tramitacao
+                    r[10],  # 11 natureza_despesa
+                    r[11],  # 12 item_despesa
+                    r[13],  # 14 nome_fornecedor
+                    r[14],  # 15 edital
+                    r[15],  # 16 contrato
+                    r[16],  # 17 data_medicao
+                    r[17],  # 18 data_liquidacao
+                    r[18],  # 19 empenho
+                    r[19],  # 20 ficha_despesa
+                    r[20],  # 21 tipo
+                    r[24],  # 25 criterio
+                    r[25],  # 26 servidor_nome
+                    r[26],  # 27 nota
+                    r[27],  # 28 num_nota
+                    r[28],  # 29 oficio
+                    r[29],  # 30 monitoramento
+                    r[31],  # 32 monitoramento_resposta
+                    r[32],  # 33 observacoes
                 ]
 
                 buffer.write(
-                    "\t".join("" if v is None else str(v) for v in linha) + "\n"
+                    "\t".join("" if v is None else str(v).strip() for v in linha) + "\n"
                 )
 
                 if i % BATCH == 0:
@@ -5550,7 +5560,7 @@ def importar_requisicoes_completa_background(arquivo_bytes):
         cur.copy_from(buffer, "requisicoes_staging_completa", sep="\t", null="")
         buffer.close()
 
-        # 3️⃣ STAGING → TABELA FINAL
+        # STAGING → FINAL
         cur.execute("""
             INSERT INTO requisicoes (
                 chave, data_corte, secretaria, requisicao_num,
@@ -5585,7 +5595,7 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 s.ficha_despesa,
                 s.tipo,
                 s.criterio,
-                CASE UPPER(s.servidor_nome)
+                CASE UPPER(TRIM(s.servidor_nome))
                     WHEN 'ANA PAULA' THEN 1
                     WHEN 'ALEXANDRA' THEN 2
                     WHEN 'MARIANA CAVANHA' THEN 3
@@ -5602,7 +5612,7 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 s.monitoramento_resposta,
                 s.observacoes,
                 CASE
-                    WHEN s.criterio IS NOT NULL AND s.criterio <> ''
+                    WHEN s.criterio IS NOT NULL AND TRIM(s.criterio) <> ''
                     THEN 'ANALISADO'
                 END
             FROM requisicoes_staging_completa s
@@ -5660,19 +5670,14 @@ def importar_requisicoes_completo():
         return redirect(request.url)
 
     return render_template_string("""
-    <h2>📥 Importação de Requisições</h2>
+    <h2>📥 Importação Completa de Requisições</h2>
 
     <form method="POST" enctype="multipart/form-data">
         <input type="file" name="arquivo" required><br><br>
 
-        <button formaction="/requisicoes/importar" class="btn btn-primary">
-            Importar por Arquivo
-        </button>
-
-        <button formaction="/requisicoes/importar-completo"
-                class="btn btn-danger"
+        <button class="btn btn-danger"
                 onclick="return confirm('Confirma importação COMPLETA?')">
-            Importação Completa
+            Importar Arquivo
         </button>
     </form>
 
@@ -5695,8 +5700,6 @@ def importar_requisicoes_completo():
     }, 1500);
     </script>
     """)
-
-
 
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():

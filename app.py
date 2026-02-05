@@ -5651,7 +5651,7 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 
                     -- fallback
                     ELSE NULL
-                END
+                END,
                 s.criterio,
                 CASE UPPER(TRIM(s.servidor_nome))
                     WHEN 'ANA PAULA' THEN 1

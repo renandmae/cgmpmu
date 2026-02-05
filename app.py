@@ -5593,7 +5593,65 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 s.data_liquidacao,
                 s.empenho,
                 s.ficha_despesa,
-                s.tipo,
+                CASE
+                    -- 1️⃣ Se o tipo já vier válido, usa direto
+                    WHEN TRIM(s.tipo) IN ('CONTRATAÇÃO', 'LIQUIDAÇÃO', 'ADITAMENTO')
+                        THEN TRIM(s.tipo)
+                
+                    -- 2️⃣ Se veio símbolo, vazio ou inválido → tenta deduzir pelo tipo_documento
+                    WHEN s.tipo IS NULL
+                         OR TRIM(s.tipo) = ''
+                         OR TRIM(s.tipo) = '∄'
+                         OR TRIM(s.tipo) NOT IN ('CONTRATAÇÃO', 'LIQUIDAÇÃO', 'ADITAMENTO')
+                    THEN
+                        CASE
+                            -- 🔹 CONTRATAÇÃO
+                            WHEN s.tipo_documento IN (
+                                'REQUISIÇÕES DE COMPRAS',
+                                'REQUERIMENTO PARA REGISTRO DE PREÇOS',
+                                'REQUISIÇÃO DE TERMO DE COLABORAÇÃO',
+                                'REQUISIÇÃO DE TERMO DE FOMENTO',
+                                'REQUISIÇÕES CONSOME SALDO',
+                                'REQUISIÇÃO DE PAGAMENTOS DIVERSOS',
+                                'REQUISIÇÃO EXTRA ORÇAMENTARIA',
+                                'CONTRATO DE GESTÃO',
+                                'REQUISIÇÃO EXTRA ORÇAMENTARIA GERAL',
+                                'REQUISIÇÃO DE REQUERIMENTO PERMISSÃO DE USO',
+                                'REQUISIÇÃO DE COMPRAS - EMENDAS IMPOSITIVAS',
+                                'REQUISIÇÃO PAGAMENTO DIVERSOS - EMENDAS IMPOSITIVAS',
+                                'REQUISIÇAO TERMO DE FOMENTO-EMENDAS IMPOSITIVAS',
+                                'REQUERIMENTO DE COMPRAS',
+                                'REQUISIÇÃO COTAÇÃO',
+                                'REQUISIÇÃO CONSOME RESERVA COMPRAS'
+                            ) THEN 'CONTRATAÇÃO'
+                
+                            -- 🔹 LIQUIDAÇÃO
+                            WHEN s.tipo_documento IN (
+                                'REQUISIÇÕES P/ LIQUIDAR',
+                                'REQUISIÇÕES P/ LIQUIDAR PAGAMENTOS DIVERSOS',
+                                'REQUISIÇÕES P/ LIQUIDAR TFD',
+                                'REQUISIÇÕES DE LIQUIDAÇÃO-EMENDAS IMPOSITIVAS',
+                                'REQUISIÇOES P/ LIQUIDAR DIARIAS E ADIANTAMENTOS VIAGENS',
+                                'REQUISIÇÕES P/ REAJUSTAR / REALINHAR - PAGAMENTO DIFERENÇA'
+                            ) THEN 'LIQUIDAÇÃO'
+                
+                            -- 🔹 ADITAMENTO
+                            WHEN s.tipo_documento IN (
+                                'REQUISIÇÕES P/ ADITAR',
+                                'REQUISIÇÕES P/ REAJUSTAR / REALINHAR - ACRÉSCIMO',
+                                'REQUISIÇÕES P/ REAJUSTAR / REALINHAR - SUPRESSÃO',
+                                'REQUERIMENTO DE SUPRESSÃO',
+                                'REQUISIÇÕES DE SUBSTITUIÇÃO À DE PRÓXIMO ORÇAMENTO-ADITIVOS',
+                                'REQUISIÇÕES P/ ADITAR - ACRÉSCIMO'
+                            ) THEN 'ADITAMENTO'
+                
+                            -- ❌ Não encontrou correspondência
+                            ELSE NULL
+                        END
+                
+                    -- fallback
+                    ELSE NULL
+                END
                 s.criterio,
                 CASE UPPER(TRIM(s.servidor_nome))
                     WHEN 'ANA PAULA' THEN 1

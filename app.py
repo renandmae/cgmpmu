@@ -5654,8 +5654,15 @@ def importar_requisicoes_completa_background(arquivo_bytes):
         
                 -- servidor_id
                 CASE UPPER(TRIM(s.servidor_nome))
-                    WHEN 'ANA PAULA' THEN 1
-                    WHEN 'ALEXANDRA' THEN 2
+                    WHEN 'ANA PAULA' THEN 2
+                    WHEN 'ALEXANDRA' THEN 1
+                    WHEN 'MICHELLE' THEN 14
+                    WHEN 'PAULA' THEN 15
+                    WHEN 'PRISCILLA' THEN 17
+                    WHEN 'SYRIA' THEN 18
+                    WHEN 'THAMY' THEN 19
+                    WHEN 'MARIANA CAVANHA' THEN 13
+                    
                 END,
         
                 s.nota,

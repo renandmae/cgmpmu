@@ -5571,7 +5571,8 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 empenho, ficha_despesa, tipo,
                 criterio, servidor_id, nota, num_nota,
                 oficio, monitoramento, monitoramento_resposta,
-                observacoes, status_analise
+                observacoes, status_analise,
+                sigla
             )
             SELECT
                 s.chave,
@@ -5593,19 +5594,20 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 s.data_liquidacao,
                 s.empenho,
                 s.ficha_despesa,
+        
+                -- ===============================
+                -- REGRA DO TIPO (inalterada)
+                -- ===============================
                 CASE
-                    -- 1️⃣ Se o tipo já vier válido, usa direto
                     WHEN TRIM(s.tipo) IN ('CONTRATAÇÃO', 'LIQUIDAÇÃO', 'ADITAMENTO')
                         THEN TRIM(s.tipo)
-                
-                    -- 2️⃣ Se veio símbolo, vazio ou inválido → tenta deduzir pelo tipo_documento
+        
                     WHEN s.tipo IS NULL
                          OR TRIM(s.tipo) = ''
                          OR TRIM(s.tipo) = '∄'
                          OR TRIM(s.tipo) NOT IN ('CONTRATAÇÃO', 'LIQUIDAÇÃO', 'ADITAMENTO')
                     THEN
                         CASE
-                            -- 🔹 CONTRATAÇÃO
                             WHEN s.tipo_documento IN (
                                 'REQUISIÇÕES DE COMPRAS',
                                 'REQUERIMENTO PARA REGISTRO DE PREÇOS',
@@ -5624,8 +5626,7 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                                 'REQUISIÇÃO COTAÇÃO',
                                 'REQUISIÇÃO CONSOME RESERVA COMPRAS'
                             ) THEN 'CONTRATAÇÃO'
-                
-                            -- 🔹 LIQUIDAÇÃO
+        
                             WHEN s.tipo_documento IN (
                                 'REQUISIÇÕES P/ LIQUIDAR',
                                 'REQUISIÇÕES P/ LIQUIDAR PAGAMENTOS DIVERSOS',
@@ -5634,8 +5635,7 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                                 'REQUISIÇOES P/ LIQUIDAR DIARIAS E ADIANTAMENTOS VIAGENS',
                                 'REQUISIÇÕES P/ REAJUSTAR / REALINHAR - PAGAMENTO DIFERENÇA'
                             ) THEN 'LIQUIDAÇÃO'
-                
-                            -- 🔹 ADITAMENTO
+        
                             WHEN s.tipo_documento IN (
                                 'REQUISIÇÕES P/ ADITAR',
                                 'REQUISIÇÕES P/ REAJUSTAR / REALINHAR - ACRÉSCIMO',
@@ -5644,29 +5644,72 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                                 'REQUISIÇÕES DE SUBSTITUIÇÃO À DE PRÓXIMO ORÇAMENTO-ADITIVOS',
                                 'REQUISIÇÕES P/ ADITAR - ACRÉSCIMO'
                             ) THEN 'ADITAMENTO'
-                
-                            -- ❌ Não encontrou correspondência
+        
                             ELSE NULL
                         END
-                
-                    -- fallback
                     ELSE NULL
                 END,
+        
                 s.criterio,
+        
+                -- servidor_id
                 CASE UPPER(TRIM(s.servidor_nome))
                     WHEN 'ANA PAULA' THEN 1
                     WHEN 'ALEXANDRA' THEN 2
                 END,
+        
                 s.nota,
                 s.num_nota,
                 s.oficio,
                 s.monitoramento,
                 s.monitoramento_resposta,
                 s.observacoes,
+        
+                -- status_analise
                 CASE
                     WHEN s.criterio IS NOT NULL AND TRIM(s.criterio) <> ''
                     THEN 'ANALISADO'
-                END
+                END,
+        
+                -- ===============================
+                -- SIGLA (MELHOR PRÁTICA)
+                -- ===============================
+                COALESCE(
+                    -- 1️⃣ tenta extrair da chave: 40800/2026/SMS
+                    UPPER(NULLIF(split_part(s.chave, '/', 3), '')),
+        
+                    -- 2️⃣ fallback: mapeamento pela secretaria
+                    CASE SUBSTRING(LPAD(s.secretaria::text, 2, '0'), 1, 2)
+                        WHEN '02' THEN 'SEGOV'
+                        WHEN '03' THEN 'SMGAS'
+                        WHEN '04' THEN 'PGM'
+                        WHEN '05' THEN 'SMA'
+                        WHEN '06' THEN 'SMF'
+                        WHEN '07' THEN 'SME'
+                        WHEN '08' THEN 'SMCT'
+                        WHEN '09' THEN 'SMS'
+                        WHEN '10' THEN 'SMDES'
+                        WHEN '12' THEN 'SMAGRO'
+                        WHEN '13' THEN 'SEINFRA'
+                        WHEN '15' THEN 'SETTRAN'
+                        WHEN '17' THEN 'DMAE'
+                        WHEN '18' THEN 'IPREMU'
+                        WHEN '19' THEN 'FUTEL'
+                        WHEN '20' THEN 'FERUB'
+                        WHEN '21' THEN 'EMAM'
+                        WHEN '23' THEN 'CGM'
+                        WHEN '24' THEN 'SESURB'
+                        WHEN '25' THEN 'SMH'
+                        WHEN '27' THEN 'SEJUV'
+                        WHEN '28' THEN 'SECOM'
+                        WHEN '29' THEN 'SEDEI'
+                        WHEN '33' THEN 'SMGE'
+                        WHEN '34' THEN 'SEPLAN'
+                        WHEN '35' THEN 'SSEG'
+                        WHEN '38' THEN 'ARESAN'
+                    END
+                ) AS sigla
+        
             FROM requisicoes_staging_completa s
             ON CONFLICT (chave) DO NOTHING
         """)

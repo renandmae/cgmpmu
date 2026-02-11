@@ -5740,7 +5740,40 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 ) AS sigla
         
             FROM requisicoes_staging_completa s
-            ON CONFLICT (chave) DO NOTHING
+            ON CONFLICT (chave) DO UPDATE
+            SET
+                data_corte = EXCLUDED.data_corte,
+                secretaria = EXCLUDED.secretaria,
+                requisicao_num = EXCLUDED.requisicao_num,
+                tipo_documento = EXCLUDED.tipo_documento,
+                valor_requisicao = EXCLUDED.valor_requisicao,
+                nome_solicitante = EXCLUDED.nome_solicitante,
+                data_criacao = EXCLUDED.data_criacao,
+                status_atual = EXCLUDED.status_atual,
+                data_tramitacao = EXCLUDED.data_tramitacao,
+                natureza_despesa = EXCLUDED.natureza_despesa,
+                item_despesa = EXCLUDED.item_despesa,
+                nome_fornecedor = EXCLUDED.nome_fornecedor,
+                edital = EXCLUDED.edital,
+                contrato = EXCLUDED.contrato,
+                data_medicao = EXCLUDED.data_medicao,
+                data_liquidacao = EXCLUDED.data_liquidacao,
+                empenho = EXCLUDED.empenho,
+                ficha_despesa = EXCLUDED.ficha_despesa,
+                tipo = EXCLUDED.tipo,
+                criterio = EXCLUDED.criterio,
+                servidor_id = EXCLUDED.servidor_id,
+                nota = EXCLUDED.nota,
+                num_nota = EXCLUDED.num_nota,
+                oficio = EXCLUDED.oficio,
+                monitoramento = EXCLUDED.monitoramento,
+                monitoramento_resposta = EXCLUDED.monitoramento_resposta,
+                observacoes = EXCLUDED.observacoes,
+                status_analise = EXCLUDED.status_analise,
+                sigla = EXCLUDED.sigla
+            
+            WHERE EXCLUDED.servidor_id IS NOT NULL;
+
         """)
 
         progresso_import["inseridos"] = cur.rowcount

@@ -5506,15 +5506,37 @@ def importar_requisicoes_completa_background(arquivo_bytes):
 
         for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=1):
             progresso_import["processados"] = i
-
+        
             try:
+                # =========================
+                # TRATAMENTO DO VALOR
+                # =========================
+                valor = r[5]
+        
+                if isinstance(valor, str):
+                    valor = valor.strip()
+        
+                    if valor.startswith("R$"):
+                        valor = (
+                            valor.replace("R$", "")
+                                 .replace(".", "")
+                                 .replace(",", ".")
+                                 .strip()
+                        )
+        
+                    if valor == "":
+                        valor = None
+        
+                # =========================
+                # MONTAGEM DA LINHA
+                # =========================
                 linha = [
                     r[0],   # 1 chave
                     r[1],   # 2 data_corte
                     r[2],   # 3 secretaria
                     r[3],   # 4 requisicao_num
                     r[4],   # 5 tipo_documento
-                    r[5],   # 6 valor_requisicao
+                    valor,  # 6 valor_requisicao (tratado)
                     r[6],   # 7 nome_solicitante
                     r[7],   # 8 data_criacao
                     r[8],   # 9 status_atual
@@ -5538,11 +5560,11 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                     r[31],  # 32 monitoramento_resposta
                     r[32],  # 33 observacoes
                 ]
-
+        
                 buffer.write(
                     "\t".join("" if v is None else str(v).strip() for v in linha) + "\n"
                 )
-
+        
                 if i % BATCH == 0:
                     buffer.seek(0)
                     cur.copy_from(
@@ -5552,7 +5574,7 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                         null=""
                     )
                     buffer = io.StringIO()
-
+        
             except Exception:
                 progresso_import["erros"] += 1
 

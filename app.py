@@ -5739,7 +5739,19 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                     END
                 ) AS sigla
         
-            FROM requisicoes_staging_completa s
+            FROM (
+                SELECT DISTINCT ON (chave) *
+                FROM requisicoes_staging_completa
+                ORDER BY
+                    chave,
+                    CASE 
+                        WHEN servidor_nome IS NOT NULL 
+                             AND TRIM(servidor_nome) <> '' 
+                        THEN 0 
+                        ELSE 1 
+                    END
+            ) s
+            
             ON CONFLICT (chave) DO UPDATE
             SET
                 data_corte = EXCLUDED.data_corte,

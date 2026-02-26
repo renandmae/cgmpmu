@@ -373,9 +373,9 @@ BASE = """
 
     /* ---------------------- CONTAINER ---------------------- */
     .container {
-        max-width: 1100px;
-        margin: auto;
-        padding: 25px;
+        width: 100%;
+        margin: 0;
+        padding: 20px;
     }
 
     /* ---------------------- BOTÕES ---------------------- */

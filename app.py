@@ -6140,8 +6140,8 @@ def requisicoes():
         {% endif %}
     
     </div>
-
-    <table id="tbl">
+    <div style="overflow-x:auto;">
+    <table id="tbl" style="min-width:1400px;">
         <tr>
             <th>Chave</th>
             <th>Sigla</th>
@@ -6231,7 +6231,8 @@ def requisicoes():
 
             <td>
                 <select onchange="salvar({{ r.id }})"
-                        id="nota_{{ r.id }}">
+                id="nota_{{ r.id }}"
+                style="min-width:75px;">
                     <option value=""></option>
                     <option value="SIM" {% if r.nota=='SIM' %}selected{% endif %}>SIM</option>
                     <option value="NÃO" {% if r.nota=='NÃO' %}selected{% endif %}>NÃO</option>
@@ -6274,6 +6275,7 @@ def requisicoes():
         </tr>
         {% endfor %}
     </table>
+    </div>
 
     <script>
 

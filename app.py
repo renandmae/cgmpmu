@@ -373,8 +373,8 @@ BASE = """
 
     /* ---------------------- CONTAINER ---------------------- */
     .container {
-        width: 100%;
-        margin: 0;
+        max-width: 1200px;
+        margin: auto;
         padding: 20px;
     }
 

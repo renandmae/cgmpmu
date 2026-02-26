@@ -6140,8 +6140,7 @@ def requisicoes():
         {% endif %}
     
     </div>
-    <div style="overflow-x:auto;">
-    <table id="tbl" style="min-width:1400px;">
+    <table id="tbl">
         <tr>
             <th>Chave</th>
             <th>Sigla</th>
@@ -6275,8 +6274,6 @@ def requisicoes():
         </tr>
         {% endfor %}
     </table>
-    </div>
-
     <script>
 
     function salvar(id){

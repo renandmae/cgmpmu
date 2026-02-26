@@ -5909,6 +5909,10 @@ def requisicoes():
                 tipo = request.form.get("tipo")
                 criterio = request.form.get("criterio")
                 servidor_id = request.form.get("servidor_id")
+                nota = request.form.get("nota")
+                num_nota = request.form.get("num_nota")
+                oficio = request.form.get("oficio")
+                monitoramento = request.form.get("monitoramento")
     
                 if session["perfil"] != "admin":
                     cur.execute(
@@ -5920,11 +5924,24 @@ def requisicoes():
                     if not dono or dono["servidor_id"] != session["user_id"]:
                         return "Acesso negado", 403
                 
+                    # Pode alterar status + campos operacionais
                     cur.execute("""
                         UPDATE requisicoes
-                        SET status_analise = %s
+                        SET
+                            status_analise = %s,
+                            nota = NULLIF(%s,''),
+                            num_nota = NULLIF(%s,''),
+                            oficio = NULLIF(%s,''),
+                            monitoramento = NULLIF(%s,'')
                         WHERE id = %s
-                    """, (status, req_id))
+                    """, (
+                        status,
+                        nota,
+                        num_nota,
+                        oficio,
+                        monitoramento,
+                        req_id
+                    ))
     
                 else:
                     cur.execute("""
@@ -5933,9 +5950,23 @@ def requisicoes():
                             status_analise = NULLIF(%s,''),
                             tipo = NULLIF(%s,''),
                             criterio = NULLIF(%s,''),
-                            servidor_id = NULLIF(%s,'')::INTEGER
+                            servidor_id = NULLIF(%s,'')::INTEGER,
+                            nota = NULLIF(%s,''),
+                            num_nota = NULLIF(%s,''),
+                            oficio = NULLIF(%s,''),
+                            monitoramento = NULLIF(%s,'')
                         WHERE id = %s
-                    """, (status, tipo, criterio, servidor_id, req_id))
+                    """, (
+                        status,
+                        tipo,
+                        criterio,
+                        servidor_id,
+                        nota,
+                        num_nota,
+                        oficio,
+                        monitoramento,
+                        req_id
+                    ))
 
                 if status == "ANALISADO":
                     cur.execute("""
@@ -6121,6 +6152,10 @@ def requisicoes():
             <th>Responsável</th>
             <th>Início</th>
             <th>Fim</th>
+            <th>Nota</th>
+            <th>Nº Nota</th>
+            <th>Ofício</th>
+            <th>Monitoramento</th>
             <th>Ações</th>
         </tr>
 
@@ -6194,6 +6229,40 @@ def requisicoes():
                        onchange="atualizarCampo({{ r.id }}, 'data_fim', this.value)">
             </td>
 
+            <td>
+                <select onchange="salvar({{ r.id }})"
+                        id="nota_{{ r.id }}">
+                    <option value=""></option>
+                    <option value="SIM" {% if r.nota=='SIM' %}selected{% endif %}>SIM</option>
+                    <option value="NÃO" {% if r.nota=='NÃO' %}selected{% endif %}>NÃO</option>
+                </select>
+            </td>
+
+            <td>
+                <input type="text"
+                       value="{{ r.num_nota or '' }}"
+                       id="num_nota_{{ r.id }}"
+                       onchange="salvar({{ r.id }})"
+                       style="width:90px;">
+            </td>
+
+            <td>
+                <input type="text"
+                       value="{{ r.oficio or '' }}"
+                       id="oficio_{{ r.id }}"
+                       onchange="salvar({{ r.id }})"
+                       style="width:100px;">
+            </td>
+
+            <td>
+                <select onchange="salvar({{ r.id }})"
+                        id="monitoramento_{{ r.id }}">
+                    <option value=""></option>
+                    <option value="SIM" {% if r.monitoramento=='SIM' %}selected{% endif %}>SIM</option>
+                    <option value="NÃO" {% if r.monitoramento=='NÃO' %}selected{% endif %}>NÃO</option>
+                </select>
+            </td>
+            
             <td style="white-space:nowrap;">
                 <a href="/requisicao/{{ r.id }}" title="Ver">🔍</a>
                 &nbsp;
@@ -6216,6 +6285,11 @@ def requisicoes():
         fd.append("tipo", document.getElementById("tipo_"+id).value);
         fd.append("criterio", document.getElementById("criterio_"+id).value);
         fd.append("servidor_id", document.getElementById("servidor_"+id).value);
+
+        fd.append("nota", document.getElementById("nota_"+id).value);
+        fd.append("num_nota", document.getElementById("num_nota_"+id).value);
+        fd.append("oficio", document.getElementById("oficio_"+id).value);
+        fd.append("monitoramento", document.getElementById("monitoramento_"+id).value);
 
         fetch("/requisicoes", { method:"POST", body: fd })
             .then(r => r.text())

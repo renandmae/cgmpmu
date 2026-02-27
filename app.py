@@ -577,31 +577,31 @@ tr.analisado { background:#e6ffed; }
   <div>
     {% if user %}
       <nav class="menu-links">
-        <a href='/menu'>🏠Menu</a>
-        <a href='/lancar'>⏱Lançar Horas</a>
-        <a href='/relatorios'>📝Relatórios</a>
-        <a href='/admin_projetos'>📊Projetos</a>
+        <a href='/menu'>Menu</a>
+        <a href='/lancar'>Lançar Horas</a>
+        <a href='/relatorios'>Relatórios</a>
+        <a href='/admin_projetos'>Projetos</a>
         {% if perfil != 'admin' %}
             <a href="/minhas_delegacoes">Requisições</a>
         {% endif %}
         {% if perfil == 'admin' %}
-          <a href='/atendimentos'>📞Atendimentos</a>
+          <a href='/atendimentos'>Atendimentos</a>
         {% else %}
-          <a href='/atendimentos'>📞Meus Atendimentos</a>
+          <a href='/atendimentos'>Meus Atendimentos</a>
         {% endif %}
         {% if perfil == 'admin' %}
-          <a href='/consultorias'>🤝Consultorias</a>
+          <a href='/consultorias'>Consultorias</a>
         {% else %}
-          <a href='/consultorias'>🤝Minhas Consultorias</a>
+          <a href='/consultorias'>Minhas Consultorias</a>
         {% endif %}
         {% if perfil=='admin' %}
-            <a href='/colaboradores'>👥Colaboradores</a>
-            <a href='/paint'>🗂PAINT</a>
-            <a href='/os'>🗂O.S</a>
-            <a href="/requisicoes">📑Requisições</a>
-            <a href="/painel_requisicoes">📊Painel</a>
-            <a href="/requisicoes/importar">📥Import</a>
-            <a href='/visao'>📊Visão/h</a>
+            <a href='/colaboradores'>Colaboradores</a>
+            <a href='/paint'>PAINT</a>
+            <a href='/os'>O.S</a>
+            <a href="/requisicoes">Requisições</a>
+            <a href="/painel_requisicoes">Painel</a>
+            <a href="/requisicoes/importar">Import</a>
+            <a href='/visao'>Visão/h</a>
         {% endif %}
 
         <a href='/logout'>Sair</a>

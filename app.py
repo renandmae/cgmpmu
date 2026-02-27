@@ -599,6 +599,7 @@ tr.analisado { background:#e6ffed; }
             <a href='/paint'>PAINT</a>
             <a href='/os'>O.S</a>
             <a href="/requisicoes">Requisições</a>
+            <a href="/requisicoes">Painel</a>
             <a href="/requisicoes/importar">Import</a>
             <a href='/visao'>Visão/h</a>
         {% endif %}
@@ -5610,7 +5611,9 @@ def importar_requisicoes():
 
     html = """
     <h3>📥 Importar Requisições</h3>
-
+    <br>
+    <a href="/requisicoes/importar-completo">Importar Completo - Modelo Drive</a>
+    
     {% with msgs = get_flashed_messages() %}
       {% if msgs %}
         <div style="background:#fff3cd;padding:10px;border-left:4px solid #f59e0b;margin-bottom:15px">

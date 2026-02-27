@@ -599,7 +599,7 @@ tr.analisado { background:#e6ffed; }
             <a href='/paint'>PAINT</a>
             <a href='/os'>O.S</a>
             <a href="/requisicoes">Requisições</a>
-            <a href="/requisicoes">Painel</a>
+            <a href="/painel_requisicoes">Painel</a>
             <a href="/requisicoes/importar">Import</a>
             <a href='/visao'>Visão/h</a>
         {% endif %}

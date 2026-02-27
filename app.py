@@ -6492,13 +6492,23 @@ def editar_requisicao(id):
                 status_analise = NULLIF(%s,''),
                 criterio = NULLIF(%s,''),
                 servidor_id = %s,
-                observacoes = %s
+                nota = NULLIF(%s,''),
+                num_nota = NULLIF(%s,''),
+                oficio = NULLIF(%s,''),
+                monitoramento = NULLIF(%s,''),
+                monitoramento_resposta = NULLIF(%s,''),
+                observacoes = NULLIF(%s,'')
             WHERE id = %s
         """, (
             request.form.get("tipo"),
             request.form.get("status_analise"),
             request.form.get("criterio"),
             request.form.get("servidor_id") or None,
+            request.form.get("nota"),
+            request.form.get("num_nota"),
+            request.form.get("oficio"),
+            request.form.get("monitoramento"),
+            request.form.get("monitoramento_resposta"),
             request.form.get("observacoes"),
             id
         ))
@@ -6583,12 +6593,41 @@ def editar_requisicao(id):
         </option>
         {% endfor %}
     </select><br><br>
+
+    <label>Nota</label><br>
+    <select name="nota">
+        <option value=""></option>
+        <option value="SIM" {% if r.nota=='SIM' %}selected{% endif %}>SIM</option>
+        <option value="NÃO" {% if r.nota=='NÃO' %}selected{% endif %}>NÃO</option>
+    </select><br><br>
+    
+    <label>Nº Nota</label><br>
+    <input type="text" name="num_nota"
+           value="{{ r.num_nota or '' }}"
+           style="width:200px;"><br><br>
+    
+    <label>Ofício</label><br>
+    <input type="text" name="oficio"
+           value="{{ r.oficio or '' }}"
+           style="width:200px;"><br><br>
+    
+    <label>Monitoramento</label><br>
+    <select name="monitoramento">
+        <option value=""></option>
+        <option value="SIM" {% if r.monitoramento=='SIM' %}selected{% endif %}>SIM</option>
+        <option value="NÃO" {% if r.monitoramento=='NÃO' %}selected{% endif %}>NÃO</option>
+    </select><br><br>
+    
+    <label>Resposta do Monitoramento</label><br>
+    <input type="text"
+           name="monitoramento_resposta"
+           value="{{ r.monitoramento_resposta or '' }}"
+           style="width:100%;"><br><br>
     
     <label>Observações</label><br>
-    <textarea name="observacoes" style="width:100%;min-height:80px">
+    <textarea name="observacoes" style="width:100%;min-height:80px;">
     {{ r.observacoes or '' }}
     </textarea>
-    
     </fieldset>
     
     <br>

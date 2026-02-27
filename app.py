@@ -4377,7 +4377,16 @@ tr.analisado td:first-child::before {
                 class="campo-inline"
                 data-id="{{ r.id }}"
                 data-campo="monitoramento_resposta"
-                style="width:200px;height:60px;">{{ r.monitoramento_resposta or '' }}</textarea>
+                style="
+                    width:180px;
+                    height:32px;
+                    max-height:120px;
+                    padding:4px 6px;
+                    font-size:13px;
+                    border-radius:6px;
+                    resize:vertical;
+                "
+            >{{ r.monitoramento_resposta or '' }}</textarea>
         </td>
         
         <!-- OBSERVAÇÕES -->
@@ -4386,7 +4395,16 @@ tr.analisado td:first-child::before {
                 class="campo-inline"
                 data-id="{{ r.id }}"
                 data-campo="observacoes"
-                style="width:200px;height:60px;">{{ r.observacoes or '' }}</textarea>
+                style="
+                    width:180px;
+                    height:32px;
+                    max-height:120px;
+                    padding:4px 6px;
+                    font-size:13px;
+                    border-radius:6px;
+                    resize:vertical;
+                "
+            >{{ r.observacoes or '' }}</textarea>
         </td>
         
         <td>

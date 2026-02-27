@@ -4451,18 +4451,19 @@ document.querySelectorAll(".campo-inline").forEach(el => {
 
     el.addEventListener(evento, function(){
 
+        let dados = {
+            acao: "atualizar",
+            id: this.dataset.id,
+            status_analise: this.closest("tr").querySelector(".status-select").value
+        };
+
+        // adiciona SOMENTE o campo alterado
+        dados[this.dataset.campo] = this.value || null;
+
         fetch("/requisicoes", {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-                acao: "atualizar",
-                id: this.dataset.id,
-                status_analise: this.closest("tr").querySelector(".status-select").value,
-                nota: this.dataset.campo === "nota" ? this.value : undefined,
-                num_nota: this.dataset.campo === "num_nota" ? this.value : undefined,
-                oficio: this.dataset.campo === "oficio" ? this.value : undefined,
-                monitoramento: this.dataset.campo === "monitoramento" ? this.value : undefined
-            })
+            body: new URLSearchParams(dados)
         })
         .then(r => r.text())
         .then(resp => {
@@ -5987,7 +5988,13 @@ def requisicoes():
                 num_nota = request.form.get("num_nota")
                 oficio = request.form.get("oficio")
                 monitoramento = request.form.get("monitoramento")
-    
+                
+                if monitoramento == "undefined":
+                    monitoramento = None
+                    
+                if nota == "undefined":
+                    nota = None
+                
                 if session["perfil"] != "admin":
                     cur.execute(
                         "SELECT servidor_id FROM requisicoes WHERE id=%s",

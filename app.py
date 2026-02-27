@@ -351,11 +351,11 @@ BASE = """
 
     /* ---------------------- TEMA GLOBAL ---------------------- */
     body {
-        background: #e9f1fb;                 /* azul clarinho elegante */
-        color: #1d2a3a;                      /* cinza-azulado escuro */
+        background: #e9f1fb;
+        color: #1d2a3a;
         font-family: "Segoe UI", sans-serif;
         margin: 0;
-        padding: 0;
+        padding: 20px 40px;   /* 👈 cria margem interna lateral */
     }
 
     h1, h2, h3, h4 {

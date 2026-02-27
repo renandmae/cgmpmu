@@ -4312,6 +4312,8 @@ tr.analisado td:first-child::before {
         <th>Nº Nota</th>
         <th>Ofício</th>
         <th>Monitoramento</th>
+        <th>Resposta</th>
+        <th>Obs</th>
         <th>Ação</th>
     </tr>
     {% for r in requisicoes %}
@@ -4368,7 +4370,25 @@ tr.analisado td:first-child::before {
                 <option value="NÃO" {{ "selected" if r.monitoramento=="NÃO" else "" }}>NÃO</option>
             </select>
         </td>
-    
+
+        <!-- MONITORAMENTO RESPOSTA -->
+        <td>
+            <textarea
+                class="campo-inline"
+                data-id="{{ r.id }}"
+                data-campo="monitoramento_resposta"
+                style="width:200px;height:60px;">{{ r.monitoramento_resposta or '' }}</textarea>
+        </td>
+        
+        <!-- OBSERVAÇÕES -->
+        <td>
+            <textarea
+                class="campo-inline"
+                data-id="{{ r.id }}"
+                data-campo="observacoes"
+                style="width:200px;height:60px;">{{ r.observacoes or '' }}</textarea>
+        </td>
+        
         <td>
             <a class="btn" href="/requisicao/{{ r.id }}">Ver</a>
         </td>
@@ -4463,6 +4483,8 @@ document.querySelectorAll(".campo-inline, .status-select").forEach(el => {
         fd.append("num_nota", tr.querySelector("[data-campo='num_nota']").value);
         fd.append("oficio", tr.querySelector("[data-campo='oficio']").value);
         fd.append("monitoramento", tr.querySelector("[data-campo='monitoramento']").value);
+        fd.append("monitoramento_resposta", tr.querySelector("[data-campo='monitoramento_resposta']").value);
+        fd.append("observacoes", tr.querySelector("[data-campo='observacoes']").value);
 
         fetch("/requisicoes", { method:"POST", body: fd })
         .then(r => r.text())
@@ -4566,6 +4588,19 @@ def ver_requisicao(id):
         <b>O.S:</b> {req['os_codigo'] or '-'}<br>
         <b>Data Início:</b> {fmt(req['data_inicio'])}<br>
         <b>Data Fim:</b> {fmt(req['data_fim'])}<br>
+        <br>
+        <b>Nota:</b> {req['nota'] or '-'}<br>
+        <b>Nº Nota:</b> {req['num_nota'] or '-'}<br>
+        <b>Ofício:</b> {req['oficio'] or '-'}<br>
+        <b>Monitoramento:</b> {req['monitoramento'] or '-'}<br>
+        <b>Resposta Monitoramento:</b><br>
+        <div style="background:#f5f5f5;padding:8px;border-radius:4px;margin-bottom:6px;">
+            {req['monitoramento_resposta'] or '-'}
+        </div>
+        <b>Observações:</b><br>
+        <div style="background:#f5f5f5;padding:8px;border-radius:4px;">
+            {req['observacoes'] or '-'}
+        </div>
     </fieldset>
 
     <br>
@@ -5989,6 +6024,8 @@ def requisicoes():
                 num_nota = request.form.get("num_nota")
                 oficio = request.form.get("oficio")
                 monitoramento = request.form.get("monitoramento")
+                monitoramento_resposta = request.form.get("monitoramento_resposta")
+                observacoes = request.form.get("observacoes")
                 
                 if monitoramento == "undefined":
                     monitoramento = None
@@ -6014,7 +6051,9 @@ def requisicoes():
                             nota = NULLIF(%s,''),
                             num_nota = NULLIF(%s,''),
                             oficio = NULLIF(%s,''),
-                            monitoramento = NULLIF(%s,'')
+                            monitoramento = NULLIF(%s,''),
+                            monitoramento_resposta = NULLIF(%s,''),
+                            observacoes = NULLIF(%s,'')
                         WHERE id = %s
                     """, (
                         status,
@@ -6022,6 +6061,8 @@ def requisicoes():
                         num_nota,
                         oficio,
                         monitoramento,
+                        monitoramento_resposta,
+                        observacoes,
                         req_id
                     ))
     
@@ -6036,7 +6077,9 @@ def requisicoes():
                             nota = NULLIF(%s,''),
                             num_nota = NULLIF(%s,''),
                             oficio = NULLIF(%s,''),
-                            monitoramento = NULLIF(%s,'')
+                            monitoramento = NULLIF(%s,''),
+                            monitoramento_resposta = NULLIF(%s,''),
+                            observacoes = NULLIF(%s,'')
                         WHERE id = %s
                     """, (
                         status,
@@ -6047,6 +6090,8 @@ def requisicoes():
                         num_nota,
                         oficio,
                         monitoramento,
+                        monitoramento_resposta,
+                        observacoes,
                         req_id
                     ))
 

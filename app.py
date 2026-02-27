@@ -2680,21 +2680,24 @@ def relatorios():
 
     if perfil == "admin":
         html += """
-            <div style='margin-top:10px'>
-                <a class='btn' href='/export'>Exportar todas as horas (CSV)</a>
-                <button class='btn' style='margin-left:10px' onclick='exportarFiltrado()'>
-                    Exportar filtrado
-                </button>
-                    <a class="btn" style="margin-left:10px" href="/export_preventivas">
-        Exportar Preventivas
-    </a>
-            </div>
-
-            <form id="formExportFiltrado" method="POST" action="/export_filtrado">
-                <input type="hidden" name="ids" id="ids_filtrados">
-            </form>
-
+            <a class='btn' href='/export'>Exportar todas as horas (CSV)</a>
+    
+            <button class='btn' style='margin-left:10px' onclick='exportarFiltrado()'>
+                Exportar filtrado
+            </button>
+    
+            <a class="btn" style="margin-left:10px" href="/export_preventivas">
+                Exportar Preventivas
+            </a>
         """
+    
+    html += """
+            <a class='btn' style='margin-left:10px; background:#16a085;'
+               href='/export_minhas'>
+               Exportar minhas horas
+            </a>
+        </div>
+    """
 
     # ---------------- SCRIPTS ----------------
     html += """
@@ -3324,45 +3327,6 @@ def admin_projetos():
         table th { background:#f0f0f0; }
         input[type="text"] { width:400px; padding:6px 10px; margin-bottom:10px; }
     </style>
-    
-<style>
-    .navbar {
-        background: #f4f4f4;
-        padding: 10px 15px;
-        border-radius: 6px;
-        margin-bottom: 20px;
-        border: 1px solid #ddd;
-        display: flex;
-        gap: 15px;
-        flex-wrap: wrap;
-    }
-    .navbar a {
-        text-decoration: none;
-        padding: 6px 12px;
-        background: #1976d2;
-        color: white;
-        border-radius: 6px;
-        font-weight: bold;
-        transition: 0.2s;
-    }
-    .navbar a:hover {
-        background: #0f4fa8;
-    }
-</style>
-
-<div class="navbar">
-    <a href='/menu'>Menu</a>
-    <a href='/lancar'>Lançar Horas</a>
-    <a href='/relatorios'>Relatórios</a>
-
-    <a href='/colaboradores'>Colaboradores</a>
-    <a href='/paint'>Projetos PAINT</a>
-    <a href='/os'>O.S</a>
-    <a href='/admin_projetos'>Gerenciar Projetos</a>
-    <a href='/visao'>Visão Consolidada</a>
-
-    <a href='/logout'>Sair</a>
-</div>
     <h2>Gerenciar Projetos</h2>
     <div style='display:flex; gap:20px; margin-bottom:18px; flex-wrap:wrap;'>
     """
@@ -3503,7 +3467,11 @@ def admin_projetos():
     </script>
     """
 
-    return html
+    return render_template_string(
+    BASE.replace("{% block content %}{% endblock %}", html),
+    user=session["user"],
+    perfil=session["perfil"]
+)
 
 @app.route('/visao')
 def visao_consolidada():
@@ -3948,6 +3916,114 @@ def export_csv():
         mimetype="text/csv",
         as_attachment=True,
         download_name="horas_completo.csv"
+    )
+
+@app.route('/export_minhas')
+def export_minhas():
+    if 'user' not in session:
+        return redirect('/')
+
+    import csv, io
+    from datetime import datetime
+
+    user_id = session["user_id"]
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT
+            h.id AS hora_id,
+            c.nome AS colaborador,
+            h.data,
+            h.hora_inicio,
+            h.hora_fim,
+            h.item_paint,
+            h.os_codigo,
+            h.atividade,
+            h.duracao,
+            h.duracao_minutos,
+            h.observacoes,
+
+            string_agg(r.chave, ', ') AS requisicoes,
+            COUNT(r.id)               AS qtd_requisicoes,
+            COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
+
+            MIN(r.data_inicio)        AS data_inicio_requisicao,
+            MAX(r.data_fim)           AS data_fim_requisicao,
+            string_agg(DISTINCT r.status_analise, ', ') AS status_requisicao,
+            string_agg(DISTINCT r.tipo, ', ')            AS tipo_requisicao,
+            string_agg(DISTINCT r.criterio, ', ')        AS criterio_requisicao
+
+        FROM horas h
+        JOIN colaboradores c ON c.id = h.colaborador_id
+        LEFT JOIN horas_requisicoes hr ON hr.hora_id = h.id
+        LEFT JOIN requisicoes r ON r.id = hr.requisicao_id
+
+        WHERE h.colaborador_id = %s
+
+        GROUP BY
+            h.id, c.nome, h.data, h.hora_inicio, h.hora_fim,
+            h.item_paint, h.os_codigo, h.atividade,
+            h.duracao, h.duracao_minutos, h.observacoes
+
+        ORDER BY h.data;
+    """, (user_id,))
+
+    rows = cur.fetchall()
+    con.close()
+
+    si = io.StringIO()
+    cw = csv.writer(si, delimiter=";")
+
+    cw.writerow([
+        "Hora ID", "Colaborador", "Data",
+        "Hora Início", "Hora Fim",
+        "Item PAINT", "OS", "Atividade",
+        "Duração", "Minutos", "Obs",
+        "Requisições", "Qtd Requisições", "Valor Total",
+        "Data Início Req", "Data Fim Req",
+        "Status Req", "Tipo Req", "Critério Req"
+    ])
+
+    for r in rows:
+        try:
+            data_fmt = r["data"].strftime("%d/%m/%Y")
+        except:
+            data_fmt = r["data"]
+
+        cw.writerow([
+            r["hora_id"],
+            r["colaborador"],
+            data_fmt,
+            r["hora_inicio"],
+            r["hora_fim"],
+            r["item_paint"],
+            r["os_codigo"],
+            r["atividade"],
+            r["duracao"],
+            r["duracao_minutos"],
+            r["observacoes"],
+            r["requisicoes"] or "",
+            r["qtd_requisicoes"] or 0,
+            f"{r['valor_total_requisicoes']:.2f}",
+            r["data_inicio_requisicao"],
+            r["data_fim_requisicao"],
+            r["status_requisicao"],
+            r["tipo_requisicao"],
+            r["criterio_requisicao"],
+        ])
+
+    output = io.BytesIO()
+    output.write("\ufeff".encode("utf-8"))
+    output.write(si.getvalue().encode("utf-8"))
+    output.seek(0)
+
+    return send_file(
+        output,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="minhas_horas.csv"
     )
 
 @app.route('/export_filtrado', methods=['POST'])

@@ -4445,30 +4445,31 @@ document.addEventListener("DOMContentLoaded", () => {
     aplicarFiltros();
 });
 
-document.querySelectorAll(".campo-inline").forEach(el => {
+document.querySelectorAll(".campo-inline, .status-select").forEach(el => {
 
     let evento = el.tagName === "SELECT" ? "change" : "blur";
 
     el.addEventListener(evento, function(){
 
-        let dados = {
-            acao: "atualizar",
-            id: this.dataset.id,
-            status_analise: this.closest("tr").querySelector(".status-select").value
-        };
+        let tr = this.closest("tr");
+        let id = this.dataset.id || tr.querySelector(".status-select").dataset.id;
 
-        // adiciona SOMENTE o campo alterado
-        dados[this.dataset.campo] = this.value || null;
+        let fd = new FormData();
+        fd.append("acao","atualizar");
+        fd.append("id", id);
 
-        fetch("/requisicoes", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams(dados)
-        })
+        fd.append("status_analise", tr.querySelector(".status-select").value);
+        fd.append("nota", tr.querySelector("[data-campo='nota']").value);
+        fd.append("num_nota", tr.querySelector("[data-campo='num_nota']").value);
+        fd.append("oficio", tr.querySelector("[data-campo='oficio']").value);
+        fd.append("monitoramento", tr.querySelector("[data-campo='monitoramento']").value);
+
+        fetch("/requisicoes", { method:"POST", body: fd })
         .then(r => r.text())
         .then(resp => {
             if(resp !== "OK"){
-                alert("Erro ao salvar campo");
+                alert("Erro ao salvar");
+                console.error(resp);
             }
         })
         .catch(err => {

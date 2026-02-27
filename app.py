@@ -5612,7 +5612,11 @@ def importar_requisicoes():
     html = """
     <h3>📥 Importar Requisições</h3>
     <br>
-    <a href="/requisicoes/importar-completo">Importar Completo - Modelo Drive</a>
+    <a href="/requisicoes/importar-completo"
+       class="btn"
+       style="display:inline-block; margin-bottom:15px; background:#0d6efd;">
+       Importar Completo - Modelo Drive
+    </a>
     
     {% with msgs = get_flashed_messages() %}
       {% if msgs %}
@@ -5623,8 +5627,13 @@ def importar_requisicoes():
     {% endwith %}
 
     <form method="post" enctype="multipart/form-data">
+    
+        <label style="font-weight:600;">Arquivo:</label><br>
         <input type="file" name="arquivo" required><br><br>
+    
+        <label style="font-weight:600;">Data de Corte:</label><br>
         <input type="date" name="data_corte" required><br><br>
+    
         <button class="btn">Importar</button>
     </form>
 

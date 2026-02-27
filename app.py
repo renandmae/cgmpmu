@@ -4373,38 +4373,24 @@ tr.analisado td:first-child::before {
 
         <!-- MONITORAMENTO RESPOSTA -->
         <td>
-            <textarea
+            <input
+                type="text"
                 class="campo-inline"
                 data-id="{{ r.id }}"
                 data-campo="monitoramento_resposta"
-                style="
-                    width:180px;
-                    height:32px;
-                    max-height:120px;
-                    padding:4px 6px;
-                    font-size:13px;
-                    border-radius:6px;
-                    resize:vertical;
-                "
-            >{{ r.monitoramento_resposta or '' }}</textarea>
+                value="{{ r.monitoramento_resposta or '' }}"
+                style="width:260px;">
         </td>
         
         <!-- OBSERVAÇÕES -->
         <td>
-            <textarea
+            <input
+                type="text"
                 class="campo-inline"
                 data-id="{{ r.id }}"
                 data-campo="observacoes"
-                style="
-                    width:180px;
-                    height:32px;
-                    max-height:120px;
-                    padding:4px 6px;
-                    font-size:13px;
-                    border-radius:6px;
-                    resize:vertical;
-                "
-            >{{ r.observacoes or '' }}</textarea>
+                value="{{ r.observacoes or '' }}"
+                style="width:260px;">
         </td>
         
         <td>

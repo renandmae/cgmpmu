@@ -4229,9 +4229,8 @@ def minhas_delegacoes():
             limite = 100
 
     sql = """
-        SELECT r.*, o.resumo AS os_resumo
+        SELECT r.*
         FROM requisicoes r
-        LEFT JOIN os o ON o.codigo = r.os_codigo
         WHERE r.servidor_id = %s
     """
     params = [session["user_id"]]
@@ -4305,18 +4304,22 @@ tr.analisado td:first-child::before {
 <table>
     <tr>
         <th>Chave</th>
-        <th>OS</th>
         <th>Início</th>
         <th>Status</th>
         <th>Tipo</th>
         <th>Critério</th>
+        <th>Nota</th>
+        <th>Nº Nota</th>
+        <th>Ofício</th>
+        <th>Monitoramento</th>
         <th>Ação</th>
     </tr>
     {% for r in requisicoes %}
     <tr class="{{ r.status_analise|lower }}">
         <td>{{ r.chave }}</td>
-        <td>{{ r.os_codigo }}</td>
         <td>{{ fmt(r.data_inicio) }}</td>
+    
+        <!-- STATUS -->
         <td>
             <select class="status-select" data-id="{{ r.id }}">
                 <option value="ANDAMENTO" {{ "selected" if r.status_analise=="ANDAMENTO" else "" }}>ANDAMENTO</option>
@@ -4324,9 +4327,48 @@ tr.analisado td:first-child::before {
                 <option value="ANALISADO" {{ "selected" if r.status_analise=="ANALISADO" else "" }}>ANALISADO</option>
             </select>
         </td>
-
-        <td>{{ r.tipo }}</td>
-        <td>{{ r.criterio }}</td>
+    
+        <td>{{ r.tipo or '' }}</td>
+        <td>{{ r.criterio or '' }}</td>
+    
+        <!-- NOTA -->
+        <td>
+            <select class="campo-inline" data-id="{{ r.id }}" data-campo="nota">
+                <option value=""></option>
+                <option value="SIM" {{ "selected" if r.nota=="SIM" else "" }}>SIM</option>
+                <option value="NÃO" {{ "selected" if r.nota=="NÃO" else "" }}>NÃO</option>
+            </select>
+        </td>
+    
+        <!-- Nº NOTA -->
+        <td>
+            <input type="text"
+                   value="{{ r.num_nota or '' }}"
+                   class="campo-inline"
+                   data-id="{{ r.id }}"
+                   data-campo="num_nota"
+                   style="width:90px;">
+        </td>
+    
+        <!-- OFÍCIO -->
+        <td>
+            <input type="text"
+                   value="{{ r.oficio or '' }}"
+                   class="campo-inline"
+                   data-id="{{ r.id }}"
+                   data-campo="oficio"
+                   style="width:100px;">
+        </td>
+    
+        <!-- MONITORAMENTO -->
+        <td>
+            <select class="campo-inline" data-id="{{ r.id }}" data-campo="monitoramento">
+                <option value=""></option>
+                <option value="SIM" {{ "selected" if r.monitoramento=="SIM" else "" }}>SIM</option>
+                <option value="NÃO" {{ "selected" if r.monitoramento=="NÃO" else "" }}>NÃO</option>
+            </select>
+        </td>
+    
         <td>
             <a class="btn" href="/requisicao/{{ r.id }}">Ver</a>
         </td>
@@ -4402,6 +4444,41 @@ document.addEventListener("DOMContentLoaded", () => {
     ativarBotao("ANDAMENTO");
     aplicarFiltros();
 });
+
+document.querySelectorAll(".campo-inline").forEach(el => {
+
+    let evento = el.tagName === "SELECT" ? "change" : "blur";
+
+    el.addEventListener(evento, function(){
+
+        fetch("/requisicoes", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                acao: "atualizar",
+                id: this.dataset.id,
+                status_analise: this.closest("tr").querySelector(".status-select").value,
+                nota: this.dataset.campo === "nota" ? this.value : undefined,
+                num_nota: this.dataset.campo === "num_nota" ? this.value : undefined,
+                oficio: this.dataset.campo === "oficio" ? this.value : undefined,
+                monitoramento: this.dataset.campo === "monitoramento" ? this.value : undefined
+            })
+        })
+        .then(r => r.text())
+        .then(resp => {
+            if(resp !== "OK"){
+                alert("Erro ao salvar campo");
+            }
+        })
+        .catch(err => {
+            alert("Erro de rede");
+            console.error(err);
+        });
+
+    });
+
+});
+
 </script>
 
 

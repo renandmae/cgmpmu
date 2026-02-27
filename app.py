@@ -363,6 +363,17 @@ BASE = """
         margin-bottom: 10px;
     }
 
+    header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+    .small {
+        font-size:0.9em;
+        color:#555;
+    }
+
     a { 
         color: #1e4f9c; 
         text-decoration: none; 
@@ -553,21 +564,7 @@ tr.analisado { background:#e6ffed; }
 
   <meta charset='utf-8'>
   <title>Sistema de Horas</title>
-  <style>
-    body{font-family: Arial, Helvetica, sans-serif;max-width:900px;margin:20px auto;color:#222}
-    header{display:flex;justify-content:space-between;align-items:center}
-    nav a {
-    margin-right: 18px;
-    font-weight: 500;
-    display: inline-block;
-}
-    table{width:100%;border-collapse:collapse;margin-top:10px}
-    th,td{border:1px solid #ddd;padding:6px;text-align:left}
-    .small{font-size:0.9em;color:#555}
-    .btn{display:inline-block;padding:6px 10px;border-radius:6px;background:#1976d2;color:white;text-decoration:none}
-    form div{margin:6px 0}
-    input[type=date], input[type=text], select, input[type=password], input[type=time]{padding:6px}
-  </style>
+
 </head>
 <body>
 <header>
@@ -6140,7 +6137,8 @@ def requisicoes():
         {% endif %}
     
     </div>
-    <table id="tbl">
+    <div style="overflow-x:auto; margin-top:10px;">
+    <table id="tbl" style="min-width:1400px;">
         <tr>
             <th>Chave</th>
             <th>Sigla</th>
@@ -6274,6 +6272,7 @@ def requisicoes():
         </tr>
         {% endfor %}
     </table>
+    </div>
     <script>
 
     function salvar(id){

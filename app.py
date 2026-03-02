@@ -1696,7 +1696,22 @@ def os_page():
     </script>
     """
 
-    html += "<h4>O.S cadastradas</h4>"
+    html += """
+    <h4>O.S cadastradas</h4>
+    
+    <div style="margin-bottom:15px; display:flex; gap:10px;">
+        <a class='btn' href='/os/import'
+           style="background:#2563eb; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;">
+           ⬆ Importar
+        </a>
+    
+        <a class='btn btn-danger' href='/os/delete_all'
+           style="background:#dc2626; color:white; padding:6px 12px; border-radius:6px; text-decoration:none;"
+           onclick="return confirm('⚠ Deseja realmente EXCLUIR TODAS as O.S? Essa ação não pode ser desfeita!');">
+           🗑 Excluir Todas
+        </a>
+    </div>
+    """
 
     html += """
     <table id="tabelaOS">

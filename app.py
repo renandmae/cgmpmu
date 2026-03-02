@@ -75,6 +75,8 @@ def parse_hora(h):
 
 from datetime import datetime, date
 
+from datetime import datetime, date
+
 def calcular_prazo(dt_inicio, dt_previsao_fim, dt_conclusao=None):
 
     if not dt_inicio or not dt_previsao_fim:
@@ -84,7 +86,6 @@ def calcular_prazo(dt_inicio, dt_previsao_fim, dt_conclusao=None):
         inicio = datetime.strptime(str(dt_inicio)[:10], "%Y-%m-%d").date()
         fim = datetime.strptime(str(dt_previsao_fim)[:10], "%Y-%m-%d").date()
 
-        # 🔹 Prazo total (dias corridos)
         prazo_total = (fim - inicio).days
 
         if prazo_total <= 0:
@@ -114,31 +115,38 @@ def calcular_prazo(dt_inicio, dt_previsao_fim, dt_conclusao=None):
         # ==================================================
         hoje = date.today()
 
-        # Se ainda não começou
+        # Se ainda não iniciou
         if hoje < inicio:
-            dias_consumidos = 0
             restante = prazo_total
         else:
-            dias_consumidos = (hoje - inicio).days
             restante = (fim - hoje).days
 
-        # 🔴 Se já estourou prazo
+        # 🔴 Já estourou
         if restante < 0:
             return (
                 f"{prazo_total} dias",
                 f"<span style='color:#dc2626;font-weight:bold;'>Atrasado {-restante} dias 🚩</span>"
             )
 
-        # 🔹 Percentual de tempo já consumido
-        percentual = dias_consumidos / prazo_total
+        # 🔹 Percentual do prazo restante
+        percentual_restante = restante / prazo_total
+        percentual_restante = max(0, min(1, percentual_restante))
 
-        # Segurança matemática
-        percentual = max(0, min(1, percentual))
+        # ================= DEBUG =================
+        print("-------- DEBUG PRAZO --------")
+        print("HOJE:", hoje)
+        print("INICIO:", inicio)
+        print("FIM:", fim)
+        print("PRAZO_TOTAL:", prazo_total)
+        print("RESTANTE:", restante)
+        print("PERCENTUAL_RESTANTE:", percentual_restante)
+        print("-----------------------------")
+        # ========================================
 
-        # 🔹 Regras de cor
-        if percentual <= 0.3:
+        # 🔹 Regra de cores baseada no prazo restante
+        if percentual_restante >= 0.7:
             bandeira = "<span style='color:#16a34a;font-size:18px;'>🚩</span>"
-        elif percentual <= 0.7:
+        elif percentual_restante >= 0.3:
             bandeira = "<span style='color:#facc15;font-size:18px;'>🚩</span>"
         else:
             bandeira = "<span style='color:#dc2626;font-size:18px;'>🚩</span>"

@@ -73,25 +73,55 @@ def parse_hora(h):
     else:                 # HH:MM:SS
         return datetime.strptime(h, "%H:%M:%S")
 
-def calcular_prazo(dt_inicio, dt_previsao_fim):
+from datetime import datetime, date
+
+def calcular_prazo(dt_inicio, dt_previsao_fim, dt_conclusao=None):
+
     if not dt_inicio or not dt_previsao_fim:
-        return "", "", ""
+        return "", ""
 
     try:
-        inicio = datetime.strptime(str(dt_inicio)[:10], "%Y-%m-%d")
-        fim = datetime.strptime(str(dt_previsao_fim)[:10], "%Y-%m-%d")
-        hoje = datetime.today()
+        inicio = datetime.strptime(str(dt_inicio)[:10], "%Y-%m-%d").date()
+        fim = datetime.strptime(str(dt_previsao_fim)[:10], "%Y-%m-%d").date()
 
         prazo_total = (fim - inicio).days
-        restante = (fim - hoje).days
-
         if prazo_total <= 0:
-            return "", "", ""
+            return "", ""
 
+        # =========================
+        # 🔵 SE JÁ CONCLUÍDO
+        # =========================
+        if dt_conclusao:
+            conclusao = datetime.strptime(str(dt_conclusao)[:10], "%Y-%m-%d").date()
+            dias_usados = (conclusao - inicio).days
+
+            if conclusao <= fim:
+                dias_antes = (fim - conclusao).days
+                return (
+                    f"{prazo_total} dias",
+                    f"<span style='color:#16a34a;font-weight:bold;'>Concluído {dias_antes} dias antes ✔</span>"
+                )
+            else:
+                atraso = (conclusao - fim).days
+                return (
+                    f"{prazo_total} dias",
+                    f"<span style='color:#dc2626;font-weight:bold;'>Atraso de {atraso} dias ⚠</span>"
+                )
+
+        # =========================
+        # 🔵 SE EM ANDAMENTO
+        # =========================
+        hoje = date.today()
+        restante = (fim - hoje).days
         dias_consumidos = (hoje - inicio).days
         percentual = dias_consumidos / prazo_total
 
-        # Definir bandeira
+        if restante < 0:
+            return (
+                f"{prazo_total} dias",
+                f"<span style='color:#dc2626;font-weight:bold;'>Atrasado {-restante} dias 🚩</span>"
+            )
+
         if percentual <= 0.3:
             bandeira = "<span style='color:#16a34a;font-size:18px;'>🚩</span>"
         elif percentual <= 0.7:
@@ -99,10 +129,10 @@ def calcular_prazo(dt_inicio, dt_previsao_fim):
         else:
             bandeira = "<span style='color:#dc2626;font-size:18px;'>🚩</span>"
 
-        return f"{prazo_total} dias", f"{restante} dias {bandeira}", bandeira
+        return f"{prazo_total} dias", f"{restante} dias {bandeira}"
 
     except:
-        return "", "", ""
+        return "", ""
 
 app = Flask(__name__)
 app.secret_key = 'troque_esta_chave'
@@ -1679,7 +1709,7 @@ def os_page():
     """
 
     for r in rows:
-        prazo, restante, _ = calcular_prazo(r['dt_inicio'], r['dt_previsao_fim'])
+        prazo, restante = calcular_prazo(r['dt_inicio'], r['dt_previsao_fim'],r['dt_conclusao'])
         html += f"""
         <tr>
             <td>{r['codigo']}</td>
@@ -3389,6 +3419,7 @@ def admin_projetos():
     
     os_data = []
     for r in os_rows:
+        prazo, restante = calcular_prazo(r["dt_inicio"],r["dt_previsao_fim"],r["dt_conclusao"])
         os_data.append({
             "codigo": r["codigo"],
             "item_paint": r["item_paint"],
@@ -3530,7 +3561,7 @@ def admin_projetos():
         <tr>
             <th>Código</th><th>Item PAINT</th><th>Resumo</th><th>Unidade</th><th>Coordenação</th>
             <th>Equipe</th><th>Observação</th><th>Status</th><th>PLAN</th><th>EXEC</th>
-            <th>RP</th><th>RF</th><th>Conclusão</th>
+            <th>RP</th><th>RF</th><th>Início</th><th>Fim</th><th>Prazo</th><th>Restante</th><th>Conclusão</th>
         </tr>
     """
     for r in os_data:
@@ -3539,7 +3570,7 @@ def admin_projetos():
             <td>{r['codigo']}</td><td>{r['item_paint']}</td><td>{r['resumo']}</td><td>{r['unidade']}</td>
             <td>{r['coordenacao']}</td><td>{r['equipe']}</td><td>{r['observacao']}</td><td>{r['status']}</td>
             <td>{icon(r['plan'])}</td><td>{icon(r['exec'])}</td><td>{icon(r['rp'])}</td><td>{icon(r['rf'])}</td>
-            <td>{r['dt_conclusao']}</td>
+            <td>{r['dt_inicio']}</td><td>{r['dt_fim']}</td><td>{r['prazo']}</td><td>{r['restante']}</td><td>{r['dt_conclusao']}</td>
         </tr>
         """
     html += "</table>"

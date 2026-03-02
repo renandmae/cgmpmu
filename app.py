@@ -2072,97 +2072,98 @@ def os_import():
             linhas = texto.splitlines()
             con = get_db()
             cur = con.cursor()
-
+        
             inseridos = 0
             ignorados = 0
-
+        
             for i, linha in enumerate(linhas):
-            linha = linha.strip()
-            if not linha:
-                continue
+                linha = linha.strip()
         
-            # ignora cabeçalho
-            if i == 0 and linha.lower().startswith("os"):
-                continue
+                if not linha:
+                    continue
         
-            partes = linha.split("\t")
+                # ignora cabeçalho
+                if i == 0 and linha.lower().startswith("os"):
+                    continue
         
-            # mínimo agora é 10+ colunas
-            if len(partes) < 10:
-                ignorados += 1
-                continue
+                partes = linha.split("\t")
         
-            codigo       = partes[0].strip()
-            item_paint   = partes[1].strip()
-            resumo       = partes[2].strip()              # ID vira resumo
-            unidade      = partes[3].strip()
-            dt_inicio    = conv_data(partes[4])
-            dt_fim_prev  = conv_data(partes[5])
-            supervisao   = partes[6].strip()
-            coordenacao  = partes[7].strip()
-            equipe       = partes[8].strip()
+                if len(partes) < 10:
+                    ignorados += 1
+                    continue
         
-            plan  = conv_bool(partes[9])  if len(partes) > 9  else 0
-            exec_ = conv_bool(partes[10]) if len(partes) > 10 else 0
-            rp    = conv_bool(partes[11]) if len(partes) > 11 else 0
-            rf    = conv_bool(partes[12]) if len(partes) > 12 else 0
+                codigo       = partes[0].strip()
+                item_paint   = partes[1].strip()
+                resumo       = partes[2].strip()
+                unidade      = partes[3].strip()
+                dt_inicio    = conv_data(partes[4])
+                dt_fim_prev  = conv_data(partes[5])
+                supervisao   = partes[6].strip()
+                coordenacao  = partes[7].strip()
+                equipe       = partes[8].strip()
         
-            status        = partes[13].strip() if len(partes) > 13 else None
-            dt_conclusao  = conv_data(partes[14]) if len(partes) > 14 else None
-            observacao    = partes[15].strip() if len(partes) > 15 else None
+                plan  = conv_bool(partes[9])  if len(partes) > 9  else 0
+                exec_ = conv_bool(partes[10]) if len(partes) > 10 else 0
+                rp    = conv_bool(partes[11]) if len(partes) > 11 else 0
+                rf    = conv_bool(partes[12]) if len(partes) > 12 else 0
         
-            if not codigo or not item_paint:
-                ignorados += 1
-                continue
+                status        = partes[13].strip() if len(partes) > 13 else None
+                dt_conclusao  = conv_data(partes[14]) if len(partes) > 14 else None
+                observacao    = partes[15].strip() if len(partes) > 15 else None
         
-            try:
-                cur.execute("""
-                    INSERT INTO os (
+                if not codigo or not item_paint:
+                    ignorados += 1
+                    continue
+        
+                try:
+                    cur.execute("""
+                        INSERT INTO os (
+                            codigo,
+                            item_paint,
+                            resumo,
+                            unidade,
+                            dt_inicio,
+                            dt_previsao_fim,
+                            supervisao,
+                            coordenacao,
+                            equipe,
+                            observacao,
+                            plan,
+                            exec,
+                            rp,
+                            rf,
+                            status,
+                            dt_conclusao
+                        )
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """, (
                         codigo,
                         item_paint,
                         resumo,
                         unidade,
                         dt_inicio,
-                        dt_previsao_fim,
+                        dt_fim_prev,
                         supervisao,
                         coordenacao,
                         equipe,
                         observacao,
                         plan,
-                        exec,
+                        exec_,
                         rp,
                         rf,
                         status,
                         dt_conclusao
-                    )
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (
-                    codigo,
-                    item_paint,
-                    resumo,
-                    unidade,
-                    dt_inicio,
-                    dt_fim_prev,
-                    supervisao,
-                    coordenacao,
-                    equipe,
-                    observacao,
-                    plan,
-                    exec_,
-                    rp,
-                    rf,
-                    status,
-                    dt_conclusao
-                ))
-                inseridos += 1
+                    ))
+                    inseridos += 1
         
-            except IntegrityError:
-                con.rollback()
-                ignorados += 1
-
+                except IntegrityError:
+                    con.rollback()
+                    ignorados += 1
+        
+            # 🔹 AGORA FORA DO FOR
             con.commit()
             con.close()
-
+        
             msg = f"✅ {inseridos} O.S inseridas | ⚠️ {ignorados} ignoradas"
 
     return render_template_string(

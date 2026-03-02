@@ -125,31 +125,20 @@ def calcular_prazo(dt_inicio, dt_previsao_fim, dt_conclusao=None):
         if restante < 0:
             return (
                 f"{prazo_total} dias",
-                f"<span style='color:#dc2626;font-weight:bold;'>Atrasado {-restante} dias 🚩</span>"
+                f"<span style='color:#dc2626;font-weight:bold;'>Atrasado {-restante} dias ⚑</span>"
             )
 
         # 🔹 Percentual do prazo restante
         percentual_restante = restante / prazo_total
         percentual_restante = max(0, min(1, percentual_restante))
 
-        # ================= DEBUG =================
-        print("-------- DEBUG PRAZO --------")
-        print("HOJE:", hoje)
-        print("INICIO:", inicio)
-        print("FIM:", fim)
-        print("PRAZO_TOTAL:", prazo_total)
-        print("RESTANTE:", restante)
-        print("PERCENTUAL_RESTANTE:", percentual_restante)
-        print("-----------------------------")
-        # ========================================
-
         # 🔹 Regra de cores baseada no prazo restante
         if percentual_restante >= 0.7:
-            bandeira = "<span style='color:#16a34a;font-size:18px;'>🚩</span>"
+            bandeira = "<span style='color:#16a34a;font-size:18px;'>⚑</span>"
         elif percentual_restante >= 0.3:
-            bandeira = "<span style='color:#facc15;font-size:18px;'>🚩</span>"
+            bandeira = "<span style='color:#facc15;font-size:18px;'>⚑</span>"
         else:
-            bandeira = "<span style='color:#dc2626;font-size:18px;'>🚩</span>"
+            bandeira = "<span style='color:#dc2626;font-size:18px;'>⚑</span>"
 
         return f"{prazo_total} dias", f"{restante} dias {bandeira}"
 

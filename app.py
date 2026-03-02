@@ -84,16 +84,17 @@ def calcular_prazo(dt_inicio, dt_previsao_fim, dt_conclusao=None):
         inicio = datetime.strptime(str(dt_inicio)[:10], "%Y-%m-%d").date()
         fim = datetime.strptime(str(dt_previsao_fim)[:10], "%Y-%m-%d").date()
 
+        # 🔹 Prazo total (dias corridos)
         prazo_total = (fim - inicio).days
+
         if prazo_total <= 0:
             return "", ""
 
-        # =========================
-        # 🔵 SE JÁ CONCLUÍDO
-        # =========================
+        # ==================================================
+        # 🔵 1) SE JÁ CONCLUÍDO
+        # ==================================================
         if dt_conclusao:
             conclusao = datetime.strptime(str(dt_conclusao)[:10], "%Y-%m-%d").date()
-            dias_usados = (conclusao - inicio).days
 
             if conclusao <= fim:
                 dias_antes = (fim - conclusao).days
@@ -108,20 +109,33 @@ def calcular_prazo(dt_inicio, dt_previsao_fim, dt_conclusao=None):
                     f"<span style='color:#dc2626;font-weight:bold;'>Atraso de {atraso} dias ⚠</span>"
                 )
 
-        # =========================
-        # 🔵 SE EM ANDAMENTO
-        # =========================
+        # ==================================================
+        # 🔵 2) EM ANDAMENTO
+        # ==================================================
         hoje = date.today()
-        restante = (fim - hoje).days
-        dias_consumidos = (hoje - inicio).days
-        percentual = dias_consumidos / prazo_total
 
+        # Se ainda não começou
+        if hoje < inicio:
+            dias_consumidos = 0
+            restante = prazo_total
+        else:
+            dias_consumidos = (hoje - inicio).days
+            restante = (fim - hoje).days
+
+        # 🔴 Se já estourou prazo
         if restante < 0:
             return (
                 f"{prazo_total} dias",
                 f"<span style='color:#dc2626;font-weight:bold;'>Atrasado {-restante} dias 🚩</span>"
             )
 
+        # 🔹 Percentual de tempo já consumido
+        percentual = dias_consumidos / prazo_total
+
+        # Segurança matemática
+        percentual = max(0, min(1, percentual))
+
+        # 🔹 Regras de cor
         if percentual <= 0.3:
             bandeira = "<span style='color:#16a34a;font-size:18px;'>🚩</span>"
         elif percentual <= 0.7:
@@ -131,7 +145,8 @@ def calcular_prazo(dt_inicio, dt_previsao_fim, dt_conclusao=None):
 
         return f"{prazo_total} dias", f"{restante} dias {bandeira}"
 
-    except:
+    except Exception as e:
+        print("Erro calcular_prazo:", e)
         return "", ""
 
 app = Flask(__name__)

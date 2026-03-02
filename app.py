@@ -1654,10 +1654,10 @@ def os_page():
             <td>{r['status']}</td>
             <td>{r['dt_inicio'] or ''}</td>
             <td>{r['dt_previsao_fim'] or ''}</td>
-            <td>{"V" if r['plan'] else "X"}</td>
-            <td>{"V" if r['exec'] else "X"}</td>
-            <td>{"V" if r['rp'] else "X"}</td>
-            <td>{"V" if r['rf'] else "X"}</td>
+            <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['plan'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>
+            <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['exec'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>
+            <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['rp'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>
+            <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['rf'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>
             <td>
                 <a class='btn' href='/os/view/{r["id"]}'>Ver</a>
                 <a class='btn' href='/os/edit/{r["id"]}'>Editar</a>
@@ -1725,9 +1725,9 @@ def os_view(id):
 
     def icon(v):
         if v == 1:
-            return "<span style='color:green; font-weight:bold;'>✔</span>"
+            return "<span style='color:#2563eb;font-size:18px;'>●</span>"
         else:
-            return "<span style='color:red; font-weight:bold;'>✖</span>"
+            return "<span style='color:#dc2626;font-size:18px;'>x</span>"
 
     html = f"""
     <h3>Visualizar O.S {r['codigo']}</h3>
@@ -1746,6 +1746,8 @@ def os_view(id):
     RP={icon(r['rp'])} |
     RF={icon(r['rf'])}
 </p>
+    <p><strong>Data Início:</strong> {r['dt_inicio'] or ''}</p>
+    <p><strong>Previsão Fim:</strong> {r['dt_previsao_fim'] or ''}</p>
     <p><strong>Data Conclusão:</strong> {r['dt_conclusao'] or ''}</p>
 
     <a class='btn' href='/os/edit/{r["id"]}'>Editar</a>
@@ -1796,6 +1798,8 @@ def os_edit(id):
         exec_ = 1 if request.form.get('exec') else 0
         rp = 1 if request.form.get('rp') else 0
         rf = 1 if request.form.get('rf') else 0
+        dt_inicio = request.form.get("dt_inicio") or None
+        dt_previsao_fim = request.form.get("dt_previsao_fim") or None
         dt_conc = request.form.get('dt_conclusao') or None
 
         try:
@@ -1804,12 +1808,15 @@ def os_edit(id):
                 UPDATE os SET 
                     codigo=%s, item_paint=%s, resumo=%s, unidade=%s, supervisao=%s, 
                     coordenacao=%s, equipe=%s, observacao=%s, status=%s, 
-                    plan=%s, exec=%s, rp=%s, rf=%s, dt_conclusao=%s
+                    plan=%s, exec=%s, rp=%s, rf=%s,
+                    dt_inicio=%s, dt_previsao_fim=%s, dt_conclusao=%s
                 WHERE id=%s
             """, (
                 codigo_novo, item, resumo, unidade, supervisao,
                 coordenacao, equipe, observacao, status,
-                plan, exec_, rp, rf, dt_conc, id
+                plan, exec_, rp, rf,
+                dt_inicio, dt_previsao_fim, dt_conc,
+                id
             ))
 
             # ---- CASCADE MANUAL ----
@@ -1914,6 +1921,16 @@ def os_edit(id):
     </div>
     """
 
+    html += f"""
+    <div>Data início: 
+        <input type='date' name='dt_inicio' value='{os['dt_inicio'] or ''}'>
+    </div>
+    
+    <div>Previsão fim: 
+        <input type='date' name='dt_previsao_fim' value='{os['dt_previsao_fim'] or ''}'>
+    </div>
+    """
+    
     # data conclusão
     html += f"""
     <div>Data conclusão: 

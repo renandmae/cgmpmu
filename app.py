@@ -1652,8 +1652,8 @@ def os_page():
             <td>{r['item_paint']}</td>
             <td>{r['resumo']}</td>
             <td>{r['status']}</td>
-            <td>{r['dt_inicio'] or ''}</td>
-            <td>{r['dt_previsao_fim'] or ''}</td>
+            <td>{fmt(r['dt_inicio'])}</td>
+            <td>{fmt(r['dt_previsao_fim'])}</td>
             <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['plan'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>
             <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['exec'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>
             <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['rp'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>
@@ -1674,7 +1674,8 @@ def os_page():
     return render_template_string(
         BASE.replace('{% block content %}{% endblock %}', html),
         user=session['user'],
-        perfil=session['perfil']
+        perfil=session['perfil'],
+        fmt=fmt
     )
 
 @app.route('/os/delete/<int:id>')

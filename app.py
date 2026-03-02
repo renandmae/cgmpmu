@@ -73,6 +73,37 @@ def parse_hora(h):
     else:                 # HH:MM:SS
         return datetime.strptime(h, "%H:%M:%S")
 
+def calcular_prazo(dt_inicio, dt_previsao_fim):
+    if not dt_inicio or not dt_previsao_fim:
+        return "", "", ""
+
+    try:
+        inicio = datetime.strptime(str(dt_inicio)[:10], "%Y-%m-%d")
+        fim = datetime.strptime(str(dt_previsao_fim)[:10], "%Y-%m-%d")
+        hoje = datetime.today()
+
+        prazo_total = (fim - inicio).days
+        restante = (fim - hoje).days
+
+        if prazo_total <= 0:
+            return "", "", ""
+
+        dias_consumidos = (hoje - inicio).days
+        percentual = dias_consumidos / prazo_total
+
+        # Definir bandeira
+        if percentual <= 0.3:
+            bandeira = "<span style='color:#16a34a;font-size:18px;'>🚩</span>"
+        elif percentual <= 0.7:
+            bandeira = "<span style='color:#facc15;font-size:18px;'>🚩</span>"
+        else:
+            bandeira = "<span style='color:#dc2626;font-size:18px;'>🚩</span>"
+
+        return f"{prazo_total} dias", f"{restante} dias {bandeira}", bandeira
+
+    except:
+        return "", "", ""
+
 app = Flask(__name__)
 app.secret_key = 'troque_esta_chave'
 
@@ -1635,6 +1666,8 @@ def os_page():
         <th>Status</th>
         <th>Início</th>
         <th>Prev. Fim</th>
+        <th>Prazo</th>
+        <th>Restante</th>
         <th>PLAN</th>
         <th>EXEC</th>
         <th>RP</th>
@@ -1646,6 +1679,7 @@ def os_page():
     """
 
     for r in rows:
+        prazo, restante, _ = calcular_prazo(r['dt_inicio'], r['dt_previsao_fim'])
         html += f"""
         <tr>
             <td>{r['codigo']}</td>
@@ -1654,6 +1688,8 @@ def os_page():
             <td>{r['status']}</td>
             <td>{fmt(r['dt_inicio'])}</td>
             <td>{fmt(r['dt_previsao_fim'])}</td>
+            <td>{prazo}</td>
+            <td>{restante}</td>
             <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['plan'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>
             <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['exec'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>
             <td>{"<span style='color:#2563eb;font-size:18px;'>●</span>" if r['rp'] else "<span style='color:#dc2626;font-size:18px;'>●</span>"}</td>

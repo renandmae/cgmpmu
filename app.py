@@ -1483,7 +1483,6 @@ def delete_all_projetos():
     con.close()
     return redirect('/paint')
 
-
 # -------------------------
 # OS - list / add
 # -------------------------
@@ -1493,9 +1492,11 @@ def os_page():
         return redirect('/')
     if session['perfil'] != 'admin':
         return 'Acesso negado'
+
     con = get_db()
     cur = con.cursor()
-    # Carrega colaboradores para uso nos selects
+
+    # Carrega colaboradores
     cur.execute('SELECT nome FROM colaboradores ORDER BY nome')
     colabs = [r['nome'] for r in cur.fetchall()]
 
@@ -1509,23 +1510,35 @@ def os_page():
         equipe = ", ".join(request.form.getlist('equipe'))
         observacao = request.form.get('observacao')
         status = request.form.get('status')
+
         plan = 1 if request.form.get('plan') == 'on' else 0
         exec_ = 1 if request.form.get('exec') == 'on' else 0
         rp = 1 if request.form.get('rp') == 'on' else 0
         rf = 1 if request.form.get('rf') == 'on' else 0
-        dt_conc = request.form.get('dt_conclusao') or None
+
+        dt_inicio = request.form.get("dt_inicio") or None
+        dt_previsao_fim = request.form.get("dt_previsao_fim") or None
+        dt_conclusao = request.form.get("dt_conclusao") or None
+
         try:
             cur.execute(
-                'INSERT INTO os (codigo,item_paint,resumo, unidade,supervisao,coordenacao,equipe,observacao,status,plan,exec,rp,rf,dt_conclusao) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-                (codigo, item, resumo, unidade, supervisao, coordenacao, equipe, observacao, status, plan, exec_, rp, rf,
-                 dt_conc))
+                '''INSERT INTO os
+                (codigo,item_paint,resumo,unidade,supervisao,coordenacao,equipe,
+                 observacao,status,plan,exec,rp,rf,dt_inicio,dt_previsao_fim,dt_conclusao)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                (codigo, item, resumo, unidade, supervisao, coordenacao, equipe,
+                 observacao, status, plan, exec_, rp, rf,
+                 dt_inicio, dt_previsao_fim, dt_conclusao)
+            )
             con.commit()
         except IntegrityError:
             con.rollback()
 
+    # Lista OS
     cur.execute('SELECT * FROM os ORDER BY codigo')
     rows = cur.fetchall()
 
+    # Lista itens PAINT
     cur.execute('SELECT item_paint FROM projeto_paint ORDER BY item_paint')
     items = [r['item_paint'] for r in cur.fetchall()]
 
@@ -1534,12 +1547,14 @@ def os_page():
     html = '<h3>Cadastrar O.S</h3>'
     html += "<form method='post'>"
     html += "<div>Código (ex: OS-001): <input name='codigo' required></div>"
+
     html += "<div>Item PAINT: <select name='item_paint'>"
     for it in items:
         html += f"<option value='{it}'>{it}</option>"
     html += "</select></div>"
-    # >>> CAMPO NOVO (antes de Unidade)
+
     html += "<div>Resumo: <input name='resumo' style='width:300px'></div>"
+
     html += """
     <div>
         Unidade:
@@ -1552,19 +1567,17 @@ def os_page():
         </select>
     </div>
     """
-    # Supervisão
+
     html += "<div>Supervisão:<br><select name='supervisao' multiple size='6' style='width:260px'>"
     for c in colabs:
         html += f"<option value='{c}'>{c}</option>"
     html += "</select></div>"
 
-    # Coordenação
     html += "<div>Coordenação:<br><select name='coordenacao' multiple size='6' style='width:260px'>"
     for c in colabs:
         html += f"<option value='{c}'>{c}</option>"
     html += "</select></div>"
 
-    # Equipe
     html += "<div>Equipe:<br><select name='equipe' multiple size='7' style='width:260px'>"
     for c in colabs:
         html += f"<option value='{c}'>{c}</option>"
@@ -1572,15 +1585,25 @@ def os_page():
 
     html += "<div>Observação: <input name='observacao'></div>"
     html += "<div>Status: <select name='status'><option>Andamento</option><option>Concluido</option></select></div>"
-    html += "<div>Flags: <label><input type='checkbox' name='plan'> PLAN</label> <label><input type='checkbox' name='exec'> EXEC</label> <label><input type='checkbox' name='rp'> RP</label> <label><input type='checkbox' name='rf'> RF</label></div>"
+
+    html += "<div>Flags: \
+        <label><input type='checkbox' name='plan'> PLAN</label> \
+        <label><input type='checkbox' name='exec'> EXEC</label> \
+        <label><input type='checkbox' name='rp'> RP</label> \
+        <label><input type='checkbox' name='rf'> RF</label></div>"
+
+    html += "<div>Data início: <input type='date' name='dt_inicio'></div>"
+    html += "<div>Previsão fim: <input type='date' name='dt_previsao_fim'></div>"
     html += "<div>Data conclusão: <input type='date' name='dt_conclusao'></div>"
+
     html += "<div><button class='btn'>Adicionar OS</button></div>"
     html += "</form>"
-    # Barra de pesquisa
+
+    # Pesquisa
     html += """
     <div style="margin: 15px 0;">
-        <input type="text" id="searchInput" class="form-control" placeholder="Pesquisar..." 
-               style="padding: 8px; width: 100%; font-size: 16px;">
+        <input type="text" id="searchInput" placeholder="Pesquisar..."
+               style="padding:8px;width:100%;font-size:16px;">
     </div>
 
     <script>
@@ -1589,28 +1612,39 @@ def os_page():
 
         input.addEventListener("keyup", function() {
             let filter = input.value.toLowerCase();
-            let rows = document.querySelectorAll("table tbody tr");
+            let rows = document.querySelectorAll("#tabelaOS tbody tr");
 
             rows.forEach(row => {
                 let text = row.innerText.toLowerCase();
-                row.style.display = text.includes(filter) %s "" : "none";
+                row.style.display = text.includes(filter) ? "" : "none";
             });
         });
     });
     </script>
     """
-    html += '<h4>O.S cadastradas</h4>'
+
+    html += "<h4>O.S cadastradas</h4>"
+
     html += """
-    <div style="margin-bottom:10px;">
-        <a class='btn btn-primary' href='/os/import'>Importar por texto</a>
-        <a class='btn btn-danger' href='/os/delete_all'
-           onclick="return confirm('Deseja realmente excluir TODAS as OS cadastradas?');">
-           Excluir todas
-        </a>
-    </div>
+    <table id="tabelaOS">
+    <thead>
+    <tr>
+        <th>Código</th>
+        <th>Item PAINT</th>
+        <th>Resumo</th>
+        <th>Status</th>
+        <th>Início</th>
+        <th>Prev. Fim</th>
+        <th>PLAN</th>
+        <th>EXEC</th>
+        <th>RP</th>
+        <th>RF</th>
+        <th>Ações</th>
+    </tr>
+    </thead>
+    <tbody>
     """
 
-    html += '<table><tr><th>Código</th><th>Item PAINT</th><th>Resumo</th><th>Status</th><th>Ações</th></tr>'
     for r in rows:
         html += f"""
         <tr>
@@ -1618,19 +1652,30 @@ def os_page():
             <td>{r['item_paint']}</td>
             <td>{r['resumo']}</td>
             <td>{r['status']}</td>
+            <td>{r['dt_inicio'] or ''}</td>
+            <td>{r['dt_previsao_fim'] or ''}</td>
+            <td>{"V" if r['plan'] else "X"}</td>
+            <td>{"V" if r['exec'] else "X"}</td>
+            <td>{"V" if r['rp'] else "X"}</td>
+            <td>{"V" if r['rf'] else "X"}</td>
             <td>
                 <a class='btn' href='/os/view/{r["id"]}'>Ver</a>
                 <a class='btn' href='/os/edit/{r["id"]}'>Editar</a>
-                <a class='btn btn-danger' href='/os/delete/{r["id"]}' onclick="return confirm('Deseja realmente excluir esta O.S?');">Excluir</a>
-
+                <a class='btn btn-danger' href='/os/delete/{r["id"]}'
+                   onclick="return confirm('Deseja realmente excluir esta O.S?');">
+                   Excluir
+                </a>
             </td>
         </tr>
         """
-    html += '</table>'
 
-    return render_template_string(BASE.replace('{% block content %}{% endblock %}', html), user=session['user'],
-                                  perfil=session['perfil'])
+    html += "</tbody></table>"
 
+    return render_template_string(
+        BASE.replace('{% block content %}{% endblock %}', html),
+        user=session['user'],
+        perfil=session['perfil']
+    )
 
 @app.route('/os/delete/<int:id>')
 def os_delete(id):

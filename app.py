@@ -3433,6 +3433,13 @@ def admin_projetos():
             "exec": r["exec"],
             "rp": r["rp"],
             "rf": r["rf"],
+    
+            # 👇 CAMPOS QUE FALTAVAM
+            "dt_inicio": fmt(r["dt_inicio"]),
+            "dt_fim": fmt(r["dt_previsao_fim"]),
+            "prazo": prazo,
+            "restante": restante,
+    
             "dt_conclusao": fmt(r["dt_conclusao"])
         })
 

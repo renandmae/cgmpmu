@@ -527,7 +527,6 @@ BASE = """
 
     /* ---------------------- TABELAS ---------------------- */
     table {
-        width: 100%;
         border-collapse: collapse;
         margin-top: 15px;
         background: #ffffff;
@@ -4536,6 +4535,63 @@ tr.analisado td:first-child::before {
     transform: scale(1.05);
     font-weight: bold;
 }
+
+/* ================= RESPONSIVIDADE ================= */
+
+.table-container {
+    overflow-x: auto;
+    margin-top: 10px;
+}
+
+/* Largura mínima para evitar esmagamento */
+.tabela-delegacoes {
+    min-width: 1350px;
+    border-collapse: collapse;
+}
+
+/* Cabeçalho fixo */
+.tabela-delegacoes th {
+    position: sticky;
+    top: 0;
+    background: #dce8fb;
+    z-index: 2;
+}
+
+/* Primeira coluna congelada e negrito */
+.tabela-delegacoes th:first-child,
+.tabela-delegacoes td:first-child {
+    position: sticky;
+    left: 0;
+    background: #fff;
+    font-weight: bold;
+    z-index: 3;
+}
+
+/* Ajustes específicos de largura */
+.tabela-delegacoes th:nth-child(3),
+.tabela-delegacoes td:nth-child(3) {
+    min-width: 130px; /* Status maior */
+}
+
+.tabela-delegacoes th:nth-child(6),
+.tabela-delegacoes td:nth-child(6) {
+    min-width: 90px; /* Nota um pouco maior */
+}
+
+.tabela-delegacoes th:nth-child(10),
+.tabela-delegacoes td:nth-child(10) {
+    max-width: 180px; /* Resposta menor */
+}
+
+.tabela-delegacoes th:nth-child(11),
+.tabela-delegacoes td:nth-child(11) {
+    max-width: 180px; /* Obs menor */
+}
+
+/* Evita quebra feia */
+.tabela-delegacoes td {
+    white-space: nowrap;
+}
 </style>
 
 <div style="margin-bottom:15px;display:flex;gap:10px;flex-wrap:wrap">
@@ -4550,7 +4606,8 @@ tr.analisado td:first-child::before {
 </div>
 
 {% if requisicoes %}
-<table>
+<div class="table-container">
+<table class="tabela-delegacoes">
     <tr>
         <th>Chave</th>
         <th>Início</th>
@@ -4648,6 +4705,7 @@ tr.analisado td:first-child::before {
     </tr>
     {% endfor %}
 </table>
+</div>
 
 <script>
 document.querySelectorAll(".status-select").forEach(sel => {

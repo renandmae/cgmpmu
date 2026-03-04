@@ -691,8 +691,10 @@ tr.analisado { background:#e6ffed; }
 
 
   <meta charset='utf-8'>
-  <title>Sistema de Horas</title>
-
+  <title>PAINT 2026 - Controle Horas</title>
+  <link rel="icon" type="image/png"
+      href="https://drive.google.com/uc?export=download&id=1w4vooaQP7XbsXiRFUPman4HcIa1QVbkH">
+  
 </head>
 <body>
 <header>

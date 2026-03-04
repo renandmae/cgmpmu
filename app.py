@@ -632,6 +632,50 @@ tr.andamento { background:#ffe5e5; }
 tr.analisando { background:#fff6d6; }
 tr.analisado { background:#e6ffed; }
 
+/* ============================= */
+/* TABELA RESPONSIVA PROFISSIONAL */
+/* ============================= */
+
+.table-wrapper {
+    position: relative;
+}
+
+.table-scroll-top,
+.table-scroll-bottom {
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.table-scroll-top {
+    height: 16px;
+}
+
+.table-scroll-top div {
+    height: 1px;
+}
+
+.table-scroll-bottom table {
+    min-width: 1500px; /* ajuste conforme necessário */
+    border-collapse: collapse;
+}
+
+/* Cabeçalho fixo */
+.table-scroll-bottom thead th {
+    position: sticky;
+    top: 0;
+    background: #dce8fb;
+    z-index: 2;
+}
+
+/* Opcional: primeira coluna fixa */
+.table-scroll-bottom td:first-child,
+.table-scroll-bottom th:first-child {
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 3;
+}
+
 </style>
 
 
@@ -6531,8 +6575,13 @@ def requisicoes():
         {% endif %}
     
     </div>
-    <div style="overflow-x:auto; margin-top:10px;">
-    <table id="tbl" style="min-width:1400px;">
+    <div class="table-wrapper">
+    <div class="table-scroll-top">
+        <div></div>
+    </div>
+
+    <div class="table-scroll-bottom">
+        <table id="tbl">
         <tr>
             <th>Chave</th>
             <th>Sigla</th>
@@ -6667,6 +6716,7 @@ def requisicoes():
         {% endfor %}
     </table>
     </div>
+    </div>
     <script>
 
     function salvar(id){
@@ -6717,6 +6767,26 @@ function atualizarCampo(id, campo, valor){
     fetch("/requisicoes", { method:"POST", body:fd });
 }
     </script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const topScroll = document.querySelector(".table-scroll-top");
+    const bottomScroll = document.querySelector(".table-scroll-bottom");
+    const table = document.querySelector("#tbl");
+    const fakeDiv = topScroll.querySelector("div");
+
+    fakeDiv.style.width = table.scrollWidth + "px";
+
+    topScroll.addEventListener("scroll", () => {
+        bottomScroll.scrollLeft = topScroll.scrollLeft;
+    });
+
+    bottomScroll.addEventListener("scroll", () => {
+        topScroll.scrollLeft = bottomScroll.scrollLeft;
+    });
+});
+</script>
+
     """
 
     return render_template_string(

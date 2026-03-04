@@ -636,8 +636,13 @@ tr.analisado { background:#e6ffed; }
 /* TABELA RESPONSIVA PROFISSIONAL */
 /* ============================= */
 
+/* ============================= */
+/* TABELAS GRANDES PROFISSIONAIS */
+/* ============================= */
+
 .table-wrapper {
     position: relative;
+    margin-top: 10px;
 }
 
 .table-scroll-top,
@@ -655,26 +660,32 @@ tr.analisado { background:#e6ffed; }
 }
 
 .table-scroll-bottom table {
-    min-width: 1500px; /* ajuste conforme necessário */
+    min-width: 1500px;
     border-collapse: collapse;
 }
 
-/* Cabeçalho fixo */
+/* Cabeçalho congelado */
 .table-scroll-bottom thead th {
     position: sticky;
     top: 0;
     background: #dce8fb;
-    z-index: 2;
+    z-index: 5;
 }
 
-/* Opcional: primeira coluna fixa */
-.table-scroll-bottom td:first-child,
-.table-scroll-bottom th:first-child {
+/* Primeira coluna congelada */
+.table-scroll-bottom th:first-child,
+.table-scroll-bottom td:first-child {
     position: sticky;
     left: 0;
-    background: #fff;
-    z-index: 3;
+    background: #ffffff;
+    z-index: 6;
+    font-weight: bold; /* 🔥 destaque */
 }
+
+/* Quando houver cor de linha */
+.table-scroll-bottom tr.andamento td:first-child { background:#ffe5e5; }
+.table-scroll-bottom tr.analisando td:first-child { background:#fff7cc; }
+.table-scroll-bottom tr.analisado td:first-child { background:#e5ffe5; }
 
 </style>
 
@@ -4594,7 +4605,11 @@ tr.analisado td:first-child::before {
 </div>
 
 {% if requisicoes %}
-<table>
+<div class="table-wrapper">
+    <div class="table-scroll-top"><div></div></div>
+    <div class="table-scroll-bottom">
+        <table>
+            <thead>
     <tr>
         <th>Chave</th>
         <th>Início</th>
@@ -4691,7 +4706,10 @@ tr.analisado td:first-child::before {
         </td>
     </tr>
     {% endfor %}
-</table>
+            </tbody>
+        </table>
+    </div>
+</div>
 
 <script>
 document.querySelectorAll(".status-select").forEach(sel => {
@@ -6575,29 +6593,29 @@ def requisicoes():
         {% endif %}
     
     </div>
-    <div class="table-wrapper">
-    <div class="table-scroll-top">
-        <div></div>
-    </div>
-
+<div class="table-wrapper">
+    <div class="table-scroll-top"><div></div></div>
     <div class="table-scroll-bottom">
         <table id="tbl">
-        <tr>
-            <th>Chave</th>
-            <th>Sigla</th>
-            <th>Valor</th>
-            <th>Status</th>
-            <th>Tipo</th>
-            <th>Critério</th>
-            <th>Responsável</th>
-            <th>Início</th>
-            <th>Fim</th>
-            <th>Nota</th>
-            <th>Nº Nota</th>
-            <th>Ofício</th>
-            <th>Monitoramento</th>
-            <th>Ações</th>
-        </tr>
+            <thead>
+                <tr>
+                    <th>Chave</th>
+                    <th>Sigla</th>
+                    <th>Valor</th>
+                    <th>Status</th>
+                    <th>Tipo</th>
+                    <th>Critério</th>
+                    <th>Responsável</th>
+                    <th>Início</th>
+                    <th>Fim</th>
+                    <th>Nota</th>
+                    <th>Nº Nota</th>
+                    <th>Ofício</th>
+                    <th>Monitoramento</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
 
         {% for r in rows %}
         <tr class="{{ r.status_analise|lower }}">
@@ -6714,6 +6732,7 @@ def requisicoes():
 
         </tr>
         {% endfor %}
+        </tbody>
     </table>
     </div>
     </div>
@@ -6767,23 +6786,29 @@ function atualizarCampo(id, campo, valor){
     fetch("/requisicoes", { method:"POST", body:fd });
 }
     </script>
-
+    
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    const topScroll = document.querySelector(".table-scroll-top");
-    const bottomScroll = document.querySelector(".table-scroll-bottom");
-    const table = document.querySelector("#tbl");
-    const fakeDiv = topScroll.querySelector("div");
 
-    fakeDiv.style.width = table.scrollWidth + "px";
+    document.querySelectorAll(".table-wrapper").forEach(wrapper => {
 
-    topScroll.addEventListener("scroll", () => {
-        bottomScroll.scrollLeft = topScroll.scrollLeft;
+        const topScroll = wrapper.querySelector(".table-scroll-top");
+        const bottomScroll = wrapper.querySelector(".table-scroll-bottom");
+        const table = wrapper.querySelector("table");
+        const fakeDiv = topScroll.querySelector("div");
+
+        fakeDiv.style.width = table.scrollWidth + "px";
+
+        topScroll.addEventListener("scroll", () => {
+            bottomScroll.scrollLeft = topScroll.scrollLeft;
+        });
+
+        bottomScroll.addEventListener("scroll", () => {
+            topScroll.scrollLeft = bottomScroll.scrollLeft;
+        });
+
     });
 
-    bottomScroll.addEventListener("scroll", () => {
-        topScroll.scrollLeft = bottomScroll.scrollLeft;
-    });
 });
 </script>
 

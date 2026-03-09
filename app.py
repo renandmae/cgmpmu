@@ -7493,6 +7493,8 @@ tabela_colaboradores=tabela_colaboradores,  # 👈 FALTAVA ISSO
 fmt_br=fmt_br
 )
 
+import requests
+import re
 DEEPSEEK_API_KEY = "sk-8e28b108dfa04094a21ea02291ea0a4e"
 
 def obter_schema():
@@ -7504,6 +7506,7 @@ def obter_schema():
     SELECT table_name
     FROM information_schema.tables
     WHERE table_schema='public'
+    AND table_type='BASE TABLE'
     """)
 
     tabelas = [t[0] for t in cur.fetchall()]
@@ -7545,20 +7548,30 @@ def gerar_sql(pergunta):
     }
 
     prompt = f"""
-    Você gera SQL PostgreSQL.
-    
-    SCHEMA DO BANCO:
-    {schema}
-    
-    Pergunta:
-    {pergunta}
-    
-    Responda apenas com SQL.
-    """
+Você é especialista em PostgreSQL.
+
+Gere um SQL para responder a pergunta.
+
+REGRAS:
+
+- Retorne apenas SQL
+- Use apenas SELECT
+- Use apenas tabelas listadas
+- Para contagens use COUNT(*)
+- Não explique nada
+
+SCHEMA DO BANCO:
+
+{schema}
+
+PERGUNTA:
+{pergunta}
+"""
 
     data = {
         "model": "deepseek-chat",
         "messages": [
+            {"role": "system", "content": "Você gera SQL PostgreSQL."},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0
@@ -7566,23 +7579,21 @@ def gerar_sql(pergunta):
 
     r = requests.post(url, headers=headers, json=data)
 
-    print("STATUS API:", r.status_code)
-    print("RESPOSTA API:", r.text)
+    if r.status_code != 200:
+        raise Exception(r.text)
 
     resposta = r.json()
 
     sql = resposta["choices"][0]["message"]["content"]
 
-    import re
+    sql = sql.replace("```sql","").replace("```","").strip()
 
-    sql = re.findall(r"SELECT.*", sql, re.IGNORECASE | re.DOTALL)
-    
-    if sql:
-        sql = sql[0]
+    sql_match = re.search(r"SELECT .*", sql, re.IGNORECASE | re.DOTALL)
+
+    if sql_match:
+        return sql_match.group(0)
     else:
-        sql = ""
-
-    return sql
+        return ""
 
 def explicar(pergunta, colunas, dados):
 
@@ -7629,25 +7640,24 @@ def gerar_grafico(colunas, dados):
     valores = [d[1] for d in dados[:20]]
 
     return f"""
-<canvas id='grafico'></canvas>
+<canvas id="grafico"></canvas>
 
-<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
 
-new Chart(
-document.getElementById('grafico'),
-{{
-type:'bar',
-data:{{
-labels:{labels},
-datasets:[{{
-label:'{colunas[1]}',
-data:{valores}
+const ctx = document.getElementById('grafico');
+
+new Chart(ctx, {{
+type: 'bar',
+data: {{
+labels: {labels},
+datasets: [{{
+label: '{colunas[1]}',
+data: {valores}
 }}]
 }}
-}}
-)
+}})
 
 </script>
 """
@@ -7671,12 +7681,7 @@ def ia():
 
             sql = gerar_sql(pergunta)
 
-            # TESTE FORÇADO
-            if pergunta.lower() == "teste":
-                sql = "SELECT COUNT(*) FROM colaboradores"
-       
             print("SQL GERADO:", sql)
-            resultado = f"<pre>DEBUG SQL: {sql}</pre>"
 
             con = get_db()
             cur = con.cursor()
@@ -7689,8 +7694,7 @@ def ia():
 
             con.close()
 
-            tabela = "<table border=1 style='border-collapse:collapse'>"
-
+            tabela = "<table border=1 style='border-collapse:collapse;'>"
             tabela += "<tr>"
 
             for c in colunas:
@@ -7717,27 +7721,23 @@ def ia():
 
         except Exception as e:
 
-            resultado = str(e)
+            resultado = f"Erro: {str(e)}"
 
     html = f"""
 
 <h2>Assistente IA</h2>
 
 <form method="post">
-
 <input name="pergunta" style="width:70%">
 <button>Perguntar</button>
-
 </form>
 
 <br>
 
 <b>SQL gerado:</b>
-
 <pre>{sql}</pre>
 
 <b>Resultado:</b>
-
 {resultado}
 
 <br><br>
@@ -7747,9 +7747,7 @@ def ia():
 <br><br>
 
 <b>Explicação:</b>
-
 <br>
-
 {explicacao}
 
 <br><br>

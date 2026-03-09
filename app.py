@@ -17,6 +17,8 @@ from psycopg2 import IntegrityError
 
 from datetime import datetime
 
+import requests
+
 def parse_data_excel(valor):
     if not valor:
         return None

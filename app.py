@@ -7545,31 +7545,20 @@ def gerar_sql(pergunta):
     }
 
     prompt = f"""
-Você é um especialista em PostgreSQL.
-
-Sua tarefa é gerar apenas SQL válido.
-
-REGRAS:
-
-- Retorne SOMENTE o SQL
-- Nunca explique
-- Use apenas SELECT
-- Nunca invente tabelas
-- Use apenas tabelas listadas
-- Para contar registros use COUNT(*)
-
-SCHEMA:
-
-{schema}
-
-PERGUNTA:
-{pergunta}
-"""
+    Você gera SQL PostgreSQL.
+    
+    SCHEMA DO BANCO:
+    {schema}
+    
+    Pergunta:
+    {pergunta}
+    
+    Responda apenas com SQL.
+    """
 
     data = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "Você gera SQL PostgreSQL."},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0
@@ -7577,8 +7566,8 @@ PERGUNTA:
 
     r = requests.post(url, headers=headers, json=data)
 
-    if r.status_code != 200:
-        raise Exception(r.text)
+    print("STATUS API:", r.status_code)
+    print("RESPOSTA API:", r.text)
 
     resposta = r.json()
 

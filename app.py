@@ -17,8 +17,6 @@ from psycopg2 import IntegrityError
 
 from datetime import datetime
 
-from groq import Groq
-
 def parse_data_excel(valor):
     if not valor:
         return None

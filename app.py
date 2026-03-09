@@ -7497,7 +7497,38 @@ GROQ_API_KEY = "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"
 
 client = Groq(api_key=GROQ_API_KEY)
 
+def obter_schema():
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_schema='public'
+    ORDER BY table_name, ordinal_position
+    """)
+
+    dados = cur.fetchall()
+
+    con.close()
+
+    schema = ""
+    tabela_atual = None
+
+    for tabela, coluna in dados:
+
+        if tabela != tabela_atual:
+            schema += f"\nTabela {tabela}\n"
+            tabela_atual = tabela
+
+        schema += coluna + ","
+
+    return schema
+
 def gerar_sql(pergunta):
+
+    schema = obter_schema()
 
     prompt = f"""
 Você é um especialista em PostgreSQL que traduz perguntas em português para SQL.
@@ -7512,24 +7543,10 @@ REGRAS OBRIGATÓRIAS:
 - Não use ```sql
 - Use LIMIT 50 apenas quando retornar registros
 - Quando for contagem use COUNT(*)
-- Use nomes de tabelas exatamente como fornecidos
 
-ESTRUTURA DO BANCO:
+ESTRUTURA REAL DO BANCO:
 
-Tabela os
-id,codigo,item_paint,resumo,unidade,dt_inicio,dt_previsao_fim,dt_conclusao,plan,exec,rp,rf,status
-
-Tabela requisicoes
-
-Tabela colaboradores
-
-Tabela atendimentos
-
-Tabela horas
-
-Tabela consultorias
-
-Tabela projetos_paint
+{schema}
 
 Pergunta do usuário:
 {pergunta}

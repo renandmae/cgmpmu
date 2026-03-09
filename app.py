@@ -7495,105 +7495,83 @@ fmt_br=fmt_br
 
 import requests
 import re
+
+
+
 DEEPSEEK_API_KEY = "sk-8e28b108dfa04094a21ea02291ea0a4e"
 
-def obter_schema():
+def get_schema():
 
-    con = get_db()
-    cur = con.cursor()
+    conn = get_db()
+    cur = conn.cursor()
 
     cur.execute("""
     SELECT table_name
     FROM information_schema.tables
-    WHERE table_schema='public'
-    AND table_type='BASE TABLE'
+    WHERE table_schema = 'public'
     """)
 
-    tabelas = [t[0] for t in cur.fetchall()]
+    tables = cur.fetchall()
 
     schema = ""
 
-    for tabela in tabelas:
+    for t in tables:
+        table = t["table_name"]
 
-        cur.execute("""
+        cur.execute(f"""
         SELECT column_name
         FROM information_schema.columns
-        WHERE table_schema='public'
-        AND table_name=%s
-        ORDER BY ordinal_position
-        """,(tabela,))
+        WHERE table_name = '{table}'
+        """)
 
-        cols = [c[0] for c in cur.fetchall()]
+        cols = cur.fetchall()
 
-        schema += f"TABELA: {tabela}\n"
+        col_names = [c["column_name"] for c in cols]
 
-        for c in cols:
-            schema += f"- {c}\n"
+        schema += f"Tabela {table}: {', '.join(col_names)}\n"
 
-        schema += "\n"
-
-    con.close()
+    cur.close()
+    conn.close()
 
     return schema
 
-def gerar_sql(pergunta):
+def executar_sql(sql):
 
-    schema = obter_schema()
+    conn = get_db()
+    cur = conn.cursor()
 
-    url = "https://api.deepseek.com/v1/chat/completions"
+    cur.execute(sql)
 
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    rows = cur.fetchall()
 
-    prompt = f"""
-Você é especialista em PostgreSQL.
+    cur.close()
+    conn.close()
 
-Gere um SQL para responder a pergunta.
+    return rows
 
-REGRAS:
+@app.route("/ia/perguntar", methods=["POST"])
+def perguntar_ia():
 
-- Retorne apenas SQL
-- Use apenas SELECT
-- Use apenas tabelas listadas
-- Para contagens use COUNT(*)
-- Não explique nada
+    pergunta = request.json["pergunta"]
 
-SCHEMA DO BANCO:
+    schema = get_schema()
 
-{schema}
+    sql = gerar_sql(pergunta, schema)
 
-PERGUNTA:
-{pergunta}
-"""
+    try:
+        resultado = executar_sql(sql)
 
-    data = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": "Você gera SQL PostgreSQL."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0
-    }
+        return jsonify({
+            "sql": sql,
+            "resultado": resultado
+        })
 
-    r = requests.post(url, headers=headers, json=data)
+    except Exception as e:
 
-    if r.status_code != 200:
-        raise Exception(r.text)
-
-    resposta = r.json()
-
-    sql = resposta["choices"][0]["message"]["content"]
-
-    sql = sql.replace("```sql","").replace("```","").strip()
-
-    sql_match = re.search(r"SELECT .*", sql, re.IGNORECASE | re.DOTALL)
-
-    if sql_match:
-        return sql_match.group(0)
-    else:
-        return ""
+        return jsonify({
+            "sql": sql,
+            "erro": str(e)
+        })
 
 def explicar(pergunta, colunas, dados):
 

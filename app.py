@@ -7497,7 +7497,12 @@ import requests
 
 GROK_API_KEY = "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"
 
-GROK_URL = "https://api.x.ai/v1/chat/completions"
+GROK_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+headers = {
+    "Authorization": f"Bearer {GROK_API_KEY}",
+    "Content-Type": "application/json"
+}
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
@@ -7552,9 +7557,8 @@ Estrutura do banco:
 {schema}
 
 Regras:
-
 - Gere apenas SQL
-- Apenas SELECT
+- Use apenas SELECT
 - Não explique
 - Não use markdown
 - Apenas query SQL
@@ -7576,7 +7580,11 @@ Pergunta:
         "temperature": 0
     }
 
-    r = requests.post(GROK_URL, headers=headers, json=data)
+    r = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers=headers,
+        json=data
+    )
 
     resposta = r.json()
 

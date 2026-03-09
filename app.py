@@ -7610,7 +7610,7 @@ ESTRUTURA DO BANCO:
     })
 
     resposta = client.chat.completions.create(
-        model="model="llama-3.3-70b-versatile"",
+        model="llama-3.3-70b-versatile",
         temperature=0,
         messages=mensagens
     )

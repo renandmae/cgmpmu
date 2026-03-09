@@ -7545,19 +7545,20 @@ def gerar_sql(pergunta):
     }
 
     prompt = f"""
-Você é especialista em PostgreSQL.
+Você é um especialista em PostgreSQL.
 
-Gere SQL baseado na pergunta.
+Sua tarefa é gerar apenas SQL válido.
 
-Regras:
+REGRAS:
 
-- retornar apenas SQL
-- usar apenas SELECT
-- não explicar nada
-- usar apenas tabelas do schema
-- quando listar dados usar LIMIT 50
+- Retorne SOMENTE o SQL
+- Nunca explique
+- Use apenas SELECT
+- Nunca invente tabelas
+- Use apenas tabelas listadas
+- Para contar registros use COUNT(*)
 
-SCHEMA DO BANCO:
+SCHEMA:
 
 {schema}
 
@@ -7568,12 +7569,16 @@ PERGUNTA:
     data = {
         "model": "deepseek-chat",
         "messages": [
+            {"role": "system", "content": "Você gera SQL PostgreSQL."},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0
     }
 
     r = requests.post(url, headers=headers, json=data)
+
+    if r.status_code != 200:
+        raise Exception(r.text)
 
     resposta = r.json()
 
@@ -7669,6 +7674,7 @@ def ia():
         try:
 
             sql = gerar_sql(pergunta)
+            print("SQL GERADO:", sql)
 
             con = get_db()
             cur = con.cursor()

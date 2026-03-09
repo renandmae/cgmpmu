@@ -7493,45 +7493,24 @@ tabela_colaboradores=tabela_colaboradores,  # 👈 FALTAVA ISSO
 fmt_br=fmt_br
 )
 
-GROQ_API_KEY = "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"
-
-client = Groq(api_key=GROQ_API_KEY)
-
-DESCRICAO_TABELAS = {
-
-"colaboradores": "lista de usuários do sistema e funcionários",
-
-"horas": "registro de horas trabalhadas por colaboradores em projetos",
-
-"horas_requisicoes": "registro de horas relacionadas a requisições administrativas",
-
-"requisicoes": "requisições administrativas feitas por servidores",
-
-"requisicoes_staging": "tabela temporária de importação de requisições",
-
-"requisicoes_staging_completa": "dados completos importados de requisições",
-
-"checklist_contratacao": "checklist de documentos para contratação",
-
-"checklist_contratacao_requisicoes": "checklist relacionado a requisições",
-
-"atendimentos": "registro de atendimentos realizados",
-
-"consultorias": "registro de consultorias realizadas",
-
-"os": "ordens de serviço registradas",
-
-"projeto_paint": "dados relacionados ao projeto PAINT"
-}
+DEEPSEEK_API_KEY = "sk-8e28b108dfa04094a21ea02291ea0a4e"
 
 def obter_schema():
 
     con = get_db()
     cur = con.cursor()
 
+    cur.execute("""
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema='public'
+    """)
+
+    tabelas = [t[0] for t in cur.fetchall()]
+
     schema = ""
 
-    for tabela in DESCRICAO_TABELAS:
+    for tabela in tabelas:
 
         cur.execute("""
         SELECT column_name
@@ -7544,8 +7523,6 @@ def obter_schema():
         cols = [c[0] for c in cur.fetchall()]
 
         schema += f"TABELA: {tabela}\n"
-        schema += f"DESCRICAO: {DESCRICAO_TABELAS[tabela]}\n"
-        schema += "COLUNAS:\n"
 
         for c in cols:
             schema += f"- {c}\n"
@@ -7560,22 +7537,27 @@ def gerar_sql(pergunta):
 
     schema = obter_schema()
 
+    url = "https://api.deepseek.com/v1/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
     prompt = f"""
 Você é especialista em PostgreSQL.
 
 Gere SQL baseado na pergunta.
 
-REGRAS:
+Regras:
 
 - retornar apenas SQL
 - usar apenas SELECT
-- usar somente tabelas do schema
-- não inventar tabelas
 - não explicar nada
-- não usar markdown
-- quando listar registros usar LIMIT 50
+- usar apenas tabelas do schema
+- quando listar dados usar LIMIT 50
 
-SCHEMA:
+SCHEMA DO BANCO:
 
 {schema}
 
@@ -7583,69 +7565,35 @@ PERGUNTA:
 {pergunta}
 """
 
-    resp = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        temperature=0,
-        messages=[{"role":"user","content":prompt}]
-    )
+    data = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0
+    }
 
-    sql = resp.choices[0].message.content.strip()
+    r = requests.post(url, headers=headers, json=data)
 
-    sql = sql.replace("```sql","").replace("```","")
+    resposta = r.json()
+
+    sql = resposta["choices"][0]["message"]["content"]
+
+    sql = sql.replace("```sql","").replace("```","").strip()
 
     return sql
 
-def sql_seguro(sql):
+def explicar(pergunta, colunas, dados):
 
-    proibidos = [
-        "DELETE","UPDATE","INSERT","DROP",
-        "ALTER","TRUNCATE","CREATE"
-    ]
+    url = "https://api.deepseek.com/v1/chat/completions"
 
-    s = sql.upper()
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-    for p in proibidos:
-        if p in s:
-            return False
-
-    if not s.startswith("SELECT"):
-        return False
-
-    return True
-
-def gerar_grafico(colunas,dados):
-
-    if len(colunas)!=2:
-        return ""
-
-    labels=[str(d[0]) for d in dados[:20]]
-    valores=[d[1] for d in dados[:20]]
-
-    return f"""
-<canvas id="grafico"></canvas>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<script>
-const ctx=document.getElementById('grafico');
-
-new Chart(ctx,{{
-type:'bar',
-data:{{
-labels:{labels},
-datasets:[{{
-label:'{colunas[1]}',
-data:{valores}
-}}]
-}}
-}});
-</script>
-"""
-
-def explicar_resultado(pergunta,dados,colunas):
-
-    prompt=f"""
-Explique em português o resultado.
+    prompt = f"""
+Explique em português o resultado da consulta.
 
 Pergunta:
 {pergunta}
@@ -7654,114 +7602,135 @@ Colunas:
 {colunas}
 
 Dados:
-{dados}
+{dados[:20]}
 """
 
-    resp = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        temperature=0.3,
-        messages=[{"role":"user","content":prompt}]
-    )
+    data = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3
+    }
 
-    return resp.choices[0].message.content
+    r = requests.post(url, headers=headers, json=data)
 
-@app.route("/ia",methods=["GET","POST"])
+    resposta = r.json()
+
+    return resposta["choices"][0]["message"]["content"]
+
+def gerar_grafico(colunas, dados):
+
+    if len(colunas) != 2:
+        return ""
+
+    labels = [str(d[0]) for d in dados[:20]]
+    valores = [d[1] for d in dados[:20]]
+
+    return f"""
+<canvas id='grafico'></canvas>
+
+<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
+
+<script>
+
+new Chart(
+document.getElementById('grafico'),
+{{
+type:'bar',
+data:{{
+labels:{labels},
+datasets:[{{
+label:'{colunas[1]}',
+data:{valores}
+}}]
+}}
+}}
+)
+
+</script>
+"""
+
+@app.route("/ia", methods=["GET","POST"])
 def ia():
 
     if "user" not in session:
         return redirect("/")
 
-    resposta=""
-    sql_gerado=""
-    explicacao=""
-    grafico=""
+    sql = ""
+    resultado = ""
+    explicacao = ""
+    grafico = ""
 
-    if request.method=="POST":
+    if request.method == "POST":
 
-        pergunta=request.form.get("pergunta")
+        pergunta = request.form.get("pergunta")
 
         try:
 
-            sql_gerado=gerar_sql(pergunta)
+            sql = gerar_sql(pergunta)
 
-            if not sql_seguro(sql_gerado):
-                resposta="Consulta bloqueada por segurança"
+            con = get_db()
+            cur = con.cursor()
 
-            else:
+            cur.execute(sql)
 
-                con=get_db()
-                cur=con.cursor()
+            dados = cur.fetchall()
 
-                try:
+            colunas = [d[0] for d in cur.description]
 
-                    cur.execute(sql_gerado)
+            con.close()
 
-                except Exception as erro:
+            tabela = "<table border=1 style='border-collapse:collapse'>"
 
-                    con.rollback()
+            tabela += "<tr>"
 
-                    resposta=f"Erro SQL: {erro}"
-                    con.close()
+            for c in colunas:
+                tabela += f"<th>{c}</th>"
 
-                    return resposta
+            tabela += "</tr>"
 
-                dados=cur.fetchall()
+            for r in dados:
 
-                colunas=[d[0] for d in cur.description]
+                tabela += "<tr>"
 
-                con.commit()
-                con.close()
+                for v in r:
+                    tabela += f"<td>{v}</td>"
 
-                explicacao=explicar_resultado(
-                    pergunta,
-                    dados[:20],
-                    colunas
-                )
+                tabela += "</tr>"
 
-                grafico=gerar_grafico(colunas,dados)
+            tabela += "</table>"
 
-                tabela="<table border=1 style='border-collapse:collapse;'>"
-                tabela+="<tr>"
+            resultado = tabela
 
-                for c in colunas:
-                    tabela+=f"<th>{c}</th>"
+            grafico = gerar_grafico(colunas, dados)
 
-                tabela+="</tr>"
-
-                for r in dados:
-                    tabela+="<tr>"
-
-                    for v in r:
-                        tabela+=f"<td>{v}</td>"
-
-                    tabela+="</tr>"
-
-                tabela+="</table>"
-
-                resposta=tabela
+            explicacao = explicar(pergunta, colunas, dados)
 
         except Exception as e:
 
-            resposta=str(e)
+            resultado = str(e)
 
-    html=f"""
+    html = f"""
 
 <h2>Assistente IA</h2>
 
 <form method="post">
+
 <input name="pergunta" style="width:70%">
-<button>Consultar</button>
+<button>Perguntar</button>
+
 </form>
 
 <br>
 
 <b>SQL gerado:</b>
 
-<pre>{sql_gerado}</pre>
+<pre>{sql}</pre>
 
 <b>Resultado:</b>
 
-{resposta}
+{resultado}
 
 <br><br>
 

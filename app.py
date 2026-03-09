@@ -7610,7 +7610,7 @@ ESTRUTURA DO BANCO:
     })
 
     resposta = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         temperature=0,
         messages=mensagens
     )
@@ -7637,17 +7637,56 @@ def sql_seguro(sql):
         "INSERT",
         "DROP",
         "ALTER",
-        "TRUNCATE"
+        "TRUNCATE",
+        "CREATE",
+        "GRANT",
+        "REVOKE"
     ]
 
     for p in proibidos:
         if p in sql_upper:
             return False
 
-    if not sql_upper.startswith("SELECT"):
+    if ";" in sql:
+        return False
+
+    if not sql_upper.strip().startswith("SELECT"):
         return False
 
     return True
+
+def gerar_grafico(colunas, dados):
+
+    if len(colunas) != 2:
+        return ""
+
+    labels = [str(d[0]) for d in dados[:20]]
+    valores = [d[1] for d in dados[:20]]
+
+    grafico = f"""
+    <canvas id="grafico"></canvas>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+
+    const ctx = document.getElementById('grafico');
+
+    new Chart(ctx, {{
+        type: 'bar',
+        data: {{
+            labels: {labels},
+            datasets: [{{
+                label: '{colunas[1]}',
+                data: {valores}
+            }}]
+        }}
+    }});
+
+    </script>
+    """
+
+    return grafico
 
 def explicar_resultado(pergunta, dados, colunas):
 
@@ -7665,7 +7704,7 @@ Dados:
 """
 
     resposta = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         temperature=0.3,
         messages=[
             {"role":"user","content":prompt}
@@ -7683,6 +7722,7 @@ def ia():
     resposta = ""
     sql_gerado = ""
     explicacao = ""
+    grafico = ""
 
     if request.method == "POST":
 
@@ -7697,6 +7737,7 @@ def ia():
             sql_gerado = gerar_sql(pergunta)
 
             if not sql_seguro(sql_gerado):
+
                 resposta = "⚠ Consulta bloqueada por segurança."
 
             else:
@@ -7710,9 +7751,11 @@ def ia():
 
                 except Exception as erro_sql:
 
-                    # pede para IA corrigir o SQL
+                    con.rollback()
+
                     sql_corrigido = gerar_sql(
                         pergunta + f"""
+
 O SQL anterior gerou erro no PostgreSQL.
 
 SQL anterior:
@@ -7726,6 +7769,7 @@ Gere um SQL corrigido.
                     )
 
                     if not sql_seguro(sql_corrigido):
+
                         resposta = "⚠ SQL corrigido bloqueado por segurança."
                         con.close()
                         return resposta
@@ -7736,9 +7780,17 @@ Gere um SQL corrigido.
 
                 dados = cur.fetchall()
 
+                con.commit()
+
                 colunas = [desc[0] for desc in cur.description]
 
-                explicacao = explicar_resultado(pergunta, dados[:20], colunas)
+                explicacao = explicar_resultado(
+                    pergunta,
+                    dados[:20],
+                    colunas
+                )
+
+                grafico = gerar_grafico(colunas, dados)
 
                 con.close()
 
@@ -7779,6 +7831,10 @@ Gere um SQL corrigido.
 
     <b>Resultado:</b>
     {resposta}
+
+    <br><br>
+
+    {grafico}
 
     <br><br>
 

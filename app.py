@@ -7529,9 +7529,9 @@ def obter_schema():
     con = get_db()
     cur = con.cursor()
 
-    tabelas_schema = {}
+    schema = ""
 
-    for tabela in DESCRICAO_TABELAS.keys():
+    for tabela in DESCRICAO_TABELAS:
 
         cur.execute("""
         SELECT column_name
@@ -7541,15 +7541,7 @@ def obter_schema():
         ORDER BY ordinal_position
         """,(tabela,))
 
-        cols = [r[0] for r in cur.fetchall()]
-
-        tabelas_schema[tabela] = cols
-
-    con.close()
-
-    schema = ""
-
-    for tabela, cols in tabelas_schema.items():
+        cols = [c[0] for c in cur.fetchall()]
 
         schema += f"TABELA: {tabela}\n"
         schema += f"DESCRICAO: {DESCRICAO_TABELAS[tabela]}\n"
@@ -7560,49 +7552,26 @@ def obter_schema():
 
         schema += "\n"
 
+    con.close()
+
     return schema
 
 def gerar_sql(pergunta):
 
     schema = obter_schema()
 
-    exemplos = """
-
-EXEMPLOS:
-
-Pergunta: quantos colaboradores existem
-SQL:
-SELECT COUNT(*) AS total FROM colaboradores;
-
-Pergunta: listar colaboradores
-SQL:
-SELECT * FROM colaboradores LIMIT 50;
-
-Pergunta: horas por colaborador
-SQL:
-SELECT colaborador_id, SUM(horas) AS total_horas
-FROM horas
-GROUP BY colaborador_id
-LIMIT 50;
-
-Pergunta: atendimentos por colaborador
-SQL:
-SELECT colaborador_id, COUNT(*) AS total
-FROM atendimentos
-GROUP BY colaborador_id
-LIMIT 50;
-"""
-
     prompt = f"""
-Você gera SQL PostgreSQL.
+Você é especialista em PostgreSQL.
+
+Gere SQL baseado na pergunta.
 
 REGRAS:
 
-- apenas SELECT
-- não usar DELETE UPDATE INSERT DROP ALTER
+- retornar apenas SQL
+- usar apenas SELECT
 - usar somente tabelas do schema
-- não inventar nomes de tabela
-- responder apenas SQL
+- não inventar tabelas
+- não explicar nada
 - não usar markdown
 - quando listar registros usar LIMIT 50
 
@@ -7610,40 +7579,36 @@ SCHEMA:
 
 {schema}
 
-{exemplos}
-
-Pergunta:
+PERGUNTA:
 {pergunta}
 """
 
-    resposta = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
+    resp = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
         temperature=0,
-        messages=[
-            {"role":"user","content":prompt}
-        ]
+        messages=[{"role":"user","content":prompt}]
     )
 
-    sql = resposta.choices[0].message.content.strip()
+    sql = resp.choices[0].message.content.strip()
 
-    sql = sql.replace("```sql","").replace("```","").strip()
+    sql = sql.replace("```sql","").replace("```","")
 
     return sql
 
 def sql_seguro(sql):
 
-    sql_upper = sql.upper()
-
     proibidos = [
-        "DELETE","UPDATE","INSERT","DROP","ALTER",
-        "TRUNCATE","CREATE"
+        "DELETE","UPDATE","INSERT","DROP",
+        "ALTER","TRUNCATE","CREATE"
     ]
 
+    s = sql.upper()
+
     for p in proibidos:
-        if p in sql_upper:
+        if p in s:
             return False
 
-    if not sql_upper.startswith("SELECT"):
+    if not s.startswith("SELECT"):
         return False
 
     return True
@@ -7680,7 +7645,7 @@ data:{valores}
 def explicar_resultado(pergunta,dados,colunas):
 
     prompt=f"""
-Explique em português simples o resultado.
+Explique em português o resultado.
 
 Pergunta:
 {pergunta}
@@ -7692,8 +7657,8 @@ Dados:
 {dados}
 """
 
-    resp=client.chat.completions.create(
-        model="openai/gpt-oss-120b",
+    resp = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
         temperature=0.3,
         messages=[{"role":"user","content":prompt}]
     )
@@ -7720,7 +7685,7 @@ def ia():
             sql_gerado=gerar_sql(pergunta)
 
             if not sql_seguro(sql_gerado):
-                resposta="Consulta bloqueada"
+                resposta="Consulta bloqueada por segurança"
 
             else:
 
@@ -7728,18 +7693,20 @@ def ia():
                 cur=con.cursor()
 
                 try:
+
                     cur.execute(sql_gerado)
 
-                except Exception as e:
+                except Exception as erro:
 
                     con.rollback()
 
-                    resposta=f"Erro SQL: {e}"
+                    resposta=f"Erro SQL: {erro}"
                     con.close()
 
                     return resposta
 
                 dados=cur.fetchall()
+
                 colunas=[d[0] for d in cur.description]
 
                 con.commit()
@@ -7753,7 +7720,7 @@ def ia():
 
                 grafico=gerar_grafico(colunas,dados)
 
-                tabela="<table border=1>"
+                tabela="<table border=1 style='border-collapse:collapse;'>"
                 tabela+="<tr>"
 
                 for c in colunas:
@@ -7763,8 +7730,10 @@ def ia():
 
                 for r in dados:
                     tabela+="<tr>"
+
                     for v in r:
                         tabela+=f"<td>{v}</td>"
+
                     tabela+="</tr>"
 
                 tabela+="</table>"
@@ -7777,7 +7746,7 @@ def ia():
 
     html=f"""
 
-<h3>Assistente IA</h3>
+<h2>Assistente IA</h2>
 
 <form method="post">
 <input name="pergunta" style="width:70%">
@@ -7786,10 +7755,12 @@ def ia():
 
 <br>
 
-<b>SQL:</b>
+<b>SQL gerado:</b>
+
 <pre>{sql_gerado}</pre>
 
 <b>Resultado:</b>
+
 {resposta}
 
 <br><br>
@@ -7798,7 +7769,10 @@ def ia():
 
 <br><br>
 
-<b>Explicação:</b><br>
+<b>Explicação:</b>
+
+<br>
+
 {explicacao}
 
 <br><br>

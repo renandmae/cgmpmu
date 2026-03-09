@@ -7495,6 +7495,8 @@ fmt_br=fmt_br
 
 import requests
 
+GROQ_MODEL = "openai/gpt-oss-120b"
+
 GROK_API_KEY = "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"
 
 GROK_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -7561,7 +7563,7 @@ Regras:
 - Use apenas SELECT
 - Não explique
 - Não use markdown
-- Apenas query SQL
+- Retorne apenas SQL
 
 Pergunta:
 {pergunta}
@@ -7573,9 +7575,16 @@ Pergunta:
     }
 
     data = {
-        "model": "llama-3.1-70b-versatile",
+        "model": GROQ_MODEL,
         "messages": [
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "Você gera apenas SQL PostgreSQL."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
         ],
         "temperature": 0
     }

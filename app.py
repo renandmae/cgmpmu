@@ -7610,7 +7610,7 @@ ESTRUTURA DO BANCO:
     })
 
     resposta = client.chat.completions.create(
-        model="mixtral-8x7b-32768",
+        model="model="llama-3.3-70b-versatile"",
         temperature=0,
         messages=mensagens
     )
@@ -7686,6 +7686,10 @@ def ia():
 
     if request.method == "POST":
 
+        if "limpar" in request.form:
+            session.pop("chat_sql", None)
+            return redirect("/ia")
+
         pergunta = request.form.get("pergunta")
 
         try:
@@ -7694,12 +7698,41 @@ def ia():
 
             if not sql_seguro(sql_gerado):
                 resposta = "⚠ Consulta bloqueada por segurança."
+
             else:
 
                 con = get_db()
                 cur = con.cursor()
 
-                cur.execute(sql_gerado)
+                try:
+
+                    cur.execute(sql_gerado)
+
+                except Exception as erro_sql:
+
+                    # pede para IA corrigir o SQL
+                    sql_corrigido = gerar_sql(
+                        pergunta + f"""
+O SQL anterior gerou erro no PostgreSQL.
+
+SQL anterior:
+{sql_gerado}
+
+Erro:
+{erro_sql}
+
+Gere um SQL corrigido.
+"""
+                    )
+
+                    if not sql_seguro(sql_corrigido):
+                        resposta = "⚠ SQL corrigido bloqueado por segurança."
+                        con.close()
+                        return resposta
+
+                    sql_gerado = sql_corrigido
+
+                    cur.execute(sql_gerado)
 
                 dados = cur.fetchall()
 
@@ -7762,9 +7795,6 @@ def ia():
 
     <a href="/menu">Voltar</a>
     """
-
-    if "limpar" in request.form:
-        session.pop("chat_sql",None)
 
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),

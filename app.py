@@ -7510,22 +7510,23 @@ def obter_schema():
     """)
 
     dados = cur.fetchall()
-
     con.close()
 
     tabelas = {}
 
     for tabela, coluna in dados:
-        if tabela not in tabelas:
-            tabelas[tabela] = []
-
-        tabelas[tabela].append(coluna)
+        tabelas.setdefault(tabela, []).append(coluna)
 
     schema = ""
 
     for tabela, colunas in tabelas.items():
-        schema += f"\nTabela {tabela}:\n"
-        schema += ", ".join(colunas)
+
+        schema += f"TABELA: {tabela}\n"
+        schema += "COLUNAS:\n"
+
+        for c in colunas:
+            schema += f"- {c}\n"
+
         schema += "\n"
 
     return schema
@@ -7548,12 +7549,13 @@ REGRAS OBRIGATÓRIAS:
 - Use LIMIT 50 apenas quando retornar registros
 - Quando for contagem use COUNT(*)
 
-ESTRUTURA REAL DO BANCO (TABELAS E COLUNAS):
+REGRA CRÍTICA:
 
-Use apenas as tabelas e colunas abaixo.
-Não invente nomes.
+- Use SOMENTE tabelas existentes no schema abaixo
+- NÃO invente tabelas
+- NÃO use nomes genéricos como table_name ou tabela
 
-{schema}
+SCHEMA DO BANCO:
 
 {schema}
 

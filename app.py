@@ -7500,33 +7500,46 @@ client = Groq(api_key=GROQ_API_KEY)
 def gerar_sql(pergunta):
 
     prompt = f"""
-Você é um gerador de SQL para PostgreSQL.
+Você é um especialista em PostgreSQL que traduz perguntas em português para SQL.
 
-REGRAS:
+REGRAS OBRIGATÓRIAS:
+
 - Gere apenas SQL
 - Use apenas SELECT
 - Nunca use DELETE, UPDATE, INSERT, DROP ou ALTER
-- Sempre limite os resultados com LIMIT 50
+- Não use markdown
+- Não explique nada
+- Não use ```sql
+- Use LIMIT 50 apenas quando retornar registros
+- Quando for contagem use COUNT(*)
+- Use nomes de tabelas exatamente como fornecidos
 
-Tabelas do sistema:
+ESTRUTURA DO BANCO:
 
-os(id,codigo,item_paint,resumo,unidade,dt_inicio,dt_previsao_fim,dt_conclusao,plan,exec,rp,rf,status)
+Tabela os
+id,codigo,item_paint,resumo,unidade,dt_inicio,dt_previsao_fim,dt_conclusao,plan,exec,rp,rf,status
 
-requisicoes
-colaboradores
-atendimentos
-horas
-consultorias
-projetos_paint
+Tabela requisicoes
+
+Tabela colaboradores
+
+Tabela atendimentos
+
+Tabela horas
+
+Tabela consultorias
+
+Tabela projetos_paint
 
 Pergunta do usuário:
 {pergunta}
 
-Responda APENAS com SQL.
+SQL:
 """
 
     resposta = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
+        temperature=0,
         messages=[
             {"role": "user", "content": prompt}
         ]
@@ -7534,7 +7547,6 @@ Responda APENAS com SQL.
 
     sql = resposta.choices[0].message.content.strip()
 
-    # remove markdown
     sql = sql.replace("```sql", "")
     sql = sql.replace("```", "")
     sql = sql.strip()
@@ -7562,6 +7574,33 @@ def sql_seguro(sql):
         return False
 
     return True
+
+def explicar_resultado(pergunta, dados, colunas):
+
+    prompt = f"""
+Você é um assistente que explica resultados de consultas de banco de dados.
+
+Pergunta do usuário:
+{pergunta}
+
+Colunas retornadas:
+{colunas}
+
+Dados:
+{dados}
+
+Explique em português de forma simples o que os dados mostram.
+"""
+
+    resposta = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        temperature=0.2,
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    return resposta.choices[0].message.content
 
 @app.route("/ia", methods=["GET","POST"])
 def ia():
@@ -7592,6 +7631,8 @@ def ia():
                 dados = cur.fetchall()
 
                 colunas = [desc[0] for desc in cur.description]
+
+                explicacao = explicar_resultado(pergunta, dados[:20], colunas)
 
                 con.close()
 
@@ -7633,6 +7674,11 @@ def ia():
     {resposta}
 
     <br><br>
+
+    <b>Explicação:</b><br>
+    {explicacao}
+    <br><br>
+    
     <a href="/">Voltar</a>
     """
 

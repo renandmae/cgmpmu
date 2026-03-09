@@ -7610,6 +7610,7 @@ def ia():
 
     resposta = ""
     sql_gerado = ""
+    explicacao = ""
 
     if request.method == "POST":
 

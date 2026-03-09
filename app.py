@@ -7552,12 +7552,11 @@ Estrutura do banco:
 {schema}
 
 Regras:
-
 - Gere apenas SQL
 - Use apenas SELECT
 - Não explique
 - Não use markdown
-- Retorne apenas a query SQL
+- Retorne apenas SQL
 
 Pergunta:
 {pergunta}
@@ -7579,6 +7578,10 @@ Pergunta:
     r = requests.post(GROK_URL, headers=headers, json=data)
 
     resposta = r.json()
+
+    # DEBUG IMPORTANTE
+    if "choices" not in resposta:
+        raise Exception(resposta)
 
     sql = resposta["choices"][0]["message"]["content"]
 

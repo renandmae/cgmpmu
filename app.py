@@ -19,150 +19,6 @@ from datetime import datetime
 
 from groq import Groq
 
-GROQ_API_KEY = "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"
-
-client = Groq(api_key=GROQ_API_KEY)
-
-def gerar_sql(pergunta):
-
-    prompt = f"""
-Você é um gerador de SQL para PostgreSQL.
-
-REGRAS:
-- Gere apenas SQL
-- Use apenas SELECT
-- Nunca use DELETE, UPDATE, INSERT, DROP ou ALTER
-- Sempre limite os resultados com LIMIT 50
-
-Tabelas do sistema:
-
-os(id,codigo,item_paint,resumo,unidade,dt_inicio,dt_previsao_fim,dt_conclusao,plan,exec,rp,rf,status)
-
-requisicoes
-colaboradores
-atendimentos
-horas
-consultorias
-projetos_paint
-
-Pergunta do usuário:
-{pergunta}
-
-Responda APENAS com SQL.
-"""
-
-    resposta = client.chat.completions.create(
-        model="llama3-70b-8192",
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    sql = resposta.choices[0].message.content.strip()
-
-    return sql
-
-def sql_seguro(sql):
-
-    sql_upper = sql.upper()
-
-    proibidos = [
-        "DELETE",
-        "UPDATE",
-        "INSERT",
-        "DROP",
-        "ALTER",
-        "TRUNCATE"
-    ]
-
-    for p in proibidos:
-        if p in sql_upper:
-            return False
-
-    if not sql_upper.startswith("SELECT"):
-        return False
-
-    return True
-
-@app.route("/ia", methods=["GET","POST"])
-def ia():
-
-    if 'user' not in session:
-        return redirect("/")
-
-    resposta = ""
-    sql_gerado = ""
-
-    if request.method == "POST":
-
-        pergunta = request.form.get("pergunta")
-
-        try:
-
-            sql_gerado = gerar_sql(pergunta)
-
-            if not sql_seguro(sql_gerado):
-                resposta = "⚠ Consulta bloqueada por segurança."
-            else:
-
-                con = get_db()
-                cur = con.cursor()
-
-                cur.execute(sql_gerado)
-
-                dados = cur.fetchall()
-
-                colunas = [desc[0] for desc in cur.description]
-
-                con.close()
-
-                tabela = "<table border='1' style='border-collapse:collapse;'>"
-                tabela += "<tr>"
-
-                for c in colunas:
-                    tabela += f"<th>{c}</th>"
-
-                tabela += "</tr>"
-
-                for row in dados:
-                    tabela += "<tr>"
-                    for v in row:
-                        tabela += f"<td>{v}</td>"
-                    tabela += "</tr>"
-
-                tabela += "</table>"
-
-                resposta = tabela
-
-        except Exception as e:
-            resposta = f"Erro: {e}"
-
-    html = f"""
-    <h3>Assistente IA do Sistema</h3>
-
-    <form method="post">
-        <input name="pergunta" style="width:70%" placeholder="Pergunte algo sobre os dados...">
-        <button>Consultar</button>
-    </form>
-
-    <br>
-
-    <b>SQL gerado:</b>
-    <pre>{sql_gerado}</pre>
-
-    <b>Resultado:</b>
-    {resposta}
-
-    <br><br>
-    <a href="/">Voltar</a>
-    """
-
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
-        user=session['user'],
-        perfil=session['perfil']
-    )
-
 def parse_data_excel(valor):
     if not valor:
         return None
@@ -7636,6 +7492,150 @@ barras_valor=barras_valor,
 tabela_colaboradores=tabela_colaboradores,  # 👈 FALTAVA ISSO
 fmt_br=fmt_br
 )
+
+GROQ_API_KEY = "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"
+
+client = Groq(api_key=GROQ_API_KEY)
+
+def gerar_sql(pergunta):
+
+    prompt = f"""
+Você é um gerador de SQL para PostgreSQL.
+
+REGRAS:
+- Gere apenas SQL
+- Use apenas SELECT
+- Nunca use DELETE, UPDATE, INSERT, DROP ou ALTER
+- Sempre limite os resultados com LIMIT 50
+
+Tabelas do sistema:
+
+os(id,codigo,item_paint,resumo,unidade,dt_inicio,dt_previsao_fim,dt_conclusao,plan,exec,rp,rf,status)
+
+requisicoes
+colaboradores
+atendimentos
+horas
+consultorias
+projetos_paint
+
+Pergunta do usuário:
+{pergunta}
+
+Responda APENAS com SQL.
+"""
+
+    resposta = client.chat.completions.create(
+        model="llama3-70b-8192",
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    sql = resposta.choices[0].message.content.strip()
+
+    return sql
+
+def sql_seguro(sql):
+
+    sql_upper = sql.upper()
+
+    proibidos = [
+        "DELETE",
+        "UPDATE",
+        "INSERT",
+        "DROP",
+        "ALTER",
+        "TRUNCATE"
+    ]
+
+    for p in proibidos:
+        if p in sql_upper:
+            return False
+
+    if not sql_upper.startswith("SELECT"):
+        return False
+
+    return True
+
+@app.route("/ia", methods=["GET","POST"])
+def ia():
+
+    if 'user' not in session:
+        return redirect("/")
+
+    resposta = ""
+    sql_gerado = ""
+
+    if request.method == "POST":
+
+        pergunta = request.form.get("pergunta")
+
+        try:
+
+            sql_gerado = gerar_sql(pergunta)
+
+            if not sql_seguro(sql_gerado):
+                resposta = "⚠ Consulta bloqueada por segurança."
+            else:
+
+                con = get_db()
+                cur = con.cursor()
+
+                cur.execute(sql_gerado)
+
+                dados = cur.fetchall()
+
+                colunas = [desc[0] for desc in cur.description]
+
+                con.close()
+
+                tabela = "<table border='1' style='border-collapse:collapse;'>"
+                tabela += "<tr>"
+
+                for c in colunas:
+                    tabela += f"<th>{c}</th>"
+
+                tabela += "</tr>"
+
+                for row in dados:
+                    tabela += "<tr>"
+                    for v in row:
+                        tabela += f"<td>{v}</td>"
+                    tabela += "</tr>"
+
+                tabela += "</table>"
+
+                resposta = tabela
+
+        except Exception as e:
+            resposta = f"Erro: {e}"
+
+    html = f"""
+    <h3>Assistente IA do Sistema</h3>
+
+    <form method="post">
+        <input name="pergunta" style="width:70%" placeholder="Pergunte algo sobre os dados...">
+        <button>Consultar</button>
+    </form>
+
+    <br>
+
+    <b>SQL gerado:</b>
+    <pre>{sql_gerado}</pre>
+
+    <b>Resultado:</b>
+    {resposta}
+
+    <br><br>
+    <a href="/">Voltar</a>
+    """
+
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        user=session['user'],
+        perfil=session['perfil']
+    )
 
 @app.route("/seed")
 def seed():

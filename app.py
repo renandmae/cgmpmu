@@ -7494,11 +7494,10 @@ fmt_br=fmt_br
 )
 
 import requests
-import re
 
+GROK_API_KEY = "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"
 
-
-DEEPSEEK_API_KEY = "sk-8e28b108dfa04094a21ea02291ea0a4e"
+GROK_URL = "https://api.x.ai/v1/chat/completions"
 
 def get_schema():
 
@@ -7506,9 +7505,9 @@ def get_schema():
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT table_name
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema='public'
     """)
 
     tables = cur.fetchall()
@@ -7516,12 +7515,13 @@ def get_schema():
     schema = ""
 
     for t in tables:
+
         table = t["table_name"]
 
         cur.execute(f"""
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_name = '{table}'
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name='{table}'
         """)
 
         cols = cur.fetchall()
@@ -7535,6 +7535,44 @@ def get_schema():
 
     return schema
 
+def gerar_sql(pergunta):
+
+    schema = get_schema()
+
+    prompt = f"""
+Você é especialista em PostgreSQL.
+
+Estrutura do banco:
+
+{schema}
+
+Gere apenas SQL válido.
+
+Pergunta:
+{pergunta}
+"""
+
+    headers = {
+        "Authorization": f"Bearer {GROK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": "grok-beta",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0
+    }
+
+    r = requests.post(GROK_URL, headers=headers, json=data)
+
+    resposta = r.json()
+
+    sql = resposta["choices"][0]["message"]["content"]
+
+    return sql.strip()
+
 def executar_sql(sql):
 
     conn = get_db()
@@ -7542,114 +7580,20 @@ def executar_sql(sql):
 
     cur.execute(sql)
 
-    rows = cur.fetchall()
+    dados = cur.fetchall()
+
+    colunas = [d[0] for d in cur.description]
 
     cur.close()
     conn.close()
 
-    return rows
-
-@app.route("/ia/perguntar", methods=["POST"])
-def perguntar_ia():
-
-    pergunta = request.json["pergunta"]
-
-    schema = get_schema()
-
-    sql = gerar_sql(pergunta, schema)
-
-    try:
-        resultado = executar_sql(sql)
-
-        return jsonify({
-            "sql": sql,
-            "resultado": resultado
-        })
-
-    except Exception as e:
-
-        return jsonify({
-            "sql": sql,
-            "erro": str(e)
-        })
-
-def explicar(pergunta, colunas, dados):
-
-    url = "https://api.deepseek.com/v1/chat/completions"
-
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    prompt = f"""
-Explique em português o resultado da consulta.
-
-Pergunta:
-{pergunta}
-
-Colunas:
-{colunas}
-
-Dados:
-{dados[:20]}
-"""
-
-    data = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.3
-    }
-
-    r = requests.post(url, headers=headers, json=data)
-
-    resposta = r.json()
-
-    return resposta["choices"][0]["message"]["content"]
-
-def gerar_grafico(colunas, dados):
-
-    if len(colunas) != 2:
-        return ""
-
-    labels = [str(d[0]) for d in dados[:20]]
-    valores = [d[1] for d in dados[:20]]
-
-    return f"""
-<canvas id="grafico"></canvas>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<script>
-
-const ctx = document.getElementById('grafico');
-
-new Chart(ctx, {{
-type: 'bar',
-data: {{
-labels: {labels},
-datasets: [{{
-label: '{colunas[1]}',
-data: {valores}
-}}]
-}}
-}})
-
-</script>
-"""
+    return colunas, dados
 
 @app.route("/ia", methods=["GET","POST"])
 def ia():
 
-    if "user" not in session:
-        return redirect("/")
-
     sql = ""
     resultado = ""
-    explicacao = ""
-    grafico = ""
 
     if request.method == "POST":
 
@@ -7659,20 +7603,10 @@ def ia():
 
             sql = gerar_sql(pergunta)
 
-            print("SQL GERADO:", sql)
+            colunas, dados = executar_sql(sql)
 
-            con = get_db()
-            cur = con.cursor()
+            tabela = "<table border=1>"
 
-            cur.execute(sql)
-
-            dados = cur.fetchall()
-
-            colunas = [d[0] for d in cur.description]
-
-            con.close()
-
-            tabela = "<table border=1 style='border-collapse:collapse;'>"
             tabela += "<tr>"
 
             for c in colunas:
@@ -7693,21 +7627,19 @@ def ia():
 
             resultado = tabela
 
-            grafico = gerar_grafico(colunas, dados)
-
-            explicacao = explicar(pergunta, colunas, dados)
-
         except Exception as e:
 
-            resultado = f"Erro: {str(e)}"
+            resultado = str(e)
 
     html = f"""
 
 <h2>Assistente IA</h2>
 
 <form method="post">
+
 <input name="pergunta" style="width:70%">
 <button>Perguntar</button>
+
 </form>
 
 <br>
@@ -7718,27 +7650,9 @@ def ia():
 <b>Resultado:</b>
 {resultado}
 
-<br><br>
-
-{grafico}
-
-<br><br>
-
-<b>Explicação:</b>
-<br>
-{explicacao}
-
-<br><br>
-
-<a href="/menu">Voltar</a>
-
 """
 
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}",html),
-        user=session["user"],
-        perfil=session["perfil"]
-    )
+    return html
 
 @app.route("/seed")
 def seed():

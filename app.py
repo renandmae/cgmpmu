@@ -7534,6 +7534,11 @@ Responda APENAS com SQL.
 
     sql = resposta.choices[0].message.content.strip()
 
+    # remove markdown
+    sql = sql.replace("```sql", "")
+    sql = sql.replace("```", "")
+    sql = sql.strip()
+
     return sql
 
 def sql_seguro(sql):

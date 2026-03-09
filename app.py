@@ -7497,6 +7497,33 @@ GROQ_API_KEY = "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"
 
 client = Groq(api_key=GROQ_API_KEY)
 
+DESCRICAO_TABELAS = {
+
+"colaboradores": "lista de usuários do sistema e funcionários",
+
+"horas": "registro de horas trabalhadas por colaboradores em projetos",
+
+"horas_requisicoes": "registro de horas relacionadas a requisições administrativas",
+
+"requisicoes": "requisições administrativas feitas por servidores",
+
+"requisicoes_staging": "tabela temporária de importação de requisições",
+
+"requisicoes_staging_completa": "dados completos importados de requisições",
+
+"checklist_contratacao": "checklist de documentos para contratação",
+
+"checklist_contratacao_requisicoes": "checklist relacionado a requisições",
+
+"atendimentos": "registro de atendimentos realizados",
+
+"consultorias": "registro de consultorias realizadas",
+
+"os": "ordens de serviço registradas",
+
+"projeto_paint": "dados relacionados ao projeto PAINT"
+}
+
 def obter_schema():
 
     con = get_db()
@@ -7521,7 +7548,10 @@ def obter_schema():
 
     for tabela, colunas in tabelas.items():
 
+        descricao = DESCRICAO_TABELAS.get(tabela,"")
+
         schema += f"TABELA: {tabela}\n"
+        schema += f"DESCRIÇÃO: {descricao}\n"
         schema += "COLUNAS:\n"
 
         for c in colunas:
@@ -7535,49 +7565,65 @@ def gerar_sql(pergunta):
 
     schema = obter_schema()
 
-    prompt = f"""
-Você é um especialista em PostgreSQL que traduz perguntas em português para SQL.
+    if "chat_sql" not in session:
+        session["chat_sql"] = []
 
-REGRAS OBRIGATÓRIAS:
+    mensagens = [
+        {
+            "role":"system",
+            "content":"""
+Você é um especialista em PostgreSQL que gera SQL a partir de perguntas em português.
+
+REGRAS:
 
 - Gere apenas SQL
-- Use apenas SELECT
-- Nunca use DELETE, UPDATE, INSERT, DROP ou ALTER
-- Não use markdown
-- Não explique nada
-- Não use ```sql
-- Use LIMIT 50 apenas quando retornar registros
-- Quando for contagem use COUNT(*)
+- Apenas SELECT
+- Nunca usar DELETE UPDATE INSERT DROP ALTER
+- Nunca usar tabelas inexistentes
+- Não usar markdown
+- Não explicar nada
+- Não usar ```sql
 
-REGRA CRÍTICA:
+REGRAS DE NEGÓCIO:
 
-- Use SOMENTE tabelas existentes no schema abaixo
-- NÃO invente tabelas
-- NÃO use nomes genéricos como table_name ou tabela
+- horas totais → usar SUM(horas)
+- contagem → usar COUNT(*)
+- quando listar registros usar LIMIT 50
+"""
+        },
 
-SCHEMA DO BANCO:
+        {
+            "role":"system",
+            "content":f"""
+ESTRUTURA DO BANCO:
 
 {schema}
-
-Pergunta do usuário:
-{pergunta}
-
-SQL:
 """
+        }
+    ]
+
+    mensagens += session["chat_sql"]
+
+    mensagens.append({
+        "role":"user",
+        "content":pergunta
+    })
 
     resposta = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="mixtral-8x7b-32768",
         temperature=0,
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
+        messages=mensagens
     )
 
     sql = resposta.choices[0].message.content.strip()
 
-    sql = sql.replace("```sql", "")
-    sql = sql.replace("```", "")
-    sql = sql.strip()
+    sql = sql.replace("```sql","").replace("```","").strip()
+
+    if "count(" in sql.lower() and " as " not in sql.lower():
+        sql = sql.replace("COUNT(*)","COUNT(*) AS total")
+
+    session["chat_sql"].append({"role":"user","content":pergunta})
+    session["chat_sql"].append({"role":"assistant","content":sql})
 
     return sql
 
@@ -7606,25 +7652,23 @@ def sql_seguro(sql):
 def explicar_resultado(pergunta, dados, colunas):
 
     prompt = f"""
-Você é um assistente que explica resultados de consultas de banco de dados.
+Explique em português simples o resultado da consulta.
 
-Pergunta do usuário:
+Pergunta:
 {pergunta}
 
-Colunas retornadas:
+Colunas:
 {colunas}
 
 Dados:
 {dados}
-
-Explique em português de forma simples o que os dados mostram.
 """
 
     resposta = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
-        temperature=0.2,
+        temperature=0.3,
         messages=[
-            {"role": "user", "content": prompt}
+            {"role":"user","content":prompt}
         ]
     )
 
@@ -7633,7 +7677,7 @@ Explique em português de forma simples o que os dados mostram.
 @app.route("/ia", methods=["GET","POST"])
 def ia():
 
-    if 'user' not in session:
+    if "user" not in session:
         return redirect("/")
 
     resposta = ""
@@ -7684,7 +7728,8 @@ def ia():
                 resposta = tabela
 
         except Exception as e:
-            resposta = f"Erro: {e}"
+
+            resposta = f"Erro ao executar SQL: {e}"
 
     html = f"""
     <h3>Assistente IA do Sistema</h3>
@@ -7706,15 +7751,25 @@ def ia():
 
     <b>Explicação:</b><br>
     {explicacao}
+
     <br><br>
-    
-    <a href="/">Voltar</a>
+
+    <form method="post">
+        <button name="limpar">Limpar contexto</button>
+    </form>
+
+    <br>
+
+    <a href="/menu">Voltar</a>
     """
+
+    if "limpar" in request.form:
+        session.pop("chat_sql",None)
 
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
-        user=session['user'],
-        perfil=session['perfil']
+        user=session["user"],
+        perfil=session["perfil"]
     )
 
 @app.route("/seed")

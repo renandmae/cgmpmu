@@ -7529,32 +7529,33 @@ def obter_schema():
     con = get_db()
     cur = con.cursor()
 
-    cur.execute("""
-    SELECT table_name, column_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-    ORDER BY table_name, ordinal_position
-    """)
+    tabelas_schema = {}
 
-    dados = cur.fetchall()
+    for tabela in DESCRICAO_TABELAS.keys():
+
+        cur.execute("""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema='public'
+        AND table_name=%s
+        ORDER BY ordinal_position
+        """,(tabela,))
+
+        cols = [r[0] for r in cur.fetchall()]
+
+        tabelas_schema[tabela] = cols
+
     con.close()
-
-    tabelas = {}
-
-    for tabela, coluna in dados:
-        tabelas.setdefault(tabela, []).append(coluna)
 
     schema = ""
 
-    for tabela, colunas in tabelas.items():
-
-        descricao = DESCRICAO_TABELAS.get(tabela,"")
+    for tabela, cols in tabelas_schema.items():
 
         schema += f"TABELA: {tabela}\n"
-        schema += f"DESCRIÇÃO: {descricao}\n"
+        schema += f"DESCRICAO: {DESCRICAO_TABELAS[tabela]}\n"
         schema += "COLUNAS:\n"
 
-        for c in colunas:
+        for c in cols:
             schema += f"- {c}\n"
 
         schema += "\n"
@@ -7565,65 +7566,67 @@ def gerar_sql(pergunta):
 
     schema = obter_schema()
 
-    if "chat_sql" not in session:
-        session["chat_sql"] = []
+    exemplos = """
 
-    mensagens = [
-        {
-            "role":"system",
-            "content":"""
-Você é um especialista em PostgreSQL que gera SQL a partir de perguntas em português.
+EXEMPLOS:
+
+Pergunta: quantos colaboradores existem
+SQL:
+SELECT COUNT(*) AS total FROM colaboradores;
+
+Pergunta: listar colaboradores
+SQL:
+SELECT * FROM colaboradores LIMIT 50;
+
+Pergunta: horas por colaborador
+SQL:
+SELECT colaborador_id, SUM(horas) AS total_horas
+FROM horas
+GROUP BY colaborador_id
+LIMIT 50;
+
+Pergunta: atendimentos por colaborador
+SQL:
+SELECT colaborador_id, COUNT(*) AS total
+FROM atendimentos
+GROUP BY colaborador_id
+LIMIT 50;
+"""
+
+    prompt = f"""
+Você gera SQL PostgreSQL.
 
 REGRAS:
 
-- Gere apenas SQL
-- Apenas SELECT
-- Nunca usar DELETE UPDATE INSERT DROP ALTER
-- Nunca usar tabelas inexistentes
-- Não usar markdown
-- Não explicar nada
-- Não usar ```sql
-
-REGRAS DE NEGÓCIO:
-
-- horas totais → usar SUM(horas)
-- contagem → usar COUNT(*)
+- apenas SELECT
+- não usar DELETE UPDATE INSERT DROP ALTER
+- usar somente tabelas do schema
+- não inventar nomes de tabela
+- responder apenas SQL
+- não usar markdown
 - quando listar registros usar LIMIT 50
-"""
-        },
 
-        {
-            "role":"system",
-            "content":f"""
-ESTRUTURA DO BANCO:
+SCHEMA:
 
 {schema}
+
+{exemplos}
+
+Pergunta:
+{pergunta}
 """
-        }
-    ]
-
-    mensagens += session["chat_sql"]
-
-    mensagens.append({
-        "role":"user",
-        "content":pergunta
-    })
 
     resposta = client.chat.completions.create(
         model="openai/gpt-oss-120b",
         temperature=0,
-        messages=mensagens
+        messages=[
+            {"role":"user","content":prompt}
+        ]
     )
 
     sql = resposta.choices[0].message.content.strip()
 
     sql = sql.replace("```sql","").replace("```","").strip()
-
-    if "count(" in sql.lower() and " as " not in sql.lower():
-        sql = sql.replace("COUNT(*)","COUNT(*) AS total")
-
-    session["chat_sql"].append({"role":"user","content":pergunta})
-    session["chat_sql"].append({"role":"assistant","content":sql})
 
     return sql
 
@@ -7632,66 +7635,52 @@ def sql_seguro(sql):
     sql_upper = sql.upper()
 
     proibidos = [
-        "DELETE",
-        "UPDATE",
-        "INSERT",
-        "DROP",
-        "ALTER",
-        "TRUNCATE",
-        "CREATE",
-        "GRANT",
-        "REVOKE"
+        "DELETE","UPDATE","INSERT","DROP","ALTER",
+        "TRUNCATE","CREATE"
     ]
 
     for p in proibidos:
         if p in sql_upper:
             return False
 
-    if ";" in sql:
-        return False
-
-    if not sql_upper.strip().startswith("SELECT"):
+    if not sql_upper.startswith("SELECT"):
         return False
 
     return True
 
-def gerar_grafico(colunas, dados):
+def gerar_grafico(colunas,dados):
 
-    if len(colunas) != 2:
+    if len(colunas)!=2:
         return ""
 
-    labels = [str(d[0]) for d in dados[:20]]
-    valores = [d[1] for d in dados[:20]]
+    labels=[str(d[0]) for d in dados[:20]]
+    valores=[d[1] for d in dados[:20]]
 
-    grafico = f"""
-    <canvas id="grafico"></canvas>
+    return f"""
+<canvas id="grafico"></canvas>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <script>
+<script>
+const ctx=document.getElementById('grafico');
 
-    const ctx = document.getElementById('grafico');
+new Chart(ctx,{{
+type:'bar',
+data:{{
+labels:{labels},
+datasets:[{{
+label:'{colunas[1]}',
+data:{valores}
+}}]
+}}
+}});
+</script>
+"""
 
-    new Chart(ctx, {{
-        type: 'bar',
-        data: {{
-            labels: {labels},
-            datasets: [{{
-                label: '{colunas[1]}',
-                data: {valores}
-            }}]
-        }}
-    }});
+def explicar_resultado(pergunta,dados,colunas):
 
-    </script>
-    """
-
-    return grafico
-
-def explicar_resultado(pergunta, dados, colunas):
-
-    prompt = f"""
-Explique em português simples o resultado da consulta.
+    prompt=f"""
+Explique em português simples o resultado.
 
 Pergunta:
 {pergunta}
@@ -7703,157 +7692,123 @@ Dados:
 {dados}
 """
 
-    resposta = client.chat.completions.create(
+    resp=client.chat.completions.create(
         model="openai/gpt-oss-120b",
         temperature=0.3,
-        messages=[
-            {"role":"user","content":prompt}
-        ]
+        messages=[{"role":"user","content":prompt}]
     )
 
-    return resposta.choices[0].message.content
+    return resp.choices[0].message.content
 
-@app.route("/ia", methods=["GET","POST"])
+@app.route("/ia",methods=["GET","POST"])
 def ia():
 
     if "user" not in session:
         return redirect("/")
 
-    resposta = ""
-    sql_gerado = ""
-    explicacao = ""
-    grafico = ""
+    resposta=""
+    sql_gerado=""
+    explicacao=""
+    grafico=""
 
-    if request.method == "POST":
+    if request.method=="POST":
 
-        if "limpar" in request.form:
-            session.pop("chat_sql", None)
-            return redirect("/ia")
-
-        pergunta = request.form.get("pergunta")
+        pergunta=request.form.get("pergunta")
 
         try:
 
-            sql_gerado = gerar_sql(pergunta)
+            sql_gerado=gerar_sql(pergunta)
 
             if not sql_seguro(sql_gerado):
-
-                resposta = "⚠ Consulta bloqueada por segurança."
+                resposta="Consulta bloqueada"
 
             else:
 
-                con = get_db()
-                cur = con.cursor()
+                con=get_db()
+                cur=con.cursor()
 
                 try:
-
                     cur.execute(sql_gerado)
 
-                except Exception as erro_sql:
+                except Exception as e:
 
                     con.rollback()
 
-                    sql_corrigido = gerar_sql(
-                        pergunta + f"""
+                    resposta=f"Erro SQL: {e}"
+                    con.close()
 
-O SQL anterior gerou erro no PostgreSQL.
+                    return resposta
 
-SQL anterior:
-{sql_gerado}
-
-Erro:
-{erro_sql}
-
-Gere um SQL corrigido.
-"""
-                    )
-
-                    if not sql_seguro(sql_corrigido):
-
-                        resposta = "⚠ SQL corrigido bloqueado por segurança."
-                        con.close()
-                        return resposta
-
-                    sql_gerado = sql_corrigido
-
-                    cur.execute(sql_gerado)
-
-                dados = cur.fetchall()
+                dados=cur.fetchall()
+                colunas=[d[0] for d in cur.description]
 
                 con.commit()
+                con.close()
 
-                colunas = [desc[0] for desc in cur.description]
-
-                explicacao = explicar_resultado(
+                explicacao=explicar_resultado(
                     pergunta,
                     dados[:20],
                     colunas
                 )
 
-                grafico = gerar_grafico(colunas, dados)
+                grafico=gerar_grafico(colunas,dados)
 
-                con.close()
-
-                tabela = "<table border='1' style='border-collapse:collapse;'>"
-                tabela += "<tr>"
+                tabela="<table border=1>"
+                tabela+="<tr>"
 
                 for c in colunas:
-                    tabela += f"<th>{c}</th>"
+                    tabela+=f"<th>{c}</th>"
 
-                tabela += "</tr>"
+                tabela+="</tr>"
 
-                for row in dados:
-                    tabela += "<tr>"
-                    for v in row:
-                        tabela += f"<td>{v}</td>"
-                    tabela += "</tr>"
+                for r in dados:
+                    tabela+="<tr>"
+                    for v in r:
+                        tabela+=f"<td>{v}</td>"
+                    tabela+="</tr>"
 
-                tabela += "</table>"
+                tabela+="</table>"
 
-                resposta = tabela
+                resposta=tabela
 
         except Exception as e:
 
-            resposta = f"Erro ao executar SQL: {e}"
+            resposta=str(e)
 
-    html = f"""
-    <h3>Assistente IA do Sistema</h3>
+    html=f"""
 
-    <form method="post">
-        <input name="pergunta" style="width:70%" placeholder="Pergunte algo sobre os dados...">
-        <button>Consultar</button>
-    </form>
+<h3>Assistente IA</h3>
 
-    <br>
+<form method="post">
+<input name="pergunta" style="width:70%">
+<button>Consultar</button>
+</form>
 
-    <b>SQL gerado:</b>
-    <pre>{sql_gerado}</pre>
+<br>
 
-    <b>Resultado:</b>
-    {resposta}
+<b>SQL:</b>
+<pre>{sql_gerado}</pre>
 
-    <br><br>
+<b>Resultado:</b>
+{resposta}
 
-    {grafico}
+<br><br>
 
-    <br><br>
+{grafico}
 
-    <b>Explicação:</b><br>
-    {explicacao}
+<br><br>
 
-    <br><br>
+<b>Explicação:</b><br>
+{explicacao}
 
-    <form method="post">
-        <button name="limpar">Limpar contexto</button>
-    </form>
+<br><br>
 
-    <br>
+<a href="/menu">Voltar</a>
 
-    <a href="/menu">Voltar</a>
-    """
+"""
 
     return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
+        BASE.replace("{% block content %}{% endblock %}",html),
         user=session["user"],
         perfil=session["perfil"]
     )

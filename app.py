@@ -7573,7 +7573,14 @@ def gerar_sql(pergunta):
 
     sql = resposta["choices"][0]["message"]["content"]
 
-    sql = sql.replace("```sql","").replace("```","").strip()
+    import re
+
+    sql = re.findall(r"SELECT.*", sql, re.IGNORECASE | re.DOTALL)
+    
+    if sql:
+        sql = sql[0]
+    else:
+        sql = ""
 
     return sql
 
@@ -7663,7 +7670,13 @@ def ia():
         try:
 
             sql = gerar_sql(pergunta)
+
+            # TESTE FORÇADO
+            if pergunta.lower() == "teste":
+                sql = "SELECT COUNT(*) FROM colaboradores"
+       
             print("SQL GERADO:", sql)
+            resultado = f"<pre>DEBUG SQL: {sql}</pre>"
 
             con = get_db()
             cur = con.cursor()

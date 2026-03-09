@@ -7552,11 +7552,12 @@ Estrutura do banco:
 {schema}
 
 Regras:
+
 - Gere apenas SQL
-- Use apenas SELECT
+- Apenas SELECT
 - Não explique
 - Não use markdown
-- Retorne apenas SQL
+- Apenas query SQL
 
 Pergunta:
 {pergunta}
@@ -7568,7 +7569,7 @@ Pergunta:
     }
 
     data = {
-        "model": "grok-beta",
+        "model": "llama-3.1-70b-versatile",
         "messages": [
             {"role": "user", "content": prompt}
         ],
@@ -7579,7 +7580,6 @@ Pergunta:
 
     resposta = r.json()
 
-    # DEBUG IMPORTANTE
     if "choices" not in resposta:
         raise Exception(resposta)
 
@@ -7620,7 +7620,9 @@ def gerar_grafico(colunas, dados):
     valores = []
 
     for r in dados:
+
         vals = list(r.values())
+
         labels.append(str(vals[0]))
         valores.append(vals[1])
 
@@ -7735,7 +7737,7 @@ def ia():
 """
 
     return html
-
+    
 @app.route("/seed")
 def seed():
     executar_seed()

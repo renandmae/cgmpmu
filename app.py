@@ -7499,6 +7499,11 @@ GROK_API_KEY = "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"
 
 GROK_URL = "https://api.x.ai/v1/chat/completions"
 
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres.fvbharlpyxiwakbzyxzw:cgm2025agdt@aws-1-sa-east-1.pooler.supabase.com:5432/postgres"
+)
+
 def get_schema():
 
     conn = get_db()
@@ -7546,7 +7551,13 @@ Estrutura do banco:
 
 {schema}
 
-Gere apenas SQL válido.
+Regras:
+
+- Gere apenas SQL
+- Use apenas SELECT
+- Não explique
+- Não use markdown
+- Retorne apenas a query SQL
 
 Pergunta:
 {pergunta}
@@ -7571,9 +7582,17 @@ Pergunta:
 
     sql = resposta["choices"][0]["message"]["content"]
 
-    return sql.strip()
+    sql = sql.replace("```sql", "").replace("```", "").strip()
+
+    if ";" in sql:
+        sql = sql.split(";")[0] + ";"
+
+    return sql
 
 def executar_sql(sql):
+
+    if not sql.lower().startswith("select"):
+        raise Exception("Somente SELECT permitido")
 
     conn = get_db()
     cur = conn.cursor()
@@ -7582,18 +7601,37 @@ def executar_sql(sql):
 
     dados = cur.fetchall()
 
-    colunas = [d[0] for d in cur.description]
+    colunas = [desc.name for desc in cur.description]
 
     cur.close()
     conn.close()
 
     return colunas, dados
 
+def gerar_grafico(colunas, dados):
+
+    if len(colunas) != 2:
+        return None
+
+    labels = []
+    valores = []
+
+    for r in dados:
+        vals = list(r.values())
+        labels.append(str(vals[0]))
+        valores.append(vals[1])
+
+    return {
+        "labels": labels,
+        "values": valores
+    }
+
 @app.route("/ia", methods=["GET","POST"])
 def ia():
 
     sql = ""
     resultado = ""
+    grafico = None
 
     if request.method == "POST":
 
@@ -7605,7 +7643,7 @@ def ia():
 
             colunas, dados = executar_sql(sql)
 
-            tabela = "<table border=1>"
+            tabela = "<table border=1 cellpadding=5>"
 
             tabela += "<tr>"
 
@@ -7618,7 +7656,7 @@ def ia():
 
                 tabela += "<tr>"
 
-                for v in r:
+                for v in r.values():
                     tabela += f"<td>{v}</td>"
 
                 tabela += "</tr>"
@@ -7627,9 +7665,43 @@ def ia():
 
             resultado = tabela
 
+            grafico = gerar_grafico(colunas, dados)
+
         except Exception as e:
 
             resultado = str(e)
+
+    chart_script = ""
+
+    if grafico:
+
+        labels = json.dumps(grafico["labels"])
+        values = json.dumps(grafico["values"])
+
+        chart_script = f"""
+
+        <canvas id="grafico"></canvas>
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+        <script>
+
+        new Chart(
+            document.getElementById('grafico'),
+            {{
+                type: 'bar',
+                data: {{
+                    labels: {labels},
+                    datasets: [{{
+                        label: 'Resultado',
+                        data: {values}
+                    }}]
+                }}
+            }}
+        );
+
+        </script>
+        """
 
     html = f"""
 
@@ -7637,7 +7709,8 @@ def ia():
 
 <form method="post">
 
-<input name="pergunta" style="width:70%">
+<input name="pergunta" style="width:70%" placeholder="Pergunte algo sobre o banco">
+
 <button>Perguntar</button>
 
 </form>
@@ -7645,10 +7718,16 @@ def ia():
 <br>
 
 <b>SQL gerado:</b>
+
 <pre>{sql}</pre>
 
 <b>Resultado:</b>
+
 {resultado}
+
+<br><br>
+
+{chart_script}
 
 """
 

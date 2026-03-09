@@ -7505,7 +7505,7 @@ def obter_schema():
     cur.execute("""
     SELECT table_name, column_name
     FROM information_schema.columns
-    WHERE table_schema='public'
+    WHERE table_schema = 'public'
     ORDER BY table_name, ordinal_position
     """)
 
@@ -7513,16 +7513,20 @@ def obter_schema():
 
     con.close()
 
-    schema = ""
-    tabela_atual = None
+    tabelas = {}
 
     for tabela, coluna in dados:
+        if tabela not in tabelas:
+            tabelas[tabela] = []
 
-        if tabela != tabela_atual:
-            schema += f"\nTabela {tabela}\n"
-            tabela_atual = tabela
+        tabelas[tabela].append(coluna)
 
-        schema += coluna + ","
+    schema = ""
+
+    for tabela, colunas in tabelas.items():
+        schema += f"\nTabela {tabela}:\n"
+        schema += ", ".join(colunas)
+        schema += "\n"
 
     return schema
 
@@ -7544,7 +7548,12 @@ REGRAS OBRIGATÓRIAS:
 - Use LIMIT 50 apenas quando retornar registros
 - Quando for contagem use COUNT(*)
 
-ESTRUTURA REAL DO BANCO:
+ESTRUTURA REAL DO BANCO (TABELAS E COLUNAS):
+
+Use apenas as tabelas e colunas abaixo.
+Não invente nomes.
+
+{schema}
 
 {schema}
 

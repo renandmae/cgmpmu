@@ -789,6 +789,53 @@ def logout():
     session.clear()
     return redirect('/')
 
+@app.route("/menu_salvar_inline", methods=["POST"])
+def menu_salvar_inline():
+
+    if 'user' not in session:
+        return {"status":"erro"}
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    atividade = request.form.get("atividade") or None
+    data = request.form.get("data") or None
+    obs = request.form.get("obs") or None
+    aniversario = request.form.get("aniversario") or None
+
+    cur.execute("""
+    SELECT id FROM atividades_extras
+    WHERE colaborador=%s
+    """,(session['user'],))
+
+    existe = cur.fetchone()
+
+    if existe:
+
+        cur.execute("""
+        UPDATE atividades_extras
+        SET atividade=%s,
+            data=%s,
+            observacao=%s,
+            aniversario=%s
+        WHERE colaborador=%s
+        """,(atividade,data,obs,aniversario,session['user']))
+
+    else:
+
+        cur.execute("""
+        INSERT INTO atividades_extras
+        (colaborador, atividade, data, observacao, aniversario)
+        VALUES (%s,%s,%s,%s,%s)
+        """,(session['user'],atividade,data,obs,aniversario))
+
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return {"status":"ok"}
+
 @app.route('/menu', methods=["GET","POST"])
 def menu():
 
@@ -798,52 +845,14 @@ def menu():
     conn = get_db()
     cur = conn.cursor()
 
+    # =========================
+    # SALVAR AVISO (ADMIN)
+    # =========================
+
     if request.method == "POST":
 
         tipo = request.form.get("tipo")
 
-        # =========================
-        # SALVAR ATIVIDADE EXTRA
-        # =========================
-        if tipo == "atividade":
-
-            atividade = request.form.get("atividade")
-            data = request.form.get("data")
-            obs = request.form.get("obs")
-            aniversario = request.form.get("aniversario")
-
-            # verifica se já existe registro
-            cur.execute("""
-            SELECT id FROM atividades_extras
-            WHERE colaborador=%s
-            """,(session['user'],))
-
-            existe = cur.fetchone()
-
-            if existe:
-
-                cur.execute("""
-                UPDATE atividades_extras
-                SET atividade=%s,
-                    data=%s,
-                    observacao=%s,
-                    aniversario=%s
-                WHERE colaborador=%s
-                """,(atividade,data,obs,aniversario,session['user']))
-
-            else:
-
-                cur.execute("""
-                INSERT INTO atividades_extras
-                (colaborador, atividade, data, observacao, aniversario)
-                VALUES (%s,%s,%s,%s,%s)
-                """,(session['user'],atividade,data,obs,aniversario))
-
-            conn.commit()
-
-        # =========================
-        # SALVAR AVISO (ADMIN)
-        # =========================
         if tipo == "aviso" and session['perfil'] == "admin":
 
             mensagem = request.form.get("mensagem")
@@ -933,13 +942,7 @@ def menu():
 
         tabela += "<tr>"
 
-        if r['colaborador'] == session['user']:
-
-            tabela += f"<td><input type='date' name='aniversario' value='{r['aniversario'] or ''}'></td>"
-
-        else:
-
-            tabela += f"<td>{r['aniversario'] or ''}</td>"
+        tabela += f"<td>{r['aniversario'] or ''}</td>"
 
         tabela += f"<td><b>{r['colaborador']}</b></td>"
 
@@ -948,17 +951,21 @@ def menu():
             tabela += f"""
             <td>
             <input name='atividade'
-            placeholder='Atividade extra de {r['colaborador']}'
+            class='inline-save'
+            placeholder='Atividade extra'
             value='{r['atividade'] or ""}'>
             </td>
 
             <td>
-            <input type='date' name='data'
+            <input type='date'
+            name='data'
+            class='inline-save'
             value='{r['data'] or ""}'>
             </td>
 
             <td>
             <input name='obs'
+            class='inline-save'
             placeholder='Observação'
             value='{r['observacao'] or ""}'>
             </td>
@@ -980,31 +987,61 @@ def menu():
 
     content = f"""
 
-    {aviso_html}
+{aviso_html}
 
-    <h3>Menu</h3>
+<h3>Menu</h3>
 
-    <form method="post">
+<div id="status_save" style="margin-bottom:10px;color:green"></div>
 
-    <input type="hidden" name="tipo" value="atividade">
+{tabela}
 
-    {tabela}
+<br><br>
 
-    <br>
+<ul>
+  <li><a href='/lancar'>⏱ Lançar horas</a></li>
+  <li><a href='/relatorios'>📊 Relatórios</a></li>
+  <li><a href='/ia'>🤖 Assistente IA</a></li>
+</ul>
 
-    <button>Salvar</button>
+<script>
 
-    </form>
+function salvarInline(){{
 
-    <br><br>
+    document.getElementById("status_save").innerText = "💾 Salvando..."
 
-    <ul>
-      <li><a href='/lancar'>⏱ Lançar horas</a></li>
-      <li><a href='/relatorios'>📊 Relatórios</a></li>
-      <li><a href='/ia'>🤖 Assistente IA</a></li>
-    </ul>
+    let atividade = document.querySelector("[name=atividade]")?.value || ""
+    let data = document.querySelector("[name=data]")?.value || ""
+    let obs = document.querySelector("[name=obs]")?.value || ""
+    let aniversario = document.querySelector("[name=aniversario]")?.value || ""
 
-    """
+    fetch("/menu_salvar_inline", {{
+        method:"POST",
+        headers: {{
+            "Content-Type":"application/x-www-form-urlencoded"
+        }},
+        body:
+            "atividade="+encodeURIComponent(atividade)+
+            "&data="+encodeURIComponent(data)+
+            "&obs="+encodeURIComponent(obs)+
+            "&aniversario="+encodeURIComponent(aniversario)
+    }})
+    .then(r=>r.json())
+    .then(d=>{{
+        document.getElementById("status_save").innerText = "✅ Salvo"
+    }})
+    .catch(()=>{{
+        document.getElementById("status_save").innerText = "❌ Erro ao salvar"
+    }})
+
+}}
+
+document.querySelectorAll(".inline-save").forEach(el=>{{
+    el.addEventListener("change", salvarInline)
+}})
+
+</script>
+
+"""
 
     return render_template_string(
         BASE.replace('{% block content %}{% endblock %}', content),

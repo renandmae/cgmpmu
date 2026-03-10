@@ -802,12 +802,15 @@ def menu():
 
         tipo = request.form.get("tipo")
 
-        # SALVAR ATIVIDADE
+        # =========================
+        # SALVAR ATIVIDADE EXTRA
+        # =========================
         if tipo == "atividade":
 
             atividade = request.form.get("atividade")
             data = request.form.get("data")
             obs = request.form.get("obs")
+            aniversario = request.form.get("aniversario")
 
             # verifica se já existe registro
             cur.execute("""
@@ -821,21 +824,26 @@ def menu():
 
                 cur.execute("""
                 UPDATE atividades_extras
-                SET atividade=%s, data=%s, observacao=%s
+                SET atividade=%s,
+                    data=%s,
+                    observacao=%s,
+                    aniversario=%s
                 WHERE colaborador=%s
-                """,(atividade,data,obs,session['user']))
+                """,(atividade,data,obs,aniversario,session['user']))
 
             else:
 
                 cur.execute("""
                 INSERT INTO atividades_extras
-                (colaborador, atividade, data, observacao)
-                VALUES (%s,%s,%s,%s)
-                """,(session['user'],atividade,data,obs))
+                (colaborador, atividade, data, observacao, aniversario)
+                VALUES (%s,%s,%s,%s,%s)
+                """,(session['user'],atividade,data,obs,aniversario))
 
             conn.commit()
 
+        # =========================
         # SALVAR AVISO (ADMIN)
+        # =========================
         if tipo == "aviso" and session['perfil'] == "admin":
 
             mensagem = request.form.get("mensagem")
@@ -847,11 +855,14 @@ def menu():
 
             conn.commit()
 
-    # LISTAR COLABORADORES + ATIVIDADES
+    # =========================
+    # LISTAR COLABORADORES
+    # =========================
+
     cur.execute("""
     SELECT
         c.nome as colaborador,
-        c.aniversario,
+        a.aniversario,
         a.atividade,
         a.data,
         a.observacao
@@ -863,7 +874,10 @@ def menu():
 
     dados = cur.fetchall()
 
+    # =========================
     # ULTIMO AVISO
+    # =========================
+
     cur.execute("""
     SELECT mensagem
     FROM avisos
@@ -891,7 +905,6 @@ def menu():
         </div>
         """
 
-    # FORM ADMIN PARA NOVO AVISO
     if session['perfil'] == "admin":
 
         aviso_html += """
@@ -910,7 +923,7 @@ def menu():
         """
 
     # =========================
-    # TABELA DE COLABORADORES
+    # TABELA
     # =========================
 
     tabela = "<table border=1 cellpadding=6>"
@@ -920,15 +933,35 @@ def menu():
 
         tabela += "<tr>"
 
-        tabela += f"<td>{r['aniversario'] or ''}</td>"
-        tabela += f"<td>{r['colaborador']}</td>"
+        if r['colaborador'] == session['user']:
+
+            tabela += f"<td><input type='date' name='aniversario' value='{r['aniversario'] or ''}'></td>"
+
+        else:
+
+            tabela += f"<td>{r['aniversario'] or ''}</td>"
+
+        tabela += f"<td><b>{r['colaborador']}</b></td>"
 
         if r['colaborador'] == session['user']:
 
             tabela += f"""
-            <td><input name='atividade' value='{r['atividade'] or ""}'></td>
-            <td><input type='date' name='data' value='{r['data'] or ""}'></td>
-            <td><input name='obs' value='{r['observacao'] or ""}'></td>
+            <td>
+            <input name='atividade'
+            placeholder='Atividade extra de {r['colaborador']}'
+            value='{r['atividade'] or ""}'>
+            </td>
+
+            <td>
+            <input type='date' name='data'
+            value='{r['data'] or ""}'>
+            </td>
+
+            <td>
+            <input name='obs'
+            placeholder='Observação'
+            value='{r['observacao'] or ""}'>
+            </td>
             """
 
         else:

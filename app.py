@@ -422,21 +422,31 @@ BASE = """
 <!doctype html>
 <html>
 <head>
-
 <style>
 
     /* ---------------------- TEMA GLOBAL ---------------------- */
     body {
-        background: #e9f1fb;                 /* azul clarinho elegante */
-        color: #1d2a3a;                      /* cinza-azulado escuro */
+        background: #e9f1fb;
+        color: #1d2a3a;
         font-family: "Segoe UI", sans-serif;
         margin: 0;
-        padding: 0;
+        padding: 20px 40px;   /* 👈 cria margem interna lateral */
     }
 
     h1, h2, h3, h4 {
         color: #1e4f9c;
         margin-bottom: 10px;
+    }
+
+    header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+    .small {
+        font-size:0.9em;
+        color:#555;
     }
 
     a { 
@@ -449,9 +459,9 @@ BASE = """
 
     /* ---------------------- CONTAINER ---------------------- */
     .container {
-        max-width: 1100px;
+        max-width: 1200px;
         margin: auto;
-        padding: 25px;
+        padding: 20px;
     }
 
     /* ---------------------- BOTÕES ---------------------- */
@@ -519,7 +529,6 @@ BASE = """
 
     /* ---------------------- TABELAS ---------------------- */
     table {
-        width: 100%;
         border-collapse: collapse;
         margin-top: 15px;
         background: #ffffff;
@@ -626,24 +635,6 @@ tr.analisado { background:#e6ffed; }
 
 </style>
 
-
-  <meta charset='utf-8'>
-  <title>Sistema de Horas</title>
-  <style>
-    body{font-family: Arial, Helvetica, sans-serif;max-width:900px;margin:20px auto;color:#222}
-    header{display:flex;justify-content:space-between;align-items:center}
-    nav a {
-    margin-right: 18px;
-    font-weight: 500;
-    display: inline-block;
-}
-    table{width:100%;border-collapse:collapse;margin-top:10px}
-    th,td{border:1px solid #ddd;padding:6px;text-align:left}
-    .small{font-size:0.9em;color:#555}
-    .btn{display:inline-block;padding:6px 10px;border-radius:6px;background:#1976d2;color:white;text-decoration:none}
-    form div{margin:6px 0}
-    input[type=date], input[type=text], select, input[type=password], input[type=time]{padding:6px}
-</style>
 
   <meta charset='utf-8'>
   <title>Sistema de Horas</title>

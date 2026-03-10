@@ -800,26 +800,118 @@ def menu():
 
     if request.method == "POST":
 
-        atividade = request.form.get("atividade")
-        data = request.form.get("data")
-        obs = request.form.get("obs")
+        tipo = request.form.get("tipo")
 
-        cur.execute("""
-        UPDATE atividades_extras
-        SET atividade=%s, data=%s, observacao=%s
-        WHERE colaborador=%s
-        """,(atividade,data,obs,session['user']))
+        # SALVAR ATIVIDADE
+        if tipo == "atividade":
 
-        conn.commit()
+            atividade = request.form.get("atividade")
+            data = request.form.get("data")
+            obs = request.form.get("obs")
 
-    cur.execute("SELECT * FROM atividades_extras ORDER BY colaborador")
+            # verifica se já existe registro
+            cur.execute("""
+            SELECT id FROM atividades_extras
+            WHERE colaborador=%s
+            """,(session['user'],))
+
+            existe = cur.fetchone()
+
+            if existe:
+
+                cur.execute("""
+                UPDATE atividades_extras
+                SET atividade=%s, data=%s, observacao=%s
+                WHERE colaborador=%s
+                """,(atividade,data,obs,session['user']))
+
+            else:
+
+                cur.execute("""
+                INSERT INTO atividades_extras
+                (colaborador, atividade, data, observacao)
+                VALUES (%s,%s,%s,%s)
+                """,(session['user'],atividade,data,obs))
+
+            conn.commit()
+
+        # SALVAR AVISO (ADMIN)
+        if tipo == "aviso" and session['perfil'] == "admin":
+
+            mensagem = request.form.get("mensagem")
+
+            cur.execute("""
+            INSERT INTO avisos (mensagem)
+            VALUES (%s)
+            """,(mensagem,))
+
+            conn.commit()
+
+    # LISTAR COLABORADORES + ATIVIDADES
+    cur.execute("""
+    SELECT
+        c.nome as colaborador,
+        c.aniversario,
+        a.atividade,
+        a.data,
+        a.observacao
+    FROM colaboradores c
+    LEFT JOIN atividades_extras a
+        ON a.colaborador = c.nome
+    ORDER BY c.nome
+    """)
+
     dados = cur.fetchall()
 
-    cur.execute("SELECT mensagem FROM avisos ORDER BY id DESC LIMIT 1")
+    # ULTIMO AVISO
+    cur.execute("""
+    SELECT mensagem
+    FROM avisos
+    ORDER BY id DESC
+    LIMIT 1
+    """)
+
     aviso = cur.fetchone()
 
     cur.close()
     conn.close()
+
+    # =========================
+    # QUADRO DE AVISOS
+    # =========================
+
+    aviso_html = ""
+
+    if aviso:
+
+        aviso_html = f"""
+        <div style="padding:20px;background:#fff3cd;border:1px solid #ffeeba;margin-bottom:20px">
+        <b>📢 Avisos Gerais</b><br><br>
+        {aviso['mensagem']}
+        </div>
+        """
+
+    # FORM ADMIN PARA NOVO AVISO
+    if session['perfil'] == "admin":
+
+        aviso_html += """
+        <form method="post" style="margin-bottom:30px">
+        <input type="hidden" name="tipo" value="aviso">
+
+        <textarea name="mensagem"
+        style="width:500px;height:100px"
+        placeholder="Digite um aviso para todos"></textarea>
+
+        <br><br>
+
+        <button>Publicar Aviso</button>
+
+        </form>
+        """
+
+    # =========================
+    # TABELA DE COLABORADORES
+    # =========================
 
     tabela = "<table border=1 cellpadding=6>"
     tabela += "<tr><th>Aniversário</th><th>Colaborador</th><th>Atividades Extras</th><th>Data</th><th>Observações</th></tr>"
@@ -828,7 +920,7 @@ def menu():
 
         tabela += "<tr>"
 
-        tabela += f"<td>{r['aniversario']}</td>"
+        tabela += f"<td>{r['aniversario'] or ''}</td>"
         tabela += f"<td>{r['colaborador']}</td>"
 
         if r['colaborador'] == session['user']:
@@ -841,45 +933,51 @@ def menu():
 
         else:
 
-            tabela += f"<td>{r['atividade']}</td>"
-            tabela += f"<td>{r['data']}</td>"
-            tabela += f"<td>{r['observacao']}</td>"
+            tabela += f"<td>{r['atividade'] or ''}</td>"
+            tabela += f"<td>{r['data'] or ''}</td>"
+            tabela += f"<td>{r['observacao'] or ''}</td>"
 
         tabela += "</tr>"
 
     tabela += "</table>"
 
-    aviso_html = ""
-
-    if aviso:
-        aviso_html = f"""
-        <div style="padding:20px;background:#fff3cd;border:1px solid #ffeeba">
-        <b>Avisos Gerais</b><br>
-        {aviso['mensagem']}
-        </div><br>
-        """
+    # =========================
+    # HTML FINAL
+    # =========================
 
     content = f"""
+
     {aviso_html}
 
     <h3>Menu</h3>
 
     <form method="post">
+
+    <input type="hidden" name="tipo" value="atividade">
+
     {tabela}
+
     <br>
+
     <button>Salvar</button>
+
     </form>
 
+    <br><br>
+
     <ul>
-      <li><a href='/lancar'>⏱Lançar horas</a></li>
-      <li><a href='/relatorios'>📊Relatórios</a></li>
+      <li><a href='/lancar'>⏱ Lançar horas</a></li>
+      <li><a href='/relatorios'>📊 Relatórios</a></li>
       <li><a href='/ia'>🤖 Assistente IA</a></li>
     </ul>
+
     """
 
-    return render_template_string(BASE.replace('{% block content %}{% endblock %}', content),
-                                  user=session['user'],
-                                  perfil=session['perfil'])
+    return render_template_string(
+        BASE.replace('{% block content %}{% endblock %}', content),
+        user=session['user'],
+        perfil=session['perfil']
+    )
 
 # -------------------------
 # Colaboradores (admin)
@@ -7625,11 +7723,14 @@ def get_schema():
 
     return schema
 
-def gerar_sql(pergunta):
+def gerar_sql(pergunta, historico):
 
     schema = get_schema()
 
-    prompt = f"""
+    mensagens = [
+        {
+            "role": "system",
+            "content": f"""
 Você é especialista em PostgreSQL.
 
 Estrutura do banco:
@@ -7641,37 +7742,25 @@ Regras:
 - Use apenas SELECT
 - Não explique
 - Não use markdown
-- Retorne apenas SQL
-
-Pergunta:
-{pergunta}
 """
+        }
+    ]
 
-    headers = {
-        "Authorization": f"Bearer {GROK_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    # adiciona histórico da conversa
+    mensagens.extend(historico)
+
+    mensagens.append({
+        "role": "user",
+        "content": pergunta
+    })
 
     data = {
         "model": GROQ_MODEL,
-        "messages": [
-            {
-                "role": "system",
-                "content": "Você gera apenas SQL PostgreSQL."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
+        "messages": mensagens,
         "temperature": 0
     }
 
-    r = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers=headers,
-        json=data
-    )
+    r = requests.post(GROK_URL, headers=headers, json=data)
 
     resposta = r.json()
 
@@ -7680,7 +7769,7 @@ Pergunta:
 
     sql = resposta["choices"][0]["message"]["content"]
 
-    sql = sql.replace("```sql", "").replace("```", "").strip()
+    sql = sql.replace("```sql","").replace("```","").strip()
 
     if ";" in sql:
         sql = sql.split(";")[0] + ";"
@@ -7740,30 +7829,79 @@ def gerar_grafico(colunas, dados):
         "values": valores
     }
 
+def explicar_resultado(pergunta, colunas, dados, historico):
+
+    amostra = []
+
+    for r in dados[:20]:
+        amostra.append(list(r.values()))
+
+    mensagens = [
+        {"role":"system","content":"Você é um analista de dados e explica resultados de consultas SQL."}
+    ]
+
+    mensagens.extend(historico)
+
+    mensagens.append({
+        "role":"user",
+        "content":f"""
+Pergunta do usuário:
+{pergunta}
+
+Colunas retornadas:
+{colunas}
+
+Dados:
+{amostra}
+
+Explique o resultado de forma simples e destaque insights importantes.
+"""
+    })
+
+    data = {
+        "model": GROQ_MODEL,
+        "messages": mensagens,
+        "temperature": 0.2
+    }
+
+    r = requests.post(GROK_URL, headers=headers, json=data)
+
+    resposta = r.json()
+
+    return resposta["choices"][0]["message"]["content"]
+
 @app.route("/ia", methods=["GET","POST"])
 def ia():
+
+    if "chat_history" not in session:
+        session["chat_history"] = []
 
     sql = ""
     resultado = ""
     grafico = None
+    explicacao = ""
 
-    if request.method == "POST":
+    # limpar chat
+    if request.method == "POST" and request.form.get("acao") == "limpar":
+
+        session["chat_history"] = []
+
+    elif request.method == "POST":
 
         pergunta = request.form.get("pergunta")
 
         try:
 
-            sql = gerar_sql(pergunta)
+            sql = gerar_sql(pergunta, session["chat_history"])
 
             colunas, dados = executar_sql(sql)
 
+            # tabela
             tabela = "<table border=1 cellpadding=5>"
 
             tabela += "<tr>"
-
             for c in colunas:
                 tabela += f"<th>{c}</th>"
-
             tabela += "</tr>"
 
             for r in dados:
@@ -7781,9 +7919,51 @@ def ia():
 
             grafico = gerar_grafico(colunas, dados)
 
+            explicacao = explicar_resultado(
+                pergunta,
+                colunas,
+                dados,
+                session["chat_history"]
+            )
+
+            # salvar histórico
+            session["chat_history"].append({
+                "role":"user",
+                "content":pergunta
+            })
+
+            session["chat_history"].append({
+                "role":"assistant",
+                "content":explicacao
+            })
+
+            # limitar histórico
+            session["chat_history"] = session["chat_history"][-10:]
+
         except Exception as e:
 
             resultado = str(e)
+
+    # montar histórico visual
+    chat_html = ""
+
+    for msg in session["chat_history"]:
+
+        if msg["role"] == "user":
+
+            chat_html += f"""
+            <div style="background:#eef;padding:8px;margin:5px;border-radius:5px">
+            <b>Você:</b> {msg['content']}
+            </div>
+            """
+
+        else:
+
+            chat_html += f"""
+            <div style="background:#efe;padding:8px;margin:5px;border-radius:5px">
+            <b>IA:</b> {msg['content']}
+            </div>
+            """
 
     chart_script = ""
 
@@ -7794,32 +7974,36 @@ def ia():
 
         chart_script = f"""
 
-        <canvas id="grafico"></canvas>
+<canvas id="grafico"></canvas>
 
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-        <script>
+<script>
 
-        new Chart(
-            document.getElementById('grafico'),
-            {{
-                type: 'bar',
-                data: {{
-                    labels: {labels},
-                    datasets: [{{
-                        label: 'Resultado',
-                        data: {values}
-                    }}]
-                }}
-            }}
-        );
+new Chart(
+document.getElementById('grafico'),
+{{
+type:'bar',
+data:{{
+labels:{labels},
+datasets:[{{
+label:'Resultado',
+data:{values}
+}}]
+}}
+}}
+);
 
-        </script>
-        """
+</script>
+"""
 
     html = f"""
 
 <h2>Assistente IA</h2>
+
+<div style="height:300px;overflow:auto;border:1px solid #ccc;padding:10px;margin-bottom:10px">
+{chat_html}
+</div>
 
 <form method="post">
 
@@ -7829,15 +8013,27 @@ def ia():
 
 </form>
 
+<form method="post" style="margin-top:5px">
+
+<input type="hidden" name="acao" value="limpar">
+
+<button>🧹 Limpar conversa</button>
+
+</form>
+
 <br>
-
-<b>SQL gerado:</b>
-
-<pre>{sql}</pre>
 
 <b>Resultado:</b>
 
 {resultado}
+
+<br>
+
+<b>Explicação da IA:</b>
+
+<div style="background:#eef;padding:10px;border-radius:5px">
+{explicacao}
+</div>
 
 <br><br>
 

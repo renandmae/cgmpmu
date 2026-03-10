@@ -789,18 +789,96 @@ def logout():
     session.clear()
     return redirect('/')
 
-@app.route('/menu')
+@app.route('/menu', methods=["GET","POST"])
 def menu():
+
     if 'user' not in session:
         return redirect('/')
-    content = """
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    if request.method == "POST":
+
+        atividade = request.form.get("atividade")
+        data = request.form.get("data")
+        obs = request.form.get("obs")
+
+        cur.execute("""
+        UPDATE atividades_extras
+        SET atividade=%s, data=%s, observacao=%s
+        WHERE colaborador=%s
+        """,(atividade,data,obs,session['user']))
+
+        conn.commit()
+
+    cur.execute("SELECT * FROM atividades_extras ORDER BY colaborador")
+    dados = cur.fetchall()
+
+    cur.execute("SELECT mensagem FROM avisos ORDER BY id DESC LIMIT 1")
+    aviso = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    tabela = "<table border=1 cellpadding=6>"
+    tabela += "<tr><th>Aniversário</th><th>Colaborador</th><th>Atividades Extras</th><th>Data</th><th>Observações</th></tr>"
+
+    for r in dados:
+
+        tabela += "<tr>"
+
+        tabela += f"<td>{r['aniversario']}</td>"
+        tabela += f"<td>{r['colaborador']}</td>"
+
+        if r['colaborador'] == session['user']:
+
+            tabela += f"""
+            <td><input name='atividade' value='{r['atividade'] or ""}'></td>
+            <td><input type='date' name='data' value='{r['data'] or ""}'></td>
+            <td><input name='obs' value='{r['observacao'] or ""}'></td>
+            """
+
+        else:
+
+            tabela += f"<td>{r['atividade']}</td>"
+            tabela += f"<td>{r['data']}</td>"
+            tabela += f"<td>{r['observacao']}</td>"
+
+        tabela += "</tr>"
+
+    tabela += "</table>"
+
+    aviso_html = ""
+
+    if aviso:
+        aviso_html = f"""
+        <div style="padding:20px;background:#fff3cd;border:1px solid #ffeeba">
+        <b>Avisos Gerais</b><br>
+        {aviso['mensagem']}
+        </div><br>
+        """
+
+    content = f"""
+    {aviso_html}
+
     <h3>Menu</h3>
+
+    <form method="post">
+    {tabela}
+    <br>
+    <button>Salvar</button>
+    </form>
+
     <ul>
       <li><a href='/lancar'>⏱Lançar horas</a></li>
       <li><a href='/relatorios'>📊Relatórios</a></li>
+      <li><a href='/ia'>🤖 Assistente IA</a></li>
     </ul>
     """
-    return render_template_string(BASE.replace('{% block content %}{% endblock %}', content), user=session['user'],
+
+    return render_template_string(BASE.replace('{% block content %}{% endblock %}', content),
+                                  user=session['user'],
                                   perfil=session['perfil'])
 
 # -------------------------
@@ -7611,17 +7689,31 @@ Pergunta:
 
 def executar_sql(sql):
 
-    if not sql.lower().startswith("select"):
+    if not sql:
+        raise Exception("SQL vazio")
+
+    sql = sql.strip().lower()
+
+    if not sql.startswith("select"):
         raise Exception("Somente SELECT permitido")
+
+    if "drop" in sql or "delete" in sql or "update" in sql or "insert" in sql:
+        raise Exception("Operação não permitida")
 
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(sql)
+    try:
+        # limite de 5 segundos para a query
+        cur.execute("SET statement_timeout TO 30000")
+        cur.execute(sql)
+        dados = cur.fetchall()
+        colunas = [desc.name for desc in cur.description]
 
-    dados = cur.fetchall()
-
-    colunas = [desc.name for desc in cur.description]
+    except Exception as e:
+        cur.close()
+        conn.close()
+        raise Exception(f"Erro na execução SQL: {str(e)}")
 
     cur.close()
     conn.close()

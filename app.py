@@ -1105,9 +1105,8 @@ border:2px solid #f1c40f;
 </div>
 
 <script>
-
-document.querySelectorAll(".inline-save").forEach(el=>{
-el.addEventListener("change",function(){
+document.querySelectorAll(".inline-save").forEach(el=>{{
+el.addEventListener("change",function(){{
 
 document.getElementById("status_save").innerText="💾 Salvando..."
 
@@ -1118,33 +1117,32 @@ let data=card.querySelector("[name=data]")?.value||""
 let obs=card.querySelector("[name=obs]")?.value||""
 let aniversario=card.querySelector("[name=aniversario]")?.value||""
 
-if(aniversario.includes("/")){
+if(aniversario.includes("/")){{
 let p=aniversario.split("/")
-if(p.length==2){
+if(p.length==2){{
 aniversario="2000-"+p[1]+"-"+p[0]
-}
-}
+}}
+}}
 
-fetch("/menu_salvar_inline",{
+fetch("/menu_salvar_inline",{{
 method:"POST",
-headers:{"Content-Type":"application/x-www-form-urlencoded"},
+headers:{{"Content-Type":"application/x-www-form-urlencoded"}},
 body:
 "atividade="+encodeURIComponent(atividade)+
 "&data="+encodeURIComponent(data)+
 "&obs="+encodeURIComponent(obs)+
 "&aniversario="+encodeURIComponent(aniversario)
-})
+}})
 .then(r=>r.json())
-.then(()=>{
+.then(()=>{{
 document.getElementById("status_save").innerText="✅ Salvo"
-})
-.catch(()=>{
+}})
+.catch(()=>{{
 document.getElementById("status_save").innerText="❌ Erro ao salvar"
-})
+}})
 
-})
-})
-
+}})
+}})
 </script>
 
 """

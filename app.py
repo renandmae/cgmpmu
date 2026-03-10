@@ -986,31 +986,31 @@ def menu():
     content = f"""
 <style>
 
-.tabela-atividades{
+.tabela-atividades{{
     border-collapse: collapse;
-}
+}}
 
-.tabela-atividades td{
+.tabela-atividades td{{
     vertical-align: top;
-}
+}}
 
-.col-atividade{
+.col-atividade{{
     width: 420px;
     white-space: pre-wrap;
     word-break: break-word;
-}
+}}
 
-.col-obs{
+.col-obs{{
     width: 420px;
     white-space: pre-wrap;
     word-break: break-word;
-}
+}}
 
-textarea.inline-save{
+textarea.inline-save{{
     width:100%;
     min-height:70px;
     resize: vertical;
-}
+}}
 </style>
 
 {aviso_html}

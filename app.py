@@ -938,21 +938,49 @@ def menu():
     cards = ""
 
     for r in dados:
+        aniv = ""
+        classe_aniv = ""
+        texto_aniv = ""
+        
+        if r["aniversario"]:
 
+            if isinstance(r["aniversario"], str):
+                r["aniversario"] = datetime.strptime(r["aniversario"], "%Y-%m-%d")
+        
+            aniv = r["aniversario"].strftime("%d/%m")
+        
+            hoje = datetime.today()
+        
+            prox = datetime(hoje.year, r["aniversario"].month, r["aniversario"].day)
+        
+            if prox < hoje:
+                prox = datetime(hoje.year + 1, r["aniversario"].month, r["aniversario"].day)
+        
+            dias = (prox - hoje).days
+        
+            if dias == 0:
+                classe_aniv = "aniversario-hoje"
+                texto_aniv = "🎉 Aniversário hoje!"
+        
+            elif dias <= 7:
+                classe_aniv = "aniversario-proximo"
+                texto_aniv = f"🎂 Faltam {dias} dias"
         editavel = r['colaborador'] == session['user']
 
         if editavel:
 
             cards += f"""
-            <div class='card'>
+            <div class='card {classe_aniv}'>
 
             <h4>👤 {r['colaborador']}</h4>
+            <div class="aviso-aniv">{texto_aniv}</div>
 
             <label>🎂 Aniversário</label>
-            <input type='date'
+            <input type='text'
             class='inline-save'
             name='aniversario'
-            value='{r['aniversario'] or ""}'>
+            placeholder='dd/mm'
+            value='{aniv}'>
 
             <label>📝 Atividade extra</label>
             <textarea
@@ -976,11 +1004,12 @@ def menu():
         else:
 
             cards += f"""
-            <div class='card'>
+            <div class='card {classe_aniv}'>
 
             <h4>👤 {r['colaborador']}</h4>
+            <div class="aviso-aniv">{texto_aniv}</div>
 
-            <b>🎂 Aniversário:</b> {r['aniversario'] or ""}<br><br>
+            <b>🎂 Aniversário:</b> {aniv}<br><br>
             <b>📝 Atividade:</b><br>
             {r['atividade'] or ""}<br><br>
 
@@ -1037,6 +1066,26 @@ font-weight:bold;
 margin-bottom:20px;
 }}
 
+.aniversario-hoje{
+background:#ffe0e0;
+border:2px solid #ff6b6b;
+}
+
+.aniversario-mes{
+background:#fff7d6;
+}
+
+.aviso-aniv{
+font-weight:bold;
+margin-bottom:10px;
+color:#d35400;
+}
+
+.aniversario-proximo{
+background:#fff3cd;
+border:2px solid #f1c40f;
+}
+
 </style>
 
 <div class='menu-top'>
@@ -1057,37 +1106,44 @@ margin-bottom:20px;
 
 <script>
 
-function salvarInline(){{
+document.querySelectorAll(".inline-save").forEach(el=>{
+el.addEventListener("change",function(){
 
 document.getElementById("status_save").innerText="💾 Salvando..."
 
-let atividade=document.querySelector("[name=atividade]")?.value||""
-let data=document.querySelector("[name=data]")?.value||""
-let obs=document.querySelector("[name=obs]")?.value||""
-let aniversario=document.querySelector("[name=aniversario]")?.value||""
+let card=this.closest(".card")
 
-fetch("/menu_salvar_inline",{{
+let atividade=card.querySelector("[name=atividade]")?.value||""
+let data=card.querySelector("[name=data]")?.value||""
+let obs=card.querySelector("[name=obs]")?.value||""
+let aniversario=card.querySelector("[name=aniversario]")?.value||""
+
+if(aniversario.includes("/")){
+let p=aniversario.split("/")
+if(p.length==2){
+aniversario="2000-"+p[1]+"-"+p[0]
+}
+}
+
+fetch("/menu_salvar_inline",{
 method:"POST",
-headers:{{"Content-Type":"application/x-www-form-urlencoded"}},
+headers:{"Content-Type":"application/x-www-form-urlencoded"},
 body:
 "atividade="+encodeURIComponent(atividade)+
 "&data="+encodeURIComponent(data)+
 "&obs="+encodeURIComponent(obs)+
 "&aniversario="+encodeURIComponent(aniversario)
-}})
+})
 .then(r=>r.json())
-.then(()=>{{
+.then(()=>{
 document.getElementById("status_save").innerText="✅ Salvo"
-}})
-.catch(()=>{{
+})
+.catch(()=>{
 document.getElementById("status_save").innerText="❌ Erro ao salvar"
-}})
+})
 
-}}
-
-document.querySelectorAll(".inline-save").forEach(el=>{{
-el.addEventListener("change",salvarInline)
-}})
+})
+})
 
 </script>
 

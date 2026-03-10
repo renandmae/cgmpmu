@@ -935,7 +935,7 @@ def menu():
     # TABELA
     # =========================
 
-    tabela = "<table border=1 cellpadding=6 class='tabela-atividades'>"
+    tabela = "<table border=1 cellpadding=8 class='tabela-atividades'>"
     tabela += "<tr><th>Aniversário</th><th>Colaborador</th><th>Atividades Extras</th><th>Data</th><th>Observações</th></tr>"
     
     for r in dados:
@@ -988,31 +988,47 @@ def menu():
 
 .tabela-atividades{{
     border-collapse: collapse;
+    width:100%;
+    table-layout: fixed;
+}}
+
+.tabela-atividades th{{
+    background:#f4f4f4;
 }}
 
 .tabela-atividades td{{
     vertical-align: top;
+    padding:8px;
 }}
 
 .col-atividade{{
-    width: 420px;
+    width:45%;
     white-space: pre-wrap;
     word-break: break-word;
 }}
 
 .col-obs{{
-    width: 420px;
+    width:35%;
     white-space: pre-wrap;
     word-break: break-word;
 }}
 
 textarea.inline-save{{
-    width:100%;
-    min-height:70px;
+    width:98%;
+    min-height:90px;
+    padding:6px;
     resize: vertical;
+    font-family: inherit;
+    font-size:14px;
+    box-sizing:border-box;
 }}
 </style>
-
+<ul>
+  <li><a href='/lancar'>⏱ Lançar horas</a></li>
+  <li><a href='/relatorios'>📊 Relatórios</a></li>
+  <li><a href='/ia'>🤖 Assistente IA</a></li>
+</ul>
+<br>
 {aviso_html}
 
 <h3>Menu</h3>
@@ -1021,13 +1037,7 @@ textarea.inline-save{{
 
 {tabela}
 
-<br><br>
-
-<ul>
-  <li><a href='/lancar'>⏱ Lançar horas</a></li>
-  <li><a href='/relatorios'>📊 Relatórios</a></li>
-  <li><a href='/ia'>🤖 Assistente IA</a></li>
-</ul>
+<br>
 
 <script>
 

@@ -846,7 +846,7 @@ def menu():
     cur = conn.cursor()
 
     # =========================
-    # SALVAR AVISO (ADMIN)
+    # SALVAR AVISO
     # =========================
 
     if request.method == "POST":
@@ -900,7 +900,7 @@ def menu():
     conn.close()
 
     # =========================
-    # QUADRO DE AVISOS
+    # AVISO HTML
     # =========================
 
     aviso_html = ""
@@ -932,147 +932,161 @@ def menu():
         """
 
     # =========================
-    # TABELA
+    # CARDS
     # =========================
 
-    tabela = "<table border=1 cellpadding=8 class='tabela-atividades'>"
-    tabela += "<tr><th>Aniversário</th><th>Colaborador</th><th>Atividades Extras</th><th>Data</th><th>Observações</th></tr>"
-    
+    cards = ""
+
     for r in dados:
-    
-        tabela += "<tr>"
-    
-        tabela += f"<td>{r['aniversario'] or ''}</td>"
-    
-        tabela += f"<td><b>{r['colaborador']}</b></td>"
-    
-        if r['colaborador'] == session['user']:
-    
-            tabela += f"""
-            <td class='col-atividade'>
-            <textarea name='atividade'
-            class='inline-save'
-            placeholder='Atividade extra'>{r['atividade'] or ""}</textarea>
-            </td>
-    
-            <td>
+
+        editavel = r['colaborador'] == session['user']
+
+        if editavel:
+
+            cards += f"""
+            <div class='card'>
+
+            <h4>👤 {r['colaborador']}</h4>
+
+            <label>🎂 Aniversário</label>
             <input type='date'
+            class='inline-save'
+            name='aniversario'
+            value='{r['aniversario'] or ""}'>
+
+            <label>📝 Atividade extra</label>
+            <textarea
+            class='inline-save'
+            name='atividade'>{r['atividade'] or ""}</textarea>
+
+            <label>📅 Data</label>
+            <input type='date'
+            class='inline-save'
             name='data'
-            class='inline-save'
             value='{r['data'] or ""}'>
-            </td>
-    
-            <td class='col-obs'>
-            <textarea name='obs'
+
+            <label>💬 Observação</label>
+            <textarea
             class='inline-save'
-            placeholder='Observação'>{r['observacao'] or ""}</textarea>
-            </td>
+            name='obs'>{r['observacao'] or ""}</textarea>
+
+            </div>
             """
-    
+
         else:
-    
-            tabela += f"<td class='col-atividade'>{r['atividade'] or ''}</td>"
-            tabela += f"<td>{r['data'] or ''}</td>"
-            tabela += f"<td class='col-obs'>{r['observacao'] or ''}</td>"
-    
-        tabela += "</tr>"
-    
-    tabela += "</table>"
+
+            cards += f"""
+            <div class='card'>
+
+            <h4>👤 {r['colaborador']}</h4>
+
+            <b>🎂 Aniversário:</b> {r['aniversario'] or ""}<br><br>
+            <b>📝 Atividade:</b><br>
+            {r['atividade'] or ""}<br><br>
+
+            <b>📅 Data:</b> {r['data'] or ""}<br><br>
+
+            <b>💬 Observação:</b><br>
+            {r['observacao'] or ""}
+
+            </div>
+            """
 
     # =========================
     # HTML FINAL
     # =========================
 
     content = f"""
+
 <style>
 
-.tabela-atividades{{
-    border-collapse: collapse;
-    width:100%;
-    table-layout: fixed;
+.cards-container{{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+gap:20px;
 }}
 
-.tabela-atividades th{{
-    background:#f4f4f4;
+.card{{
+background:white;
+border:1px solid #ddd;
+border-radius:10px;
+padding:15px;
+box-shadow:0 2px 6px rgba(0,0,0,0.05);
 }}
 
-.tabela-atividades td{{
-    vertical-align: top;
-    padding:8px;
+.card h4{{
+margin-top:0;
 }}
 
-.col-atividade{{
-    width:45%;
-    white-space: pre-wrap;
-    word-break: break-word;
+.card textarea{{
+width:100%;
+min-height:90px;
+resize:vertical;
+margin-bottom:10px;
 }}
 
-.col-obs{{
-    width:35%;
-    white-space: pre-wrap;
-    word-break: break-word;
+.card input{{
+width:100%;
+margin-bottom:10px;
 }}
 
-textarea.inline-save{{
-    width:98%;
-    min-height:90px;
-    padding:6px;
-    resize: vertical;
-    font-family: inherit;
-    font-size:14px;
-    box-sizing:border-box;
+.menu-top{{
+display:flex;
+gap:20px;
+font-weight:bold;
+margin-bottom:20px;
 }}
+
 </style>
-<ul>
-  <li><a href='/lancar'>⏱ Lançar horas</a></li>
-  <li><a href='/relatorios'>📊 Relatórios</a></li>
-  <li><a href='/ia'>🤖 Assistente IA</a></li>
-</ul>
-<br>
+
+<div class='menu-top'>
+<a href='/lancar'>⏱ Lançar horas</a>
+<a href='/relatorios'>📊 Relatórios</a>
+<a href='/ia'>🤖 Assistente IA</a>
+</div>
+
 {aviso_html}
 
 <h3>Menu</h3>
 
 <div id="status_save" style="margin-bottom:10px;color:green"></div>
 
-{tabela}
-
-<br>
+<div class="cards-container">
+{cards}
+</div>
 
 <script>
 
 function salvarInline(){{
 
-    document.getElementById("status_save").innerText = "💾 Salvando..."
+document.getElementById("status_save").innerText="💾 Salvando..."
 
-    let atividade = document.querySelector("[name=atividade]")?.value || ""
-    let data = document.querySelector("[name=data]")?.value || ""
-    let obs = document.querySelector("[name=obs]")?.value || ""
-    let aniversario = document.querySelector("[name=aniversario]")?.value || ""
+let atividade=document.querySelector("[name=atividade]")?.value||""
+let data=document.querySelector("[name=data]")?.value||""
+let obs=document.querySelector("[name=obs]")?.value||""
+let aniversario=document.querySelector("[name=aniversario]")?.value||""
 
-    fetch("/menu_salvar_inline", {{
-        method:"POST",
-        headers: {{
-            "Content-Type":"application/x-www-form-urlencoded"
-        }},
-        body:
-            "atividade="+encodeURIComponent(atividade)+
-            "&data="+encodeURIComponent(data)+
-            "&obs="+encodeURIComponent(obs)+
-            "&aniversario="+encodeURIComponent(aniversario)
-    }})
-    .then(r=>r.json())
-    .then(d=>{{
-        document.getElementById("status_save").innerText = "✅ Salvo"
-    }})
-    .catch(()=>{{
-        document.getElementById("status_save").innerText = "❌ Erro ao salvar"
-    }})
+fetch("/menu_salvar_inline",{{
+method:"POST",
+headers:{{"Content-Type":"application/x-www-form-urlencoded"}},
+body:
+"atividade="+encodeURIComponent(atividade)+
+"&data="+encodeURIComponent(data)+
+"&obs="+encodeURIComponent(obs)+
+"&aniversario="+encodeURIComponent(aniversario)
+}})
+.then(r=>r.json())
+.then(()=>{{
+document.getElementById("status_save").innerText="✅ Salvo"
+}})
+.catch(()=>{{
+document.getElementById("status_save").innerText="❌ Erro ao salvar"
+}})
 
 }}
 
 document.querySelectorAll(".inline-save").forEach(el=>{{
-    el.addEventListener("change", salvarInline)
+el.addEventListener("change",salvarInline)
 }})
 
 </script>

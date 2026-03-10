@@ -972,7 +972,7 @@ def menu():
             cards += f"""
             <div class='card {classe_aniv}' data-nome="{r['colaborador']}">
 
-            <h4>👤 {r['colaborador']}</h4>
+            <h4 class="nome-colaborador">👤 {r['colaborador']}</h4>
             <div class="aviso-aniv">{texto_aniv}</div>
 
             <label>🎂 Aniversário</label>
@@ -1006,7 +1006,7 @@ def menu():
             cards += f"""
             <div class='card {classe_aniv}' data-nome="{r['colaborador']}">
 
-            <h4>👤 {r['colaborador']}</h4>
+            <h4 class="nome-colaborador">👤 {r['colaborador']}</h4>
             <div class="aviso-aniv">{texto_aniv}</div>
 
             <b>🎂 Aniversário:</b> {aniv}<br><br>
@@ -1102,14 +1102,9 @@ border:2px solid #f1c40f;
 <input
 type="text"
 id="busca_colaborador"
-placeholder="🔎 Buscar colaborador..."
-style="
-width:300px;
-padding:8px;
-border-radius:6px;
-border:1px solid #ccc;
-"
->
+placeholder="🔎 Pesquisar colaborador"
+onkeyup="filtrarColaborador()"
+style="width:300px;padding:8px;margin-bottom:20px">
 
 </div>
 
@@ -2043,7 +2038,7 @@ def os_page():
     html += "</select></div>"
 
     html += "<div>Observação: <input name='observacao'></div>"
-    html += "<div>Status: <select name='status'><option>Andamento</option><option>Concluido</option></select></div>"
+    html += "<div>Status: <select name='status'><option>Andamento</option><option>RP-Syria</option><option>RP-MariaCristina</option><option>Concluido</option></select></div>"
 
     html += "<div>Flags: \
         <label><input type='checkbox' name='plan'> PLAN</label> \
@@ -2388,6 +2383,8 @@ def os_edit(id):
     # status
     html += "<div>Status: <select name='status'>"
     html += f"<option value='Andamento' {'selected' if os['status']=='Andamento' else ''}>Andamento</option>"
+    html += f"<option value='RP-Syria' {'selected' if os['status']=='RP_Syria' else ''}>RP-Syria</option>"
+    html += f"<option value='RP-MariaCristina' {'selected' if os['status']=='RP_MariaCristina' else ''}>RP-MariaCristina</option>"
     html += f"<option value='Concluido' {'selected' if os['status']=='Concluido' else ''}>Concluído</option>"
     html += "</select></div>"
 

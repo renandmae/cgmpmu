@@ -935,50 +935,48 @@ def menu():
     # TABELA
     # =========================
 
-    tabela = "<table border=1 cellpadding=6>"
+    tabela = "<table border=1 cellpadding=6 class='tabela-atividades'>"
     tabela += "<tr><th>Aniversário</th><th>Colaborador</th><th>Atividades Extras</th><th>Data</th><th>Observações</th></tr>"
-
+    
     for r in dados:
-
+    
         tabela += "<tr>"
-
+    
         tabela += f"<td>{r['aniversario'] or ''}</td>"
-
+    
         tabela += f"<td><b>{r['colaborador']}</b></td>"
-
+    
         if r['colaborador'] == session['user']:
-
+    
             tabela += f"""
-            <td>
-            <input name='atividade'
+            <td class='col-atividade'>
+            <textarea name='atividade'
             class='inline-save'
-            placeholder='Atividade extra'
-            value='{r['atividade'] or ""}'>
+            placeholder='Atividade extra'>{r['atividade'] or ""}</textarea>
             </td>
-
+    
             <td>
             <input type='date'
             name='data'
             class='inline-save'
             value='{r['data'] or ""}'>
             </td>
-
-            <td>
-            <input name='obs'
+    
+            <td class='col-obs'>
+            <textarea name='obs'
             class='inline-save'
-            placeholder='Observação'
-            value='{r['observacao'] or ""}'>
+            placeholder='Observação'>{r['observacao'] or ""}</textarea>
             </td>
             """
-
+    
         else:
-
-            tabela += f"<td>{r['atividade'] or ''}</td>"
+    
+            tabela += f"<td class='col-atividade'>{r['atividade'] or ''}</td>"
             tabela += f"<td>{r['data'] or ''}</td>"
-            tabela += f"<td>{r['observacao'] or ''}</td>"
-
+            tabela += f"<td class='col-obs'>{r['observacao'] or ''}</td>"
+    
         tabela += "</tr>"
-
+    
     tabela += "</table>"
 
     # =========================
@@ -986,6 +984,34 @@ def menu():
     # =========================
 
     content = f"""
+<style>
+
+.tabela-atividades{
+    border-collapse: collapse;
+}
+
+.tabela-atividades td{
+    vertical-align: top;
+}
+
+.col-atividade{
+    width: 420px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.col-obs{
+    width: 420px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+textarea.inline-save{
+    width:100%;
+    min-height:70px;
+    resize: vertical;
+}
+</style>
 
 {aviso_html}
 

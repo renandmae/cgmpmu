@@ -1066,25 +1066,25 @@ font-weight:bold;
 margin-bottom:20px;
 }}
 
-.aniversario-hoje{
+.aniversario-hoje{{
 background:#ffe0e0;
 border:2px solid #ff6b6b;
-}
+}}
 
-.aniversario-mes{
+.aniversario-mes{{
 background:#fff7d6;
-}
+}}
 
-.aviso-aniv{
+.aviso-aniv{{
 font-weight:bold;
 margin-bottom:10px;
 color:#d35400;
-}
+}}
 
-.aniversario-proximo{
+.aniversario-proximo{{
 background:#fff3cd;
 border:2px solid #f1c40f;
-}
+}}
 
 </style>
 

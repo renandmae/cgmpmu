@@ -1161,23 +1161,23 @@ document.getElementById("status_save").innerText="❌ Erro ao salvar"
 </script>
 
 <script>
-document.getElementById("busca_colaborador").addEventListener("keyup",function(){
+function filtrarColaborador(){{
 
-let busca=this.value.toLowerCase()
+let filtro=document.getElementById("busca_colaborador").value.toLowerCase()
 
-document.querySelectorAll(".card").forEach(card=>{
+document.querySelectorAll(".card").forEach(card=>{{
 
-let nome=card.dataset.nome.toLowerCase()
+let nome=card.querySelector(".nome-colaborador").innerText.toLowerCase()
 
-if(nome.includes(busca)){
+if(nome.includes(filtro)){{
 card.style.display="block"
-}else{
+}}else{{
 card.style.display="none"
-}
+}}
 
-})
+}})
 
-})
+}}
 </script>
 
 """

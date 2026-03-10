@@ -970,7 +970,7 @@ def menu():
         if editavel:
 
             cards += f"""
-            <div class='card {classe_aniv}'>
+            <div class='card {classe_aniv}' data-nome="{r['colaborador']}">
 
             <h4>👤 {r['colaborador']}</h4>
             <div class="aviso-aniv">{texto_aniv}</div>
@@ -1004,7 +1004,7 @@ def menu():
         else:
 
             cards += f"""
-            <div class='card {classe_aniv}'>
+            <div class='card {classe_aniv}' data-nome="{r['colaborador']}">
 
             <h4>👤 {r['colaborador']}</h4>
             <div class="aviso-aniv">{texto_aniv}</div>
@@ -1097,6 +1097,21 @@ border:2px solid #f1c40f;
 {aviso_html}
 
 <h3>Menu</h3>
+<div style="margin-bottom:20px">
+
+<input
+type="text"
+id="busca_colaborador"
+placeholder="🔎 Buscar colaborador..."
+style="
+width:300px;
+padding:8px;
+border-radius:6px;
+border:1px solid #ccc;
+"
+>
+
+</div>
 
 <div id="status_save" style="margin-bottom:10px;color:green"></div>
 
@@ -1143,6 +1158,26 @@ document.getElementById("status_save").innerText="❌ Erro ao salvar"
 
 }})
 }})
+</script>
+
+<script>
+document.getElementById("busca_colaborador").addEventListener("keyup",function(){
+
+let busca=this.value.toLowerCase()
+
+document.querySelectorAll(".card").forEach(card=>{
+
+let nome=card.dataset.nome.toLowerCase()
+
+if(nome.includes(busca)){
+card.style.display="block"
+}else{
+card.style.display="none"
+}
+
+})
+
+})
 </script>
 
 """

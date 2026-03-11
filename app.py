@@ -8398,6 +8398,144 @@ PERGUNTA:
     resposta = r.json()
 
     return resposta["choices"][0]["message"]["content"]
+
+@app.route("/ia_documento", methods=["GET","POST"])
+def ia_documento():
+
+    if "doc_chat" not in session:
+        session["doc_chat"] = []
+
+    if "doc_partes" not in session:
+        session["doc_partes"] = []
+
+    resumo = ""
+    resposta = ""
+
+    # limpar conversa
+    if request.method == "POST" and request.form.get("acao") == "limpar":
+
+        session["doc_chat"] = []
+        session["doc_partes"] = []
+
+    # upload PDF
+    elif request.method == "POST" and "pdf" in request.files:
+
+        try:
+
+            arquivo = request.files["pdf"]
+
+            texto = extrair_texto_pdf(arquivo)
+
+            partes = dividir_texto(texto)
+
+            session["doc_partes"] = partes
+
+            resumo = resumo_pdf(texto)
+
+            session["doc_chat"].append({
+                "role":"assistant",
+                "content": resumo
+            })
+
+        except Exception as e:
+
+            resposta = str(e)
+
+    # pergunta do usuário
+    elif request.method == "POST" and request.form.get("pergunta"):
+
+        pergunta = request.form.get("pergunta")
+
+        try:
+
+            partes = session.get("doc_partes", [])
+
+            resposta = perguntar_pdf(
+                pergunta,
+                partes,
+                session["doc_chat"]
+            )
+
+            session["doc_chat"].append({
+                "role":"user",
+                "content": pergunta
+            })
+
+            session["doc_chat"].append({
+                "role":"assistant",
+                "content": resposta
+            })
+
+            session["doc_chat"] = session["doc_chat"][-12:]
+
+        except Exception as e:
+
+            resposta = str(e)
+
+    # montar chat
+    chat_html = ""
+
+    for msg in session["doc_chat"]:
+
+        if msg["role"] == "user":
+
+            chat_html += f"""
+            <div style="background:#eef;padding:8px;margin:5px;border-radius:5px">
+            <b>Você:</b> {msg['content']}
+            </div>
+            """
+
+        else:
+
+            chat_html += f"""
+            <div style="background:#efe;padding:8px;margin:5px;border-radius:5px">
+            <b>IA:</b> {msg['content']}
+            </div>
+            """
+
+    html = f"""
+
+<h2>IA de Análise de Documento</h2>
+
+<h3>Enviar PDF</h3>
+
+<form method="post" enctype="multipart/form-data">
+
+<input type="file" name="pdf" accept="application/pdf">
+
+<button>Analisar Documento</button>
+
+</form>
+
+<hr>
+
+<h3>Conversar com o documento</h3>
+
+<div style="height:350px;overflow:auto;border:1px solid #ccc;padding:10px">
+{chat_html}
+</div>
+
+<br>
+
+<form method="post">
+
+<input name="pergunta" style="width:70%" placeholder="Pergunte algo sobre o documento">
+
+<button>Perguntar</button>
+
+</form>
+
+<form method="post" style="margin-top:5px">
+
+<input type="hidden" name="acao" value="limpar">
+
+<button>🧹 Limpar conversa</button>
+
+</form>
+
+"""
+
+    return html
     
 @app.route("/seed")
 def seed():

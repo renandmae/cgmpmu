@@ -6322,11 +6322,11 @@ def importar_requisicoes_completa_background(arquivo_bytes):
         buffer = io.StringIO()
         BATCH = 2000
 
-        total = ws.max_row - 1
-        progresso_import["total"] = total
+        progresso_import["total"] = 0
 
         for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=1):
             progresso_import["processados"] = i
+            progresso_import["total"] = i
         
             try:
                 # =========================

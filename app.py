@@ -8106,7 +8106,6 @@ def ia():
 
     # limpar chat
     if request.method == "POST" and request.form.get("acao") == "limpar":
-
         session["chat_history"] = []
 
     elif request.method == "POST":
@@ -8139,13 +8138,13 @@ def ia():
             tabela += "</table>"
 
             resultado = tabela
-            
+
             # gerar gráfico sem quebrar resposta
             try:
                 grafico = gerar_grafico(colunas, dados)
             except:
                 grafico = None
-            
+
             explicacao = explicar_resultado(
                 pergunta,
                 colunas,
@@ -8155,13 +8154,13 @@ def ia():
 
             # salvar histórico
             session["chat_history"].append({
-                "role":"user",
-                "content":pergunta
+                "role": "user",
+                "content": pergunta
             })
 
             session["chat_history"].append({
-                "role":"assistant",
-                "content":explicacao
+                "role": "assistant",
+                "content": explicacao
             })
 
             # limitar histórico
@@ -8192,17 +8191,20 @@ def ia():
             </div>
             """
 
-chart_script = ""
+    # gráfico
+    chart_script = ""
 
-if grafico:
+    if grafico:
 
-    try:
+        try:
 
-        labels = json.dumps(grafico["labels"])
-        values = json.dumps(grafico["values"])
+            labels = json.dumps(grafico["labels"])
+            values = json.dumps(grafico["values"])
 
-        chart_script = f"""
+            chart_script = f"""
+<div style="width:700px;margin-top:20px">
 <canvas id="grafico"></canvas>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -8225,11 +8227,11 @@ data:{values}
 </script>
 """
 
-    except Exception as e:
+        except Exception as e:
 
-        print("Erro ao gerar gráfico:", e)
+            print("Erro ao gerar gráfico:", e)
 
-        chart_script = ""
+            chart_script = ""
 
     html = f"""
 

@@ -1024,6 +1024,10 @@ def menu():
     # =========================
     # HTML FINAL
     # =========================
+    menu_ia = ""
+    
+    if session.get("perfil") == "admin":
+        menu_ia = "<a href='/ia'>🤖 Assistente IA</a>"
 
     content = f"""
 
@@ -1091,9 +1095,7 @@ border:2px solid #f1c40f;
 <div class='menu-top'>
 <a href='/lancar'>⏱ Lançar horas</a>
 <a href='/relatorios'>📊 Relatórios</a>
-{% if session.get("perfil") == "admin" %}
-<a href='/ia'>🤖 Assistente IA</a>
-{% endif %}
+{menu_ia}
 </div>
 
 {aviso_html}

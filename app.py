@@ -8192,13 +8192,6 @@ def ia():
             </div>
             """
 
-    chart_script = ""
-
-    if grafico:
-
-        labels = json.dumps(grafico["labels"])
-        values = json.dumps(grafico["values"])
-
 chart_script = ""
 
 if grafico:

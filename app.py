@@ -1091,7 +1091,9 @@ border:2px solid #f1c40f;
 <div class='menu-top'>
 <a href='/lancar'>⏱ Lançar horas</a>
 <a href='/relatorios'>📊 Relatórios</a>
+{% if session.get("perfil") == "admin" %}
 <a href='/ia'>🤖 Assistente IA</a>
+{% endif %}
 </div>
 
 {aviso_html}

@@ -8279,9 +8279,9 @@ data:{values}
 
     return html
 
-import pdfplumber
+def extrair_texto_pdf(file, limite_chars=120000):
 
-def extrair_texto_pdf(file):
+    import pdfplumber
 
     texto = ""
 
@@ -8294,78 +8294,98 @@ def extrair_texto_pdf(file):
             if t:
                 texto += t + "\n"
 
+            if len(texto) > limite_chars:
+                break
+
     return texto
 
-def dividir_texto(texto, tamanho=4000):
+def dividir_texto(texto, tamanho=1000):
 
     partes = []
 
     for i in range(0, len(texto), tamanho):
+
         partes.append(texto[i:i+tamanho])
 
     return partes
 
-def resumo_pdf(texto):
+def buscar_partes_relevantes(pergunta, partes):
 
-    partes = dividir_texto(texto)
+    pergunta = pergunta.lower()
 
-    resumo_total = ""
+    resultados = []
 
-    for parte in partes[:5]:  # limite segurança
+    for p in partes:
 
-        mensagens = [
-            {
-                "role":"system",
-                "content":"""
-Você é um auditor interno especializado em análise de documentos de requisição e contratação.
+        score = 0
 
-Analise o documento e gere:
+        for palavra in pergunta.split():
 
-1) Resumo do documento
-2) Principais valores encontrados
-3) Empresas ou fornecedores citados
-4) Quantidades e itens principais
-5) Riscos ou inconsistências
-6) Recomendações para controle interno
+            if palavra in p.lower():
+                score += 1
 
-Seja objetivo.
-"""
-            },
-            {
-                "role":"user",
-                "content": parte
-            }
-        ]
+        resultados.append((score, p))
 
-        data = {
-            "model": GROQ_MODEL,
-            "messages": mensagens,
-            "temperature": 0.2
-        }
+    resultados.sort(reverse=True)
 
-        r = requests.post(GROK_URL, headers=headers, json=data)
+    top = [p for score,p in resultados[:5]]
 
-        resposta = r.json()
+    return top
 
-        resumo_total += resposta["choices"][0]["message"]["content"] + "\n\n"
-
-    return resumo_total
-
-def perguntar_pdf(pergunta, partes, historico):
-
-    contexto = "\n".join(partes[:6])  # limite segurança
+def gerar_resumo_documento(texto):
 
     mensagens = [
         {
             "role":"system",
             "content":"""
-Você é um auditor que responde perguntas sobre um documento de requisição.
+Você é um auditor interno especializado em análise de documentos administrativos.
 
-Objetivo:
-- responder perguntas sobre valores
-- identificar fornecedores
-- detectar inconsistências
-- sugerir ações de controle interno
+Gere:
+
+1) Resumo geral da contratação
+2) Principais valores encontrados
+3) Empresas ou fornecedores
+4) Quantidades relevantes
+5) Possíveis riscos ou inconsistências
+6) Recomendações para controle interno
+"""
+        },
+        {
+            "role":"user",
+            "content": texto[:12000]
+        }
+    ]
+
+    data = {
+        "model": GROQ_MODEL,
+        "messages": mensagens,
+        "temperature":0.2
+    }
+
+    r = requests.post(GROK_URL, headers=headers, json=data)
+
+    resposta = r.json()
+
+    return resposta["choices"][0]["message"]["content"]
+
+def perguntar_documento(pergunta, partes, historico):
+
+    trechos = buscar_partes_relevantes(pergunta, partes)
+
+    contexto = "\n".join(trechos)
+
+    mensagens = [
+        {
+            "role":"system",
+            "content":"""
+Você é um auditor analisando um documento administrativo.
+
+Responda perguntas sobre:
+- valores
+- fornecedores
+- quantidades
+- inconsistências
+- recomendações de controle interno
 
 Se a informação não existir no documento, diga que não encontrou.
 """
@@ -8376,13 +8396,12 @@ Se a informação não existir no documento, diga que não encontrou.
 
     mensagens.append({
         "role":"user",
-        "content": f"""
+        "content":f"""
 DOCUMENTO:
 
 {contexto}
 
 PERGUNTA:
-
 {pergunta}
 """
     })
@@ -8390,7 +8409,7 @@ PERGUNTA:
     data = {
         "model": GROQ_MODEL,
         "messages": mensagens,
-        "temperature": 0.2
+        "temperature":0.2
     }
 
     r = requests.post(GROK_URL, headers=headers, json=data)
@@ -8405,74 +8424,78 @@ def ia_documento():
     if "doc_chat" not in session:
         session["doc_chat"] = []
 
-    if "doc_partes" not in session:
-        session["doc_partes"] = []
+    if "doc_chunks" not in session:
+        session["doc_chunks"] = []
 
-    resumo = ""
-    resposta = ""
+    erro = ""
 
-    # limpar conversa
-    if request.method == "POST" and request.form.get("acao") == "limpar":
+    if request.method == "POST":
 
-        session["doc_chat"] = []
-        session["doc_partes"] = []
+        # limpar conversa
+        if request.form.get("acao") == "limpar":
 
-    # upload PDF
-    elif request.method == "POST" and "pdf" in request.files:
+            session["doc_chat"] = []
+            session["doc_chunks"] = []
 
-        try:
+        # upload PDF
+        elif "pdf" in request.files:
 
-            arquivo = request.files["pdf"]
+            try:
 
-            texto = extrair_texto_pdf(arquivo)
+                arquivo = request.files["pdf"]
 
-            partes = dividir_texto(texto)
+                if arquivo.filename == "":
+                    raise Exception("Selecione um PDF")
 
-            session["doc_partes"] = partes
+                texto = extrair_texto_pdf(arquivo)
 
-            resumo = resumo_pdf(texto)
+                if not texto.strip():
+                    raise Exception("Não foi possível extrair texto do PDF")
 
-            session["doc_chat"].append({
-                "role":"assistant",
-                "content": resumo
-            })
+                chunks = dividir_texto(texto)
 
-        except Exception as e:
+                session["doc_chunks"] = chunks
 
-            resposta = str(e)
+                resumo = gerar_resumo_documento(texto)
 
-    # pergunta do usuário
-    elif request.method == "POST" and request.form.get("pergunta"):
+                session["doc_chat"].append({
+                    "role":"assistant",
+                    "content":resumo
+                })
 
-        pergunta = request.form.get("pergunta")
+            except Exception as e:
 
-        try:
+                erro = str(e)
 
-            partes = session.get("doc_partes", [])
+        # pergunta
+        elif request.form.get("pergunta"):
 
-            resposta = perguntar_pdf(
-                pergunta,
-                partes,
-                session["doc_chat"]
-            )
+            try:
 
-            session["doc_chat"].append({
-                "role":"user",
-                "content": pergunta
-            })
+                pergunta = request.form.get("pergunta")
 
-            session["doc_chat"].append({
-                "role":"assistant",
-                "content": resposta
-            })
+                resposta = perguntar_documento(
+                    pergunta,
+                    session["doc_chunks"],
+                    session["doc_chat"]
+                )
 
-            session["doc_chat"] = session["doc_chat"][-12:]
+                session["doc_chat"].append({
+                    "role":"user",
+                    "content":pergunta
+                })
 
-        except Exception as e:
+                session["doc_chat"].append({
+                    "role":"assistant",
+                    "content":resposta
+                })
 
-            resposta = str(e)
+                session["doc_chat"] = session["doc_chat"][-12:]
 
-    # montar chat
+            except Exception as e:
+
+                erro = str(e)
+
     chat_html = ""
 
     for msg in session["doc_chat"]:
@@ -8480,7 +8503,7 @@ def ia_documento():
         if msg["role"] == "user":
 
             chat_html += f"""
-            <div style="background:#eef;padding:8px;margin:5px;border-radius:5px">
+            <div style="background:#eef;padding:8px;margin:6px;border-radius:6px">
             <b>Você:</b> {msg['content']}
             </div>
             """
@@ -8488,7 +8511,7 @@ def ia_documento():
         else:
 
             chat_html += f"""
-            <div style="background:#efe;padding:8px;margin:5px;border-radius:5px">
+            <div style="background:#efe;padding:8px;margin:6px;border-radius:6px">
             <b>IA:</b> {msg['content']}
             </div>
             """
@@ -8497,8 +8520,6 @@ def ia_documento():
 
 <h2>IA de Análise de Documento</h2>
 
-<h3>Enviar PDF</h3>
-
 <form method="post" enctype="multipart/form-data">
 
 <input type="file" name="pdf" accept="application/pdf">
@@ -8506,14 +8527,6 @@ def ia_documento():
 <button>Analisar Documento</button>
 
 </form>
-
-<hr>
-
-<h3>Conversar com o documento</h3>
-
-<div style="height:350px;overflow:auto;border:1px solid #ccc;padding:10px">
-{chat_html}
-</div>
 
 <br>
 
@@ -8525,13 +8538,23 @@ def ia_documento():
 
 </form>
 
-<form method="post" style="margin-top:5px">
+<form method="post">
 
 <input type="hidden" name="acao" value="limpar">
 
 <button>🧹 Limpar conversa</button>
 
 </form>
+
+<hr>
+
+<div style="height:400px;overflow:auto;border:1px solid #ccc;padding:10px">
+
+{chat_html}
+
+</div>
+
+<div style="color:red">{erro}</div>
 
 """
 

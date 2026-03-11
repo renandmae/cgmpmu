@@ -8043,7 +8043,9 @@ def gerar_grafico(colunas, dados):
         vals = list(r.values())
 
         labels.append(str(vals[0]))
-        valores.append(vals[1])
+
+        # converter Decimal para float
+        valores.append(float(vals[1] or 0))
 
     return {
         "labels": labels,
@@ -8137,9 +8139,13 @@ def ia():
             tabela += "</table>"
 
             resultado = tabela
-
-            grafico = gerar_grafico(colunas, dados)
-
+            
+            # gerar gráfico sem quebrar resposta
+            try:
+                grafico = gerar_grafico(colunas, dados)
+            except:
+                grafico = None
+            
             explicacao = explicar_resultado(
                 pergunta,
                 colunas,
@@ -8193,8 +8199,16 @@ def ia():
         labels = json.dumps(grafico["labels"])
         values = json.dumps(grafico["values"])
 
-        chart_script = f"""
+chart_script = ""
 
+if grafico:
+
+    try:
+
+        labels = json.dumps(grafico["labels"])
+        values = json.dumps(grafico["values"])
+
+        chart_script = f"""
 <canvas id="grafico"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -8217,6 +8231,12 @@ data:{values}
 
 </script>
 """
+
+    except Exception as e:
+
+        print("Erro ao gerar gráfico:", e)
+
+        chart_script = ""
 
     html = f"""
 

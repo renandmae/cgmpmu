@@ -7920,7 +7920,11 @@ def get_schema():
 
         cols = cur.fetchall()
 
-        col_names = [c["column_name"] for c in cols]
+        col_names = [
+            c["column_name"]
+            for c in cols
+            if c["column_name"] not in ["senha", "password", "hash"]
+]
 
         schema += f"Tabela {table}: {', '.join(col_names)}\n"
 
@@ -7989,25 +7993,36 @@ def executar_sql(sql):
 
     sql = sql.strip().lower()
 
+    # permitir apenas SELECT
     if not sql.startswith("select"):
         raise Exception("Somente SELECT permitido")
 
+    # bloquear operações perigosas
     if "drop" in sql or "delete" in sql or "update" in sql or "insert" in sql:
         raise Exception("Operação não permitida")
+
+    # 🔒 BLOQUEAR COLUNAS SENSÍVEIS
+    if any(x in sql for x in ["senha","password","hash"]):
+        raise Exception("Consulta bloqueada: acesso a dados sensíveis")
 
     conn = get_db()
     cur = conn.cursor()
 
     try:
-        # limite de 5 segundos para a query
+        # limite de tempo
         cur.execute("SET statement_timeout TO 30000")
+
         cur.execute(sql)
+
         dados = cur.fetchall()
+
         colunas = [desc.name for desc in cur.description]
 
     except Exception as e:
+
         cur.close()
         conn.close()
+
         raise Exception(f"Erro na execução SQL: {str(e)}")
 
     cur.close()

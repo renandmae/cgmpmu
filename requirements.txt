@@ -3,4 +3,4 @@ gunicorn
 psycopg2-binary
 openpyxl
 requests
-pdfplumber
+pdfplumber==0.11.4

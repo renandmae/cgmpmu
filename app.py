@@ -8278,6 +8278,126 @@ data:{values}
 """
 
     return html
+
+import pdfplumber
+
+def extrair_texto_pdf(file):
+
+    texto = ""
+
+    with pdfplumber.open(file) as pdf:
+
+        for pagina in pdf.pages:
+
+            t = pagina.extract_text()
+
+            if t:
+                texto += t + "\n"
+
+    return texto
+
+def dividir_texto(texto, tamanho=4000):
+
+    partes = []
+
+    for i in range(0, len(texto), tamanho):
+        partes.append(texto[i:i+tamanho])
+
+    return partes
+
+def resumo_pdf(texto):
+
+    partes = dividir_texto(texto)
+
+    resumo_total = ""
+
+    for parte in partes[:5]:  # limite segurança
+
+        mensagens = [
+            {
+                "role":"system",
+                "content":"""
+Você é um auditor interno especializado em análise de documentos de requisição e contratação.
+
+Analise o documento e gere:
+
+1) Resumo do documento
+2) Principais valores encontrados
+3) Empresas ou fornecedores citados
+4) Quantidades e itens principais
+5) Riscos ou inconsistências
+6) Recomendações para controle interno
+
+Seja objetivo.
+"""
+            },
+            {
+                "role":"user",
+                "content": parte
+            }
+        ]
+
+        data = {
+            "model": GROQ_MODEL,
+            "messages": mensagens,
+            "temperature": 0.2
+        }
+
+        r = requests.post(GROK_URL, headers=headers, json=data)
+
+        resposta = r.json()
+
+        resumo_total += resposta["choices"][0]["message"]["content"] + "\n\n"
+
+    return resumo_total
+
+def perguntar_pdf(pergunta, partes, historico):
+
+    contexto = "\n".join(partes[:6])  # limite segurança
+
+    mensagens = [
+        {
+            "role":"system",
+            "content":"""
+Você é um auditor que responde perguntas sobre um documento de requisição.
+
+Objetivo:
+- responder perguntas sobre valores
+- identificar fornecedores
+- detectar inconsistências
+- sugerir ações de controle interno
+
+Se a informação não existir no documento, diga que não encontrou.
+"""
+        }
+    ]
+
+    mensagens.extend(historico)
+
+    mensagens.append({
+        "role":"user",
+        "content": f"""
+DOCUMENTO:
+
+{contexto}
+
+PERGUNTA:
+
+{pergunta}
+"""
+    })
+
+    data = {
+        "model": GROQ_MODEL,
+        "messages": mensagens,
+        "temperature": 0.2
+    }
+
+    r = requests.post(GROK_URL, headers=headers, json=data)
+
+    resposta = r.json()
+
+    return resposta["choices"][0]["message"]["content"]
     
 @app.route("/seed")
 def seed():

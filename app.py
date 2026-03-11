@@ -8045,7 +8045,7 @@ def gerar_grafico(colunas, dados):
         labels.append(str(vals[0]))
 
         # converter Decimal para float
-        valores.append(float(vals[1] or 0))
+        valores.append(float(vals[1]))
 
     return {
         "labels": labels,

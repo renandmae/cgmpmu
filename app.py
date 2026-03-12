@@ -6303,13 +6303,21 @@ def importar_requisicoes():
 def status_importacao():
     return jsonify(progresso_import)
 
+import re
 def limpar(v):
     if v is None:
         return ""
+
     v = str(v)
+
+    # remove TAB e quebras
     v = v.replace("\t", " ")
     v = v.replace("\n", " ")
     v = v.replace("\r", " ")
+
+    # remove caracteres invisíveis
+    v = re.sub(r'[\x00-\x1f\x7f]', '', v)
+
     return v.strip()
 
 def importar_requisicoes_completa_background(arquivo_bytes):
@@ -6415,6 +6423,9 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                     "requisicao": r[3],
                     "erro": str(e)
                 })
+                print("ERRO NA LINHA:", i)
+                print("DADOS:", linha)
+                print("ERRO:", e)
 
         if buffer.tell() > 0:
             buffer.seek(0)

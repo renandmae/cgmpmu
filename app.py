@@ -6303,6 +6303,15 @@ def importar_requisicoes():
 def status_importacao():
     return jsonify(progresso_import)
 
+def limpar(v):
+    if v is None:
+        return ""
+    v = str(v)
+    v = v.replace("\t", " ")
+    v = v.replace("\n", " ")
+    v = v.replace("\r", " ")
+    return v.strip()
+
 def importar_requisicoes_completa_background(arquivo_bytes):
     global importando_requisicoes, progresso_import
 
@@ -6329,7 +6338,6 @@ def importar_requisicoes_completa_background(arquivo_bytes):
             if not r or r[3] is None:
                 break
             progresso_import["processados"] = i
-            progresso_import["total"] = i
         
             try:
                 # =========================
@@ -6386,24 +6394,31 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 ]
         
                 buffer.write(
-                    "\t".join("" if v is None else str(v).strip() for v in linha) + "\n"
+                    "\t".join(limpar(v) for v in linha) + "\n"
                 )
         
                 if i % BATCH == 0:
-                    buffer.seek(0)
-                    cur.copy_from(
-                        buffer,
-                        "requisicoes_staging_completa",
-                        sep="\t",
-                        null=""
-                    )
-                    buffer = io.StringIO()
+                    if buffer.tell() > 0:
+                        buffer.seek(0)
+                        cur.copy_from(
+                            buffer,
+                            "requisicoes_staging_completa",
+                            sep="\t",
+                            null=""
+                        )
+                        buffer = io.StringIO()
         
-            except Exception:
+            except Exception as e:
                 progresso_import["erros"] += 1
+                progresso_import["linhas_com_erro"].append({
+                    "linha_excel": i + 1,
+                    "requisicao": r[3],
+                    "erro": str(e)
+                })
 
-        buffer.seek(0)
-        cur.copy_from(buffer, "requisicoes_staging_completa", sep="\t", null="")
+        if buffer.tell() > 0:
+            buffer.seek(0)
+            cur.copy_from(buffer, "requisicoes_staging_completa", sep="\t", null="")
         buffer.close()
 
         # STAGING → FINAL
@@ -6648,6 +6663,7 @@ def importar_requisicoes_completo():
             "inseridos": 0,
             "duplicados": 0,
             "erros": 0,
+            "linhas_com_erro": [],   # ← FALTAVA ISSO
             "finalizado": False,
             "mensagem": ""
         }
@@ -6679,18 +6695,31 @@ def importar_requisicoes_completo():
 
     <script>
     setInterval(() => {
-        fetch("/requisicoes/importar/status")
-            .then(r => r.json())
-            .then(d => {
-                document.getElementById("status").innerHTML = `
-                    Processados: ${d.processados}/${d.total}<br>
-                    Inseridos: ${d.inseridos}<br>
-                    Duplicados: ${d.duplicados}<br>
-                    Erros: ${d.erros}<br>
-                    ${d.finalizado ? "✅ Finalizado" : "⏳ Em andamento"}
-                `;
-            });
-    }, 1500);
+    fetch("/requisicoes/importar/status")
+        .then(r => r.json())
+        .then(d => {
+
+            let erros = "";
+
+            if (d.linhas_com_erro && d.linhas_com_erro.length > 0) {
+
+                erros = "<br><b>Erros:</b><br>";
+
+                d.linhas_com_erro.forEach(e => {
+                    erros += `Linha ${e.linha_excel} - Req ${e.requisicao}<br>`;
+                });
+            }
+
+            document.getElementById("status").innerHTML = `
+                Processados: ${d.processados}/${d.total}<br>
+                Inseridos: ${d.inseridos}<br>
+                Duplicados: ${d.duplicados}<br>
+                Erros: ${d.erros}<br>
+                ${erros}
+                ${d.finalizado ? "✅ Finalizado" : "⏳ Em andamento"}
+            `;
+        });
+}, 1500);
     </script>
     """)
 

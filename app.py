@@ -6325,6 +6325,9 @@ def importar_requisicoes_completa_background(arquivo_bytes):
         progresso_import["total"] = 0
 
         for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=1):
+            # se não existir número da requisição, parar leitura
+            if not r or r[3] is None:
+                break
             progresso_import["processados"] = i
             progresso_import["total"] = i
         

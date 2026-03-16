@@ -8198,12 +8198,13 @@ def notas_auditoria():
 
         num_nota = request.form.get("num_nota")
         valor_posterior = request.form.get("valor_posterior")
-        
+
         if valor_posterior:
             valor_posterior = valor_posterior.strip()
             valor_posterior = valor_posterior.replace(".", "").replace(",", ".")
         else:
             valor_posterior = None
+
         observacoes = request.form.get("observacoes")
         status = request.form.get("status")
 
@@ -8221,6 +8222,11 @@ def notas_auditoria():
         con.commit()
 
     # =========================
+    # BUSCA
+    # =========================
+    busca = request.args.get("busca","").strip()
+
+    # =========================
     # LISTAR NOTAS
     # =========================
 
@@ -8234,9 +8240,15 @@ def notas_auditoria():
 
         na.valor_posterior,
         na.observacoes,
-        na.status
+        na.status,
+
+        STRING_AGG(DISTINCT c.nome, ', ') AS responsavel
 
     FROM requisicoes r
+
+    LEFT JOIN colaboradores c
+        ON c.id = r.servidor_id
+
     LEFT JOIN notas_auditoria na
         ON na.num_nota = r.num_nota
 
@@ -8246,12 +8258,21 @@ def notas_auditoria():
 
     params = []
 
-    # =========================
-    # FILTRO PARA COLABORADOR
-    # =========================
+    # filtro colaborador
     if session.get("perfil") != "admin":
         sql += " AND r.servidor_id = %s"
         params.append(session.get("user_id"))
+
+    # filtro busca
+    if busca:
+        sql += """
+        AND (
+            r.num_nota ILIKE %s
+            OR c.nome ILIKE %s
+        )
+        """
+        params.append(f"%{busca}%")
+        params.append(f"%{busca}%")
 
     sql += """
 
@@ -8271,16 +8292,29 @@ def notas_auditoria():
     con.close()
 
     html = """
-    
+
     <h2>Notas de Auditoria</h2>
+
     <a href="/exportar-notas-auditoria" class="btn btn-success">
     Exportar Notas Auditoria
     </a>
+
     <br><br>
+
+    <form method="get">
+        <input type="text" name="busca"
+        placeholder="Buscar por nota ou colaborador"
+        value="{{request.args.get('busca','')}}">
+        <button class="btn">Pesquisar</button>
+    </form>
+
+    <br>
+
     <table border="1" cellpadding="6">
 
     <tr>
         <th>Nota</th>
+        <th>Responsável</th>
         <th>Qtd Requisições</th>
         <th>Valor Nota</th>
         <th>Valor Posterior</th>
@@ -8300,6 +8334,8 @@ def notas_auditoria():
         {{n.num_nota}}
         <input type="hidden" name="num_nota" value="{{n.num_nota}}">
         </td>
+
+        <td>{{n.responsavel}}</td>
 
         <td>{{n.qtd_requisicoes}}</td>
 
@@ -8352,9 +8388,10 @@ def notas_auditoria():
         notas=notas,
         fmt_br=fmt_br,
         user=session['user'],
-        perfil=session['perfil']
+        perfil=session['perfil'],
+        request=request
     )
-
+    
 @app.route("/notas-auditoria/<path:num_nota>")
 def ver_nota(num_nota):
 

@@ -661,7 +661,20 @@ BASE = """
     background:#f2f6ff;
 }
 
-.menu-group:hover .dropdown {
+.dropdown {
+    display:none;
+    position:absolute;
+    top:38px;
+    left:0;
+    background:white;
+    border:1px solid #d8e2f0;
+    border-radius:10px;
+    box-shadow:0 6px 14px rgba(0,0,0,0.08);
+    min-width:180px;
+    z-index:100;
+}
+
+.menu-group.active .dropdown {
     display:block;
 }
 
@@ -799,6 +812,34 @@ tr.analisado { background:#e6ffed; }
 <div>
   {% block content %}{% endblock %}
 </div>
+<script>
+
+document.querySelectorAll(".menu-btn").forEach(btn => {
+
+    btn.addEventListener("click", function(e){
+
+        let group = this.parentElement
+
+        document.querySelectorAll(".menu-group").forEach(g=>{
+            if(g !== group){
+                g.classList.remove("active")
+            }
+        })
+
+        group.classList.toggle("active")
+
+        e.stopPropagation()
+    })
+
+})
+
+document.addEventListener("click", function(){
+    document.querySelectorAll(".menu-group").forEach(g=>{
+        g.classList.remove("active")
+    })
+})
+
+</script>
 </body>
 </html>
 """

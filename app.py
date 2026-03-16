@@ -638,6 +638,7 @@ tr.analisado { background:#e6ffed; }
 
   <meta charset='utf-8'>
   <title>Sistema de Horas</title>
+  <link rel="icon" type="image/png" href="https://i.ibb.co/M5ZcxYj6/favicon.png">
 
 </head>
 <body>
@@ -673,6 +674,7 @@ tr.analisado { background:#e6ffed; }
             <a href='/paint'>PAINT</a>
             <a href='/os'>O.S</a>
             <a href="/requisicoes">Requisições</a>
+            <a href='/notas-auditoria'>N.A</a>
             <a href="/painel_requisicoes">Painel</a>
             <a href="/requisicoes/importar">Import</a>
             <a href='/visao'>Visão/h</a>
@@ -8195,7 +8197,13 @@ def notas_auditoria():
     if request.method == "POST":
 
         num_nota = request.form.get("num_nota")
-        valor_posterior = request.form.get("valor_posterior") or None
+        valor_posterior = request.form.get("valor_posterior")
+        
+        if valor_posterior:
+            valor_posterior = valor_posterior.strip()
+            valor_posterior = valor_posterior.replace(".", "").replace(",", ".")
+        else:
+            valor_posterior = None
         observacoes = request.form.get("observacoes")
         status = request.form.get("status")
 
@@ -8216,7 +8224,7 @@ def notas_auditoria():
     # LISTAR NOTAS
     # =========================
 
-    cur.execute("""
+    sql = """
     SELECT
         r.num_nota,
 
@@ -8234,6 +8242,18 @@ def notas_auditoria():
 
     WHERE r.num_nota IS NOT NULL
       AND r.num_nota <> ''
+    """
+
+    params = []
+
+    # =========================
+    # FILTRO PARA COLABORADOR
+    # =========================
+    if session.get("perfil") != "admin":
+        sql += " AND r.servidor_id = %s"
+        params.append(session.get("user_id"))
+
+    sql += """
 
     GROUP BY
         r.num_nota,
@@ -8242,16 +8262,21 @@ def notas_auditoria():
         na.status
 
     ORDER BY r.num_nota
-    """)
+    """
+
+    cur.execute(sql, params)
 
     notas = cur.fetchall()
 
     con.close()
 
     html = """
-
+    
     <h2>Notas de Auditoria</h2>
-
+    <a href="/exportar-notas-auditoria" class="btn btn-success">
+    Exportar Notas Auditoria
+    </a>
+    <br><br>
     <table border="1" cellpadding="6">
 
     <tr>
@@ -8282,7 +8307,7 @@ def notas_auditoria():
 
         <td>
         <input name="valor_posterior"
-        value="{{n.valor_posterior or ''}}">
+        value="{{fmt_br(n.valor_posterior) if n.valor_posterior else ''}}">
         </td>
 
         <td>
@@ -8302,13 +8327,13 @@ def notas_auditoria():
         <input name="observacoes"
         value="{{n.observacoes or ''}}">
         </td>
-        
+
         <td>
         <a href="/notas-auditoria/{{n.num_nota}}">
         Ver nota
         </a>
         </td>
-        
+
         <td>
         <button>Salvar</button>
         </td>
@@ -8337,7 +8362,9 @@ def ver_nota(num_nota):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("""
+    if session["perfil"] == "admin":
+
+        cur.execute("""
         SELECT
             r.chave,
             r.secretaria,
@@ -8350,56 +8377,71 @@ def ver_nota(num_nota):
             ON c.id = r.servidor_id
         WHERE r.num_nota = %s
         ORDER BY r.chave
-    """, (num_nota,))
+        """,(num_nota,))
+
+    else:
+
+        cur.execute("""
+        SELECT
+            r.chave,
+            r.secretaria,
+            r.tipo,
+            r.criterio,
+            r.valor_requisicao,
+            c.nome AS colaborador
+        FROM requisicoes r
+        LEFT JOIN colaboradores c
+            ON c.id = r.servidor_id
+        WHERE r.num_nota = %s
+        AND r.servidor_id = %s
+        ORDER BY r.chave
+        """,(num_nota, session["user_id"]))
 
     reqs = cur.fetchall()
-
     conn.close()
 
     html = """
+
     <div class="container mt-4">
 
-        <h3>Nota de Auditoria: {{num_nota}}</h3>
+    <h3>Nota {{num_nota}}</h3>
 
-        <br>
+    <table class="table table-bordered table-sm">
 
-        <table class="table table-bordered table-sm">
+    <thead class="table-light">
+    <tr>
+        <th>Requisição</th>
+        <th>Secretaria</th>
+        <th>Tipo</th>
+        <th>Critério</th>
+        <th>Responsável</th>
+        <th style="text-align:right">Valor</th>
+    </tr>
+    </thead>
 
-            <thead class="table-light">
-                <tr>
-                    <th>Requisição</th>
-                    <th>Secretaria</th>
-                    <th>Tipo</th>
-                    <th>Critério</th>
-                    <th>Responsável</th>
-                    <th style="text-align:right">Valor</th>
-                </tr>
-            </thead>
+    <tbody>
 
-            <tbody>
-            {% for r in reqs %}
+    {% for r in reqs %}
 
-                <tr>
-                    <td>{{r.chave}}</td>
-                    <td>{{r.secretaria}}</td>
-                    <td>{{r.tipo}}</td>
-                    <td>{{r.criterio}}</td>
-                    <td>{{r.colaborador}}</td>
-                    <td style="text-align:right">
-                        {{fmt_br(r.valor_requisicao)}}
-                    </td>
-                </tr>
+    <tr>
+        <td>{{r.chave}}</td>
+        <td>{{r.secretaria}}</td>
+        <td>{{r.tipo}}</td>
+        <td>{{r.criterio}}</td>
+        <td>{{r.colaborador}}</td>
+        <td style="text-align:right">
+            {{fmt_br(r.valor_requisicao)}}
+        </td>
+    </tr>
 
-            {% endfor %}
-            </tbody>
+    {% endfor %}
 
-        </table>
+    </tbody>
+    </table>
 
-        <br>
-
-        <a href="/notas-auditoria" class="btn btn-secondary">
-            Voltar
-        </a>
+    <a href="/notas-auditoria" class="btn btn-secondary">
+    Voltar
+    </a>
 
     </div>
     """
@@ -8409,6 +8451,106 @@ def ver_nota(num_nota):
         reqs=reqs,
         num_nota=num_nota,
         fmt_br=fmt_br
+    )
+
+@app.route("/exportar-notas-auditoria")
+def exportar_notas_auditoria():
+
+    if "user" not in session:
+        return redirect("/")
+
+    con = get_db()
+    cur = con.cursor()
+
+    sql = """
+    SELECT
+
+        r.num_nota,
+
+        r.chave,
+        r.secretaria,
+        r.tipo,
+        r.criterio,
+        r.valor_requisicao,
+
+        c.nome AS colaborador,
+
+        na.valor_posterior,
+        na.observacoes,
+        na.status,
+
+        SUM(r.valor_requisicao) OVER (PARTITION BY r.num_nota) AS valor_nota
+
+    FROM requisicoes r
+
+    LEFT JOIN colaboradores c
+        ON c.id = r.servidor_id
+
+    LEFT JOIN notas_auditoria na
+        ON na.num_nota = r.num_nota
+
+    WHERE r.num_nota IS NOT NULL
+      AND r.num_nota <> ''
+    """
+
+    params = []
+
+    # colaborador só exporta as dele
+    if session.get("perfil") != "admin":
+        sql += " AND r.servidor_id = %s"
+        params.append(session.get("user_id"))
+
+    sql += " ORDER BY r.num_nota, r.chave"
+
+    cur.execute(sql, params)
+
+    dados = cur.fetchall()
+
+    con.close()
+
+    def gerar():
+
+        header = [
+            "num_nota",
+            "valor_nota",
+            "valor_posterior",
+            "status",
+            "observacoes",
+            "chave_requisicao",
+            "secretaria",
+            "tipo",
+            "criterio",
+            "colaborador",
+            "valor_requisicao"
+        ]
+
+        yield ",".join(header) + "\n"
+
+        for d in dados:
+
+            linha = [
+                str(d["num_nota"] or ""),
+                str(d["valor_nota"] or ""),
+                str(d["valor_posterior"] or ""),
+                str(d["status"] or ""),
+                str(d["observacoes"] or ""),
+                str(d["chave"] or ""),
+                str(d["secretaria"] or ""),
+                str(d["tipo"] or ""),
+                str(d["criterio"] or ""),
+                str(d["colaborador"] or ""),
+                str(d["valor_requisicao"] or "")
+            ]
+
+            yield ",".join(linha) + "\n"
+
+    return Response(
+        gerar(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition":
+            "attachment; filename=notas_auditoria.csv"
+        }
     )
 
 import requests

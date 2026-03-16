@@ -7344,6 +7344,45 @@ def requisicoes():
     .btn.analisado { background:#5cb85c; color:#fff }
     .btn.all { background:#0275d8; color:#fff }
     .btn.ativo { outline:2px solid #000; }
+    
+   #tbl {
+    border-collapse: collapse;
+    position: relative;
+    }
+    
+    /* cabeçalho fixo */
+    #tbl th {
+        position: sticky;
+        top: 0;
+        background: #dce8fb;
+        z-index: 10;
+    }
+    
+    /* coluna chave */
+    #tbl th:nth-child(1),
+    #tbl td:nth-child(1) {
+        position: sticky;
+        left: 0;
+        background: white;
+        z-index: 9;
+        min-width:170px;
+    }
+    
+    /* coluna corte */
+    #tbl th:nth-child(2),
+    #tbl td:nth-child(2) {
+        position: sticky;
+        left: 170px;
+        background: white;
+        z-index: 9;
+        min-width:110px;
+    }
+    
+    /* cabeçalho acima das colunas */
+    #tbl th:nth-child(1),
+    #tbl th:nth-child(2) {
+        z-index: 11;
+    }
     </style>
     
     <h3>Requisições</h3>
@@ -7390,11 +7429,11 @@ def requisicoes():
         {% endif %}
     
     </div>
-    <div style="overflow-x:auto; margin-top:10px;">
+    <div style="overflow:auto; margin-top:10px; max-height:70vh;">
     <table id="tbl" style="min-width:1400px;">
         <tr>
             <th>Chave</th>
-            <th>Sigla</th>
+            <th>Corte</th>
             <th>Valor</th>
             <th>Status</th>
             <th>Tipo</th>
@@ -7412,7 +7451,7 @@ def requisicoes():
         {% for r in rows %}
         <tr class="{{ r.status_analise|lower }}">
             <td>{{ r.chave }}</td>
-            <td>{{ r.sigla }}</td>
+            <td>{{ fmt(r.data_corte) if r.data_corte else "" }}</td>
             <td>{{ fmt_br(r.valor_requisicao) }}</td>
 
             <td style="white-space:nowrap;">
@@ -7589,6 +7628,7 @@ function atualizarCampo(id, campo, valor){
         tem_proxima=tem_proxima,  # ✅ substitui total_pages
         status=status,
         q=q,                     # ✅ mantém busca
+        fmt=fmt,
         fmt_br=fmt_br,
     )
 

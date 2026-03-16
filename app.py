@@ -733,9 +733,10 @@ tr.analisado { background:#e6ffed; }
         
         <!-- REQUISIÇÕES -->
         <div class="menu-group">
-        <button class="menu-btn menu3">📄 Requisições</button>
+        <button class="menu-btn menu3">📄 Requisições/N.A</button>
         <div class="dropdown">
         <a href="/requisicoes">📄 Requisições</a>
+        <a href="/notas-auditoria">🧾 Notas Auditoria</a>
         <a href="/requisicoes/importar">📥 Import</a>
         </div>
         </div>

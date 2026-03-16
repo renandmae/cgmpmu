@@ -8180,6 +8180,210 @@ tabela_colaboradores=tabela_colaboradores,  # 👈 FALTAVA ISSO
 fmt_br=fmt_br
 )
 
+@app.route("/notas-auditoria", methods=["GET","POST"])
+def notas_auditoria():
+
+    if "user" not in session:
+        return redirect("/")
+
+    con = get_db()
+    cur = con.cursor()
+
+    # =========================
+    # SALVAR EDIÇÃO DA NOTA
+    # =========================
+    if request.method == "POST":
+
+        num_nota = request.form.get("num_nota")
+        valor_posterior = request.form.get("valor_posterior") or None
+        observacoes = request.form.get("observacoes")
+        status = request.form.get("status")
+
+        cur.execute("""
+        INSERT INTO notas_auditoria
+        (num_nota, valor_posterior, observacoes, status)
+        VALUES (%s,%s,%s,%s)
+        ON CONFLICT (num_nota)
+        DO UPDATE SET
+            valor_posterior = EXCLUDED.valor_posterior,
+            observacoes = EXCLUDED.observacoes,
+            status = EXCLUDED.status
+        """,(num_nota,valor_posterior,observacoes,status))
+
+        con.commit()
+
+    # =========================
+    # LISTAR NOTAS
+    # =========================
+
+    cur.execute("""
+    SELECT
+        r.num_nota,
+
+        COUNT(r.id) AS qtd_requisicoes,
+
+        SUM(r.valor_requisicao) AS valor_nota,
+
+        na.valor_posterior,
+        na.observacoes,
+        na.status
+
+    FROM requisicoes r
+    LEFT JOIN notas_auditoria na
+        ON na.num_nota = r.num_nota
+
+    WHERE r.num_nota IS NOT NULL
+      AND r.num_nota <> ''
+
+    GROUP BY
+        r.num_nota,
+        na.valor_posterior,
+        na.observacoes,
+        na.status
+
+    ORDER BY r.num_nota
+    """)
+
+    notas = cur.fetchall()
+
+    con.close()
+
+    html = """
+
+    <h2>Notas de Auditoria</h2>
+
+    <table border="1" cellpadding="6">
+
+    <tr>
+        <th>Nota</th>
+        <th>Qtd Requisições</th>
+        <th>Valor Nota</th>
+        <th>Valor Posterior</th>
+        <th>Status</th>
+        <th>Observações</th>
+        <th>Salvar</th>
+    </tr>
+
+    {% for n in notas %}
+
+    <form method="post">
+
+    <tr>
+
+        <td>
+        {{n.num_nota}}
+        <input type="hidden" name="num_nota" value="{{n.num_nota}}">
+        </td>
+
+        <td>{{n.qtd_requisicoes}}</td>
+
+        <td>{{fmt_br(n.valor_nota)}}</td>
+
+        <td>
+        <input name="valor_posterior"
+        value="{{n.valor_posterior or ''}}">
+        </td>
+
+        <td>
+        <select name="status">
+
+            <option value=""></option>
+
+            <option value="MONITORADA"
+            {% if n.status=="MONITORADA" %}selected{% endif %}>
+            Monitorada
+            </option>
+
+        </select>
+        </td>
+
+        <td>
+        <input name="observacoes"
+        value="{{n.observacoes or ''}}">
+        </td>
+
+        <td>
+        <button>Salvar</button>
+        </td>
+
+    </tr>
+
+    </form>
+
+    {% endfor %}
+
+    </table>
+    """
+
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        notas=notas,
+        fmt_br=fmt_br
+    )
+
+@app.route("/notas-auditoria/<num_nota>")
+def ver_nota(num_nota):
+
+    if "user" not in session:
+        return redirect("/")
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+    SELECT
+        r.chave,
+        r.secretaria,
+        r.tipo,
+        r.criterio,
+        r.valor_requisicao,
+        c.nome AS colaborador
+    FROM requisicoes r
+    LEFT JOIN colaboradores c
+        ON c.id = r.servidor_id
+    WHERE r.num_nota = %s
+    ORDER BY r.chave
+    """,(num_nota,))
+
+    reqs = cur.fetchall()
+
+    con.close()
+
+    html = """
+    <h3>Nota {{num_nota}}</h3>
+
+    <table border="1" cellpadding="6">
+
+    <tr>
+        <th>Requisição</th>
+        <th>Secretaria</th>
+        <th>Tipo</th>
+        <th>Critério</th>
+        <th>Responsável</th>
+        <th>Valor</th>
+    </tr>
+
+    {% for r in reqs %}
+    <tr>
+        <td>{{r.chave}}</td>
+        <td>{{r.secretaria}}</td>
+        <td>{{r.tipo}}</td>
+        <td>{{r.criterio}}</td>
+        <td>{{r.colaborador}}</td>
+        <td>{{fmt_br(r.valor_requisicao)}}</td>
+    </tr>
+    {% endfor %}
+
+    </table>
+    """
+
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        reqs=reqs,
+        num_nota=num_nota,
+        fmt_br=fmt_br
+    )
+
 import requests
 
 GROQ_MODEL = "openai/gpt-oss-120b"

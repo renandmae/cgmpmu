@@ -614,6 +614,66 @@ BASE = """
         white-space: normal;
         word-break: break-word;
     }
+
+/* ---------------------- MENU AGRUPADO ---------------------- */
+
+.navbar {
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+    margin-top:10px;
+}
+
+.menu-group {
+    position:relative;
+}
+
+.menu-btn {
+    padding:8px 14px;
+    border-radius:8px;
+    font-weight:600;
+    border:none;
+    cursor:pointer;
+    font-size:14px;
+}
+
+.dropdown {
+    display:none;
+    position:absolute;
+    top:38px;
+    left:0;
+    background:white;
+    border:1px solid #d8e2f0;
+    border-radius:10px;
+    box-shadow:0 6px 14px rgba(0,0,0,0.08);
+    min-width:180px;
+    z-index:100;
+}
+
+.dropdown a {
+    display:block;
+    padding:9px 12px;
+    color:#1d2a3a !important;
+    font-size:14px;
+}
+
+.dropdown a:hover {
+    background:#f2f6ff;
+}
+
+.menu-group:hover .dropdown {
+    display:block;
+}
+
+/* cores por grupo */
+
+.menu1 { background:#e8f1ff; color:#1e4f9c; }
+.menu2 { background:#e8fff1; color:#1c7a48; }
+.menu3 { background:#fff3e8; color:#b76a1c; }
+.menu4 { background:#f0e8ff; color:#6a3fb2; }
+.menu5 { background:#ffe8e8; color:#a83232; }
+.menu6 { background:#e9f8ff; color:#1c7aa6; }
+.menu7 { background:#eeeeee; color:#444; }
     
 /* ---------------------- CSS MINHAS DELEGACOES ---------------------- */
 .btn {
@@ -651,37 +711,86 @@ tr.analisado { background:#e6ffed; }
   </div>
   <div>
     {% if user %}
-      <nav class="menu-links">
-        <a href='/menu'>Menu</a>
-        <a href='/lancar'>Lançar Horas</a>
-        <a href='/relatorios'>Relatórios</a>
-        <a href='/admin_projetos'>Projetos</a>
-        <a href='/notas-auditoria'>N.A</a>
-        {% if perfil != 'admin' %}
-            <a href="/minhas_delegacoes">Requisições</a>
-        {% endif %}
+      <div class="navbar">
+        
+        <!-- MENU -->
+        <div class="menu-group">
+        <button class="menu-btn menu1">🏠 Menu</button>
+        <div class="dropdown">
+        <a href="/menu">🏠 Menu</a>
+        <a href="/lancar">⏱ Lançar Horas</a>
+        <a href="/assistente">🤖 Assistente IA</a>
+        </div>
+        </div>
+        
+        <!-- RELATÓRIOS -->
+        <div class="menu-group">
+        <button class="menu-btn menu2">📊 Relatórios</button>
+        <div class="dropdown">
+        <a href="/relatorios">📊 Relatórios</a>
+        </div>
+        </div>
+        
+        <!-- REQUISIÇÕES -->
+        <div class="menu-group">
+        <button class="menu-btn menu3">📄 Requisições</button>
+        <div class="dropdown">
+        <a href="/requisicoes">📄 Requisições</a>
+        <a href="/requisicoes/importar">📥 Import</a>
+        </div>
+        </div>
+        
+        <!-- ATENDIMENTOS -->
+        <div class="menu-group">
+        <button class="menu-btn menu4">🧑‍💻 Atendimentos</button>
+        <div class="dropdown">
+        
         {% if perfil == 'admin' %}
-          <a href='/atendimentos'>Atendimentos</a>
+        <a href="/atendimentos">🧑‍💻 Atendimentos</a>
         {% else %}
-          <a href='/atendimentos'>Meus Atendimentos</a>
+        <a href="/atendimentos">🧑‍💻 Meus Atendimentos</a>
         {% endif %}
+        
         {% if perfil == 'admin' %}
-          <a href='/consultorias'>Consultorias</a>
+        <a href="/consultorias">💬 Consultorias</a>
         {% else %}
-          <a href='/consultorias'>Minhas Consultorias</a>
+        <a href="/consultorias">💬 Minhas Consultorias</a>
         {% endif %}
+        
+        </div>
+        </div>
+        
+        <!-- GERENCIAL -->
         {% if perfil=='admin' %}
-            <a href='/colaboradores'>Colaboradores</a>
-            <a href='/paint'>PAINT</a>
-            <a href='/os'>O.S</a>
-            <a href="/requisicoes">Requisições</a>
-            <a href="/painel_requisicoes">Painel</a>
-            <a href="/requisicoes/importar">Import</a>
-            <a href='/visao'>Visão/h</a>
+        <div class="menu-group">
+        <button class="menu-btn menu5">⚙ Gerencial</button>
+        <div class="dropdown">
+        <a href="/paint">🎨 PAINT</a>
+        <a href="/os">🧾 O.S</a>
+        <a href="/colaboradores">👥 Colaboradores</a>
+        </div>
+        </div>
         {% endif %}
-
-        <a href='/logout'>Sair</a>
-      </nav>
+        
+        <!-- PAINEL -->
+        <div class="menu-group">
+        <button class="menu-btn menu6">📈 Painel</button>
+        <div class="dropdown">
+        <a href="/admin_projetos">📂 Projetos</a>
+        <a href="/painel_requisicoes">📊 Painel</a>
+        <a href="/visao">📉 Visão/h</a>
+        </div>
+        </div>
+        
+        <!-- SAIR -->
+        <div class="menu-group">
+        <button class="menu-btn menu7">🚪 Conta</button>
+        <div class="dropdown">
+        <a href="/logout">🚪 Sair</a>
+        </div>
+        </div>
+        
+        </div>
     {% endif %}
   </div>
 </header>

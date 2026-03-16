@@ -2781,15 +2781,20 @@ def lancar():
         requisicoes_ids = request.form.getlist("requisicoes[]")
     
         datas = request.form.getlist("data[]")
-        horas_ini = request.form.getlist("hora_ini[]")
-        horas_fim = request.form.getlist("hora_fim[]")
+        duracoes = request.form.getlist("duracao[]")
     
         if not datas:
             con.close()
             return "Nenhum lançamento informado"
     
-        for data, hora_ini, hora_fim in zip(datas, horas_ini, horas_fim):
-    
+        for data, duracao in zip(datas, duracoes):
+
+            if not duracao:
+                continue
+        
+            h, m = map(int, duracao.split(":"))
+            minutos = h * 60 + m
+            
             # ---- validar data
             dt = datetime.strptime(data, "%Y-%m-%d")
             if dt.year != 2026:
@@ -2797,9 +2802,7 @@ def lancar():
                 return "Só é permitido lançar horas em 2026"
     
             # ---- calcular duração
-            ini = datetime.strptime(hora_ini, "%H:%M")
-            fim = datetime.strptime(hora_fim, "%H:%M")
-            minutos = (fim - ini).seconds // 60
+            
             duracao = f"{minutos//60:02d}:{minutos%60:02d}"
     
             # -------------------------
@@ -2818,8 +2821,8 @@ def lancar():
                 item,
                 os_codigo,
                 atividade,
-                hora_ini,
-                hora_fim,
+                None,
+                None,
                 duracao,
                 minutos,
                 observacoes
@@ -2992,8 +2995,7 @@ def lancar():
             <input type="date" name="data[]" value="{{ data_padrao }}"
                    min="2026-01-01" max="2026-12-31" required>
 
-            <input type="time" name="hora_ini[]" required>
-            <input type="time" name="hora_fim[]" required>
+            <input type="time" name="duracao[]" step="60" required>
 
             <button type="button" onclick="remover(this)">❌</button>
         </div>
@@ -3153,7 +3155,7 @@ document.addEventListener("DOMContentLoaded", function () {
 function adicionar() {
     const base = document.querySelector(".registro");
     const clone = base.cloneNode(true);
-    clone.querySelectorAll("input").forEach(i => i.value = "");
+    clone.querySelector("input[name='duracao[]']").value = "";
     document.getElementById("registros").appendChild(clone);
 }
 

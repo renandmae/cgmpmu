@@ -8466,38 +8466,28 @@ def exportar_notas_auditoria():
 
     sql = """
     SELECT
-
         r.num_nota,
-
         r.chave,
         r.secretaria,
         r.tipo,
         r.criterio,
         r.valor_requisicao,
-
         c.nome AS colaborador,
-
         na.valor_posterior,
         na.observacoes,
         na.status,
-
         SUM(r.valor_requisicao) OVER (PARTITION BY r.num_nota) AS valor_nota
-
     FROM requisicoes r
-
     LEFT JOIN colaboradores c
         ON c.id = r.servidor_id
-
     LEFT JOIN notas_auditoria na
         ON na.num_nota = r.num_nota
-
     WHERE r.num_nota IS NOT NULL
       AND r.num_nota <> ''
     """
 
     params = []
 
-    # colaborador só exporta as dele
     if session.get("perfil") != "admin":
         sql += " AND r.servidor_id = %s"
         params.append(session.get("user_id"))
@@ -8505,12 +8495,13 @@ def exportar_notas_auditoria():
     sql += " ORDER BY r.num_nota, r.chave"
 
     cur.execute(sql, params)
-
     dados = cur.fetchall()
-
     con.close()
 
     def gerar():
+
+        # BOM para Excel reconhecer UTF-8
+        yield "\ufeff"
 
         header = [
             "num_nota",
@@ -8526,14 +8517,14 @@ def exportar_notas_auditoria():
             "valor_requisicao"
         ]
 
-        yield ",".join(header) + "\n"
+        yield ";".join(header) + "\n"
 
         for d in dados:
 
             linha = [
                 str(d["num_nota"] or ""),
-                str(d["valor_nota"] or ""),
-                str(d["valor_posterior"] or ""),
+                fmt_br(d["valor_nota"]) if d["valor_nota"] else "",
+                fmt_br(d["valor_posterior"]) if d["valor_posterior"] else "",
                 str(d["status"] or ""),
                 str(d["observacoes"] or ""),
                 str(d["chave"] or ""),
@@ -8541,14 +8532,14 @@ def exportar_notas_auditoria():
                 str(d["tipo"] or ""),
                 str(d["criterio"] or ""),
                 str(d["colaborador"] or ""),
-                str(d["valor_requisicao"] or "")
+                fmt_br(d["valor_requisicao"]) if d["valor_requisicao"] else ""
             ]
 
-            yield ",".join(linha) + "\n"
+            yield ";".join(linha) + "\n"
 
     return Response(
         gerar(),
-        mimetype="text/csv",
+        mimetype="text/csv; charset=utf-8",
         headers={
             "Content-Disposition":
             "attachment; filename=notas_auditoria.csv"

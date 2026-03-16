@@ -8261,6 +8261,7 @@ def notas_auditoria():
         <th>Valor Posterior</th>
         <th>Status</th>
         <th>Observações</th>
+        <th>Ação</th>
         <th>Salvar</th>
     </tr>
 
@@ -8301,7 +8302,13 @@ def notas_auditoria():
         <input name="observacoes"
         value="{{n.observacoes or ''}}">
         </td>
-
+        
+        <td>
+        <a href="/notas-auditoria/{{n.num_nota}}">
+        Ver nota
+        </a>
+        </td>
+        
         <td>
         <button>Salvar</button>
         </td>
@@ -8321,60 +8328,80 @@ def notas_auditoria():
         fmt_br=fmt_br
     )
 
-@app.route("/notas-auditoria/<num_nota>")
+@app.route("/notas-auditoria/<path:num_nota>")
 def ver_nota(num_nota):
 
     if "user" not in session:
         return redirect("/")
 
-    con = get_db()
-    cur = con.cursor()
+    conn = get_db()
+    cur = conn.cursor()
 
     cur.execute("""
-    SELECT
-        r.chave,
-        r.secretaria,
-        r.tipo,
-        r.criterio,
-        r.valor_requisicao,
-        c.nome AS colaborador
-    FROM requisicoes r
-    LEFT JOIN colaboradores c
-        ON c.id = r.servidor_id
-    WHERE r.num_nota = %s
-    ORDER BY r.chave
-    """,(num_nota,))
+        SELECT
+            r.chave,
+            r.secretaria,
+            r.tipo,
+            r.criterio,
+            r.valor_requisicao,
+            c.nome AS colaborador
+        FROM requisicoes r
+        LEFT JOIN colaboradores c
+            ON c.id = r.servidor_id
+        WHERE r.num_nota = %s
+        ORDER BY r.chave
+    """, (num_nota,))
 
     reqs = cur.fetchall()
 
-    con.close()
+    conn.close()
 
     html = """
-    <h3>Nota {{num_nota}}</h3>
+    <div class="container mt-4">
 
-    <table border="1" cellpadding="6">
+        <h3>Nota de Auditoria: {{num_nota}}</h3>
 
-    <tr>
-        <th>Requisição</th>
-        <th>Secretaria</th>
-        <th>Tipo</th>
-        <th>Critério</th>
-        <th>Responsável</th>
-        <th>Valor</th>
-    </tr>
+        <br>
 
-    {% for r in reqs %}
-    <tr>
-        <td>{{r.chave}}</td>
-        <td>{{r.secretaria}}</td>
-        <td>{{r.tipo}}</td>
-        <td>{{r.criterio}}</td>
-        <td>{{r.colaborador}}</td>
-        <td>{{fmt_br(r.valor_requisicao)}}</td>
-    </tr>
-    {% endfor %}
+        <table class="table table-bordered table-sm">
 
-    </table>
+            <thead class="table-light">
+                <tr>
+                    <th>Requisição</th>
+                    <th>Secretaria</th>
+                    <th>Tipo</th>
+                    <th>Critério</th>
+                    <th>Responsável</th>
+                    <th style="text-align:right">Valor</th>
+                </tr>
+            </thead>
+
+            <tbody>
+            {% for r in reqs %}
+
+                <tr>
+                    <td>{{r.chave}}</td>
+                    <td>{{r.secretaria}}</td>
+                    <td>{{r.tipo}}</td>
+                    <td>{{r.criterio}}</td>
+                    <td>{{r.colaborador}}</td>
+                    <td style="text-align:right">
+                        {{fmt_br(r.valor_requisicao)}}
+                    </td>
+                </tr>
+
+            {% endfor %}
+            </tbody>
+
+        </table>
+
+        <br>
+
+        <a href="/notas-auditoria" class="btn btn-secondary">
+            Voltar
+        </a>
+
+    </div>
     """
 
     return render_template_string(

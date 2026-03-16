@@ -656,6 +656,7 @@ tr.analisado { background:#e6ffed; }
         <a href='/lancar'>Lançar Horas</a>
         <a href='/relatorios'>Relatórios</a>
         <a href='/admin_projetos'>Projetos</a>
+        <a href='/notas-auditoria'>N.A</a>
         {% if perfil != 'admin' %}
             <a href="/minhas_delegacoes">Requisições</a>
         {% endif %}
@@ -674,7 +675,6 @@ tr.analisado { background:#e6ffed; }
             <a href='/paint'>PAINT</a>
             <a href='/os'>O.S</a>
             <a href="/requisicoes">Requisições</a>
-            <a href='/notas-auditoria'>N.A</a>
             <a href="/painel_requisicoes">Painel</a>
             <a href="/requisicoes/importar">Import</a>
             <a href='/visao'>Visão/h</a>
@@ -8350,7 +8350,9 @@ def notas_auditoria():
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
         notas=notas,
-        fmt_br=fmt_br
+        fmt_br=fmt_br,
+        user=session['user'],
+        perfil=session['perfil']
     )
 
 @app.route("/notas-auditoria/<path:num_nota>")

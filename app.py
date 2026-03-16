@@ -7344,6 +7344,41 @@ def requisicoes():
     .btn.analisado { background:#5cb85c; color:#fff }
     .btn.all { background:#0275d8; color:#fff }
     .btn.ativo { outline:2px solid #000; }
+    
+    #tbl {
+        border-collapse: collapse;
+    }
+    
+    #tbl th {
+        position: sticky;
+        top: 0;
+        background: #dce8fb;
+        z-index: 5;
+    }
+    
+    /* coluna 1 */
+    #tbl th:nth-child(1),
+    #tbl td:nth-child(1) {
+        position: sticky;
+        left: 0;
+        background: white;
+        z-index: 4;
+    }
+    
+    /* coluna 2 */
+    #tbl th:nth-child(2),
+    #tbl td:nth-child(2) {
+        position: sticky;
+        left: 120px;
+        background: white;
+        z-index: 4;
+    }
+    
+    /* garantir que cabeçalho fique acima */
+    #tbl th:nth-child(1),
+    #tbl th:nth-child(2) {
+        z-index: 6;
+    }
     </style>
     
     <h3>Requisições</h3>
@@ -7394,7 +7429,7 @@ def requisicoes():
     <table id="tbl" style="min-width:1400px;">
         <tr>
             <th>Chave</th>
-            <th>Sigla</th>
+            <th>Corte</th>
             <th>Valor</th>
             <th>Status</th>
             <th>Tipo</th>
@@ -7412,7 +7447,7 @@ def requisicoes():
         {% for r in rows %}
         <tr class="{{ r.status_analise|lower }}">
             <td>{{ r.chave }}</td>
-            <td>{{ r.sigla }}</td>
+            <td>{{ r.data_corte }}</td>
             <td>{{ fmt_br(r.valor_requisicao) }}</td>
 
             <td style="white-space:nowrap;">

@@ -2792,7 +2792,12 @@ def lancar():
             if not duracao:
                 continue
         
-            h, m = map(int, duracao.split(":"))
+            try:
+                h, m = map(int, duracao.split(":"))
+                if m >= 60:
+                    raise ValueError
+            except:
+                continue
             minutos = h * 60 + m
             
             # ---- validar data
@@ -2995,7 +3000,7 @@ def lancar():
             <input type="date" name="data[]" value="{{ data_padrao }}"
                    min="2026-01-01" max="2026-12-31" required>
 
-            <input type="time" name="duracao[]" step="60" required>
+            <input type="text" name="duracao[]" placeholder="HH:MM" required pattern="^\d{1,4}:\d{2}$">
 
             <button type="button" onclick="remover(this)">❌</button>
         </div>
@@ -3163,6 +3168,20 @@ function remover(btn) {
     const registros = document.querySelectorAll(".registro");
     if (registros.length > 1) btn.parentElement.remove();
 }
+</script>
+
+<script>
+document.addEventListener("input", function(e){
+    if(e.target.name === "duracao[]"){
+        let v = e.target.value.replace(/\D/g, "")
+
+        if(v.length >= 3){
+            e.target.value = v.slice(0, v.length-2) + ":" + v.slice(-2)
+        } else {
+            e.target.value = v
+        }
+    }
+})
 </script>
 
 """

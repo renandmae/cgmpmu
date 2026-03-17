@@ -1831,8 +1831,8 @@ def paint():
         SELECT
             item_paint,
             SUM(
-                (CAST(SUBSTRING(duracao FROM 1 FOR 2) AS INTEGER) * 60) +
-                 CAST(SUBSTRING(duracao FROM 4 FOR 2) AS INTEGER)
+                (SPLIT_PART(duracao, ':', 1)::int * 60) +
+                 SPLIT_PART(duracao, ':', 2)::int
             ) AS minutos
         FROM horas
         GROUP BY item_paint
@@ -3218,9 +3218,9 @@ def relatorios():
         cur.execute("""
             SELECT c.nome,
                    SUM(
-                        (CAST(substr(h.duracao,1,2) AS INTEGER) * 60) +
-                         CAST(substr(h.duracao,4,2) AS INTEGER)
-                        ) AS minutos
+                        (SPLIT_PART(h.duracao, ':', 1)::int * 60) +
+                         SPLIT_PART(h.duracao, ':', 2)::int
+                   ) AS minutos
             FROM horas h
             JOIN colaboradores c ON h.colaborador_id = c.id
             GROUP BY c.nome
@@ -3233,9 +3233,9 @@ def relatorios():
     cur.execute("""
         SELECT item_paint,
                SUM(
-               (CAST(substr(duracao,1,2) AS INTEGER) * 60) +
-                CAST(substr(duracao,4,2) AS INTEGER)
-           ) AS minutos
+                   (SPLIT_PART(duracao, ':', 1)::int * 60) +
+                    SPLIT_PART(duracao, ':', 2)::int
+               ) AS minutos
         FROM horas
         GROUP BY item_paint
     """)
@@ -3941,10 +3941,7 @@ def admin_projetos():
     # 3) HH executadas
     # =============================
     cur.execute("""
-        SELECT SUM(
-            (CAST(SUBSTR(duracao, 1, 2) AS INTEGER) * 60) +
-            CAST(SUBSTR(duracao, 4, 2) AS INTEGER)
-        ) AS minutos
+        SELECT SUM(duracao_minutos) AS minutos
         FROM horas
     """)
     total_exec_min = cur.fetchone()["minutos"] or 0
@@ -3967,10 +3964,7 @@ def admin_projetos():
     cur.execute("""
         SELECT 
             item_paint,
-            SUM(
-                (CAST(SUBSTR(duracao, 1, 2) AS INTEGER) * 60) +
-                CAST(SUBSTR(duracao, 4, 2) AS INTEGER)
-            ) AS minutos
+            SUM(duracao_minutos) AS minutos
         FROM horas
         GROUP BY item_paint
     """)
@@ -4458,10 +4452,7 @@ def visao_consolidada():
 
         cur.execute(f"""
             SELECT
-                SUM(
-                    CAST(SUBSTR(h.duracao,1,2) AS INTEGER) * 60 +
-                    CAST(SUBSTR(h.duracao,4,2) AS INTEGER)
-                ) AS minutos
+                SUM(h.duracao_minutos) AS minutos
             FROM horas h
             LEFT JOIN colaboradores c ON c.id = h.colaborador_id
             LEFT JOIN os o ON o.codigo = h.os_codigo

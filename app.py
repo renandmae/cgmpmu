@@ -2401,6 +2401,9 @@ def os_edit(id):
             return int(v)
         except:
             return 0
+
+    def fmt_date_input(d):
+        return d.strftime('%Y-%m-%d') if d else ''
     
     def fmt_horas(mins):
         return f"{mins//60:02d}:{mins%60:02d}"
@@ -2475,9 +2478,6 @@ def os_edit(id):
         dt_inicio = request.form.get("dt_inicio") or None
         dt_previsao_fim = request.form.get("dt_previsao_fim") or None
         dt_conc = request.form.get('dt_conclusao') or None
-        dt_inicio_val = fmt(os.get('dt_inicio'))
-        dt_prev_val   = fmt(os.get('dt_previsao_fim'))
-        dt_conc_val   = fmt(os.get('dt_conclusao'))
         keys = request.form.get("keys")
         uo = ", ".join(request.form.getlist("uo"))
         
@@ -2490,11 +2490,6 @@ def os_edit(id):
         rp_dt_envio_ua  = request.form.get("rp_dt_envio_ua") or None
         rf_dt_envio_sup = request.form.get("rf_dt_envio_sup") or None
         rf_dt_envio_ua  = request.form.get("rf_dt_envio_ua") or None
-
-        rp_sup = fmt(os.get('rp_dt_envio_sup'))
-        rp_ua  = fmt(os.get('rp_dt_envio_ua'))
-        rf_sup = fmt(os.get('rf_dt_envio_sup'))
-        rf_ua  = fmt(os.get('rf_dt_envio_ua'))
 
         try:
             # ---- atualiza OS ----
@@ -2555,6 +2550,16 @@ def os_edit(id):
     equipe_atual = (os['equipe'] or "").split(", ")
 
     resumo_atual = os['resumo'] if 'resumo' in os.keys() else ""
+    
+    # variaveis data input
+    dt_inicio_val = fmt_date_input(os.get('dt_inicio'))
+    dt_prev_val   = fmt_date_input(os.get('dt_previsao_fim'))
+    dt_conc_val   = fmt_date_input(os.get('dt_conclusao'))
+    
+    rp_sup = fmt_date_input(os.get('rp_dt_envio_sup'))
+    rp_ua  = fmt_date_input(os.get('rp_dt_envio_ua'))
+    rf_sup = fmt_date_input(os.get('rf_dt_envio_sup'))
+    rf_ua  = fmt_date_input(os.get('rf_dt_envio_ua'))
 
     # ---------------- FORM HTML ----------------
     html = f"""
@@ -2683,15 +2688,15 @@ def os_edit(id):
     
     <div class="grid">
         <div>Data Início:<br>
-            <input type='date' name='dt_inicio' value='{dt_inicio_val}' or ''}'>
+            <input type='date' name='dt_inicio' value='{dt_inicio_val or ""}'>
         </div>
     
         <div>Previsão Fim:<br>
-            <input type='date' name='dt_previsao_fim' value='{dt_prev_val}' or ''}'>
+            <input type='date' name='dt_previsao_fim' value='{dt_prev_val or ""}'>
         </div>
     
         <div>Conclusão:<br>
-            <input type='date' name='dt_conclusao' value='{dt_conc_val}' or ''}'>
+            <input type='date' name='dt_conclusao' value='{dt_conc_val or ""}'>
         </div>
     </div>
     
@@ -2721,16 +2726,16 @@ def os_edit(id):
             <b>Relatório (RP)</b><br>
             <input name='rp0100' type='number' min='0' max='100' value='{os.get('rp0100',0)}'> %
             <div class="box_horas">{h_rp}</div>
-            <br>Sup: <input type='date' name='rp_dt_envio_sup' value='{rp_sup}' or ''}'>
-            UA: <input type='date' name='rp_dt_envio_ua' value='{rp_ua}' or ''}'>
+            <br>Sup: <input type='date' name='rp_dt_envio_sup' value='{rp_sup or ""}'>
+            UA: <input type='date' name='rp_dt_envio_ua' value='{rp_ua or ""}'>
         </div>
     
         <div>
             <b>Relatório Final (RF)</b><br>
             <input name='rf0100' type='number' min='0' max='100' value='{os.get('rf0100',0)}'> %
             <div class="box_horas">{h_rf}</div>
-            <br>Sup: <input type='date' name='rf_dt_envio_sup' value='{rf_sup}' or ''}'>
-            UA: <input type='date' name='rf_dt_envio_ua' value='{rf_ua}' or ''}'>
+            <br>Sup: <input type='date' name='rf_dt_envio_sup' value='{rf_sup or ""}'>
+            UA: <input type='date' name='rf_dt_envio_ua' value='{rf_ua or ""}'>
         </div>
     
     </div>

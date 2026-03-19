@@ -2339,6 +2339,9 @@ def os_delete_all():
     return redirect('/os')
 
 
+from datetime import datetime
+from flask import request
+
 @app.route('/os/view/<int:id>')
 def os_view(id):
     if 'user' not in session:
@@ -2357,21 +2360,49 @@ def os_view(id):
         con.close()
         return "O.S não encontrada"
 
-    # HISTÓRICO (100 mais recentes)
-    cur.execute("""
-        SELECT 
-            h.*,
-            c.nome as colaborador
+    # ---------------- FILTROS ----------------
+    modo = request.args.get('modo', 'recentes')  # recentes | todos | mes
+    mes = request.args.get('mes')
+    ano = datetime.now().year
+
+    # ---------------- QUERY DINÂMICA ----------------
+    sql = """
+        SELECT h.*, c.nome as colaborador
         FROM horas h
         JOIN colaboradores c ON c.id = h.colaborador_id
         WHERE h.os_codigo = %s
-        ORDER BY h.data DESC, h.id DESC
-        LIMIT 100
-    """, (os['codigo'],))
+    """
+    params = [os['codigo']]
 
+    if modo == 'mes' and mes:
+        sql += " AND EXTRACT(MONTH FROM h.data) = %s AND EXTRACT(YEAR FROM h.data) = %s"
+        params += [mes, ano]
+
+    sql += " ORDER BY h.data DESC, h.id DESC"
+
+    if modo == 'recentes':
+        sql += " LIMIT 100"
+
+    cur.execute(sql, tuple(params))
     horas = cur.fetchall()
+
+    # HORAS POR COLABORADOR
+    cur.execute("""
+        SELECT 
+            c.nome as colaborador,
+            SUM(h.duracao_minutos) as minutos
+        FROM horas h
+        JOIN colaboradores c ON c.id = h.colaborador_id
+        WHERE h.os_codigo = %s
+        GROUP BY c.nome
+        ORDER BY minutos DESC
+    """, (os['codigo'],))
+    
+    horas_colab = cur.fetchall()
+    
     con.close()
 
+    # ---------------- HELPERS ----------------
     def fmt_data(d):
         return d.strftime('%d/%m/%Y') if d else ''
 
@@ -2385,6 +2416,10 @@ def os_view(id):
             return ''
         return t.replace("1. ", "").replace("2. ", "").replace("3. ", "").replace("4. ", "")
 
+    def active(cond):
+        return "style='background:#2c5aa0;color:white;'" if cond else ""
+
+    # ---------------- HTML ----------------
     html = f"""
     <style>
     .card {{
@@ -2418,10 +2453,19 @@ def os_view(id):
         padding:8px;
         border-bottom:1px solid #ccc;
     }}
-    .ver-todos {{
-        text-align:right;
-        margin-top:10px;
+    .filtros {{
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+        margin-bottom:10px;
+    }}
+    .btn {{
+        padding:5px 10px;
+        border:1px solid #2c5aa0;
+        border-radius:6px;
+        text-decoration:none;
         font-weight:bold;
+        color:#2c5aa0;
     }}
     </style>
 
@@ -2431,6 +2475,28 @@ def os_view(id):
 
     <div class="card">
         <div class="titulo">🕒 Histórico de Lançamentos</div>
+
+        <div class="filtros">
+            <a class="btn" {active(modo=='recentes')} href="/os/view/{os['id']}?modo=recentes">Recentes</a>
+            <a class="btn" {active(modo=='todos')} href="/os/view/{os['id']}?modo=todos">Todos</a>
+    """
+
+    meses = [
+        ("01","Jan"),("02","Fev"),("03","Mar"),("04","Abr"),
+        ("05","Mai"),("06","Jun"),("07","Jul"),("08","Ago"),
+        ("09","Set"),("10","Out"),("11","Nov"),("12","Dez")
+    ]
+
+    for m, nome in meses:
+        html += f"""
+        <a class="btn" {active(modo=='mes' and mes==m)}
+           href="/os/view/{os['id']}?modo=mes&mes={m}">
+           {nome}
+        </a>
+        """
+
+    html += """
+        </div>
 
         <table>
             <tr>
@@ -2457,14 +2523,29 @@ def os_view(id):
         </tr>
         """
 
-    html += f"""
+    html += """
         </table>
-
-        <div class="ver-todos">
-            <a href="/horas?os={os['codigo']}">Ver Todos ↗</a>
-        </div>
     </div>
     """
+
+    html += """
+    <div class="card">
+        <div class="titulo">👥 Horas por Colaborador</div>
+    
+        <table>
+            <tr>
+                <th>Servidor</th>
+                <th>Horas</th>
+            </tr>
+    """
+
+    for hc in horas_colab:
+        html += f"""
+        <tr>
+            <td>{hc['colaborador']}</td>
+            <td>{fmt_horas(hc['minutos'])}</td>
+        </tr>
+        """
 
     return render_template_string(
         BASE.replace('{% block content %}{% endblock %}', html),

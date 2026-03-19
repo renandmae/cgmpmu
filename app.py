@@ -2567,7 +2567,6 @@ def os_edit(id):
 
     # ---------------- FORM HTML ----------------
     html = f"""
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
     .card {{
         border:1px solid #cbd5e1;
@@ -2706,131 +2705,80 @@ def os_edit(id):
     </div>
     
     <br>
-    
     <div style="display:flex;gap:15px;">
-        <b>Flags:</b>
+        <b>Flags:</b><br>
         <label><input type='checkbox' name='plan' {checked(os.get('plan'))}> PLAN</label>
         <label><input type='checkbox' name='exec' {checked(os.get('exec'))}> EXEC</label>
         <label><input type='checkbox' name='rp'   {checked(os.get('rp'))}> RP</label>
         <label><input type='checkbox' name='rf'   {checked(os.get('rf'))}> RF</label>
     </div>
+    <div class="grid">
     
-    <br>
-    
-    <div style="display:grid;grid-template-columns: 2fr 1fr 1fr;gap:10px;font-weight:bold;">
-        <div>Fase</div>
-        <div>%</div>
-        <div>Horas</div>
-    </div>
-    
-    <div style="display:grid;grid-template-columns: 2fr 1fr 1fr;gap:10px;align-items:center;">
-    
-        <div>Planejamento</div>
-        <div style="display:flex;gap:5px;align-items:center;">
-            <input name='plan0100' type='number' min='0' max='100' value='{os.get('plan0100',0)}' style='width:70px'> %
+        <div>
+            <b>Planejamento</b><br>
+            <div style="display:flex;align-items:center;gap:5px;">
+                <input name='plan0100' type='number' min='0' max='100'
+                       value='{os.get('plan0100',0)}'
+                       style='width:70px;'> 
+                <span>%</span>
+            </div>
+            <div class="box_horas">{h_plan}</div>
         </div>
-        <div><span class="box_horas">{h_plan}</span></div>
     
-        <div>Execução</div>
-        <div style="display:flex;gap:5px;align-items:center;">
-            <input name='exec0100' type='number' min='0' max='100' value='{os.get('exec0100',0)}' style='width:70px'> %
+        <div>
+            <b>Execução</b><br>
+                        <div style="display:flex;align-items:center;gap:5px;">
+                <input name='exec0100' type='number' min='0' max='100'
+                       value='{os.get('exec0100',0)}'
+                       style='width:70px;'> 
+                <span>%</span>
+            </div>
+            <div class="box_horas">{h_exec}</div>
         </div>
-        <div><span class="box_horas">{h_exec}</span></div>
     
-        <div>Relatório (RP)</div>
-        <div style="display:flex;gap:5px;align-items:center;">
-            <input name='rp0100' type='number' min='0' max='100' value='{os.get('rp0100',0)}' style='width:70px'> %
-        </div>
-        <div><span class="box_horas">{h_rp}</span></div>
-    
-        <div></div>
-        <div style="grid-column: span 2;">
-            Sup: <input type='date' name='rp_dt_envio_sup' value='{rp_sup or ""}'>
+        <div>
+            <b>Relatório (RP)</b><br>
+                        <div style="display:flex;align-items:center;gap:5px;">
+                <input name='rp0100' type='number' min='0' max='100'
+                       value='{os.get('rp0100',0)}'
+                       style='width:70px;'> 
+                <span>%</span>
+            </div>
+            <div class="box_horas">{h_rp}</div>
+            <br>Sup: <input type='date' name='rp_dt_envio_sup' value='{rp_sup or ""}'>
             UA: <input type='date' name='rp_dt_envio_ua' value='{rp_ua or ""}'>
         </div>
     
-        <div>Relatório Final (RF)</div>
-        <div style="display:flex;gap:5px;align-items:center;">
-            <input name='rf0100' type='number' min='0' max='100' value='{os.get('rf0100',0)}' style='width:70px'> %
-        </div>
-        <div><span class="box_horas">{h_rf}</span></div>
-    
-        <div></div>
-        <div style="grid-column: span 2;">
-            Sup: <input type='date' name='rf_dt_envio_sup' value='{rf_sup or ""}'>
+        <div>
+            <b>Relatório Final (RF)</b><br>
+                        <div style="display:flex;align-items:center;gap:5px;">
+                <input name='rf0100' type='number' min='0' max='100'
+                       value='{os.get('rf0100',0)}'
+                       style='width:70px;'> 
+                <span>%</span>
+            </div>
+            <div class="box_horas">{h_rf}</div>
+            <br>Sup: <input type='date' name='rf_dt_envio_sup' value='{rf_sup or ""}'>
             UA: <input type='date' name='rf_dt_envio_ua' value='{rf_ua or ""}'>
         </div>
     
-        </div>
-        
-        <br>
-        
-        <div class="grid">
-            <div>
-                <b>Total Geral</b><br>
-                <span class="badge">{media_percentual}%</span>
-            </div>
-        
-            <div>
-                <b>Total Horas</b><br>
-                <span class="badge">{h_total}</span>
-            </div>
-        </div>
-    """
-    html += f"""
-        <br>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-        
-            <div>
-                <canvas id="pieHoras"></canvas>
-            </div>
-        
-            <div>
-                <canvas id="gaugeChart"></canvas>
-            </div>
-        
-        </div>
-        
-        <script>
-        const pie = new Chart(document.getElementById('pieHoras'), {{
-            type: 'pie',
-            data: {{
-                labels: ['Planejamento','Execução','RP','RF'],
-                datasets: [{{
-                    data: [{horas_plan},{horas_exec},{horas_rp},{horas_rf}]
-                }}]
-            }}
-        }});
-        
-        // Gauge fake (barra horizontal)
-        const gauge = new Chart(document.getElementById('gaugeChart'), {{
-            type: 'bar',
-            data: {{
-                labels: ['PLAN','EXEC','RP','RF'],
-                datasets: [{{
-                    data: [
-                        {os.get('plan0100',0)},
-                        {os.get('exec0100',0)},
-                        {os.get('rp0100',0)},
-                        {os.get('rf0100',0)}
-                    ]
-                }}]
-            }},
-            options: {{
-                indexAxis: 'y',
-                scales: {{
-                    x: {{
-                        min: 0,
-                        max: 100
-                    }}
-                }}
-            }}
-        }});
-        </script>
-    """
+    </div>
     
-    html += f"""
+    <br>
+    
+    <div class="grid">
+        <div>
+            <b>Total Geral</b><br>
+            <span class="badge">{media_percentual}%</span>
+        </div>
+    
+        <div>
+            <b>Total Horas</b><br>
+            <span class="badge">{h_total}</span>
+        </div>
+    </div>
+    
+    </div>
     
     <div class="card">
     <div class="titulo">👥 Equipe</div>

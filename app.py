@@ -2829,7 +2829,6 @@ def os_edit(id):
         }});
         </script>
         """
-        </div>
     
     <div class="card">
     <div class="titulo">👥 Equipe</div>

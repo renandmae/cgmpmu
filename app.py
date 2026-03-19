@@ -2403,7 +2403,11 @@ def os_edit(id):
             return 0
 
     def fmt_date_input(d):
-        return d.strftime('%Y-%m-%d') if d else ''
+        if not d:
+            return ''
+        if isinstance(d, str):
+            return d[:10]  # já vem como 'YYYY-MM-DD' ou 'YYYY-MM-DD HH:MM:SS'
+        return d.strftime('%Y-%m-%d')
     
     def fmt_horas(mins):
         return f"{mins//60:02d}:{mins%60:02d}"

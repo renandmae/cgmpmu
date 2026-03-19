@@ -2390,12 +2390,30 @@ def os_view(id):
                                   user=session['user'], perfil=session['perfil'])
 
 
+def to_int(v):
+        try:
+            return int(v)
+        except:
+            return 0
+    
+def fmt_horas(mins):
+        return f"{mins//60:02d}:{mins%60:02d}"
+    
 @app.route('/os/edit/<int:id>', methods=['GET', 'POST'])
 def os_edit(id):
     if 'user' not in session:
         return redirect('/')
     if session['perfil'] != 'admin':
         return 'Acesso negado'
+
+    def to_int(v):
+        try:
+            return int(v)
+        except:
+            return 0
+    
+    def fmt_horas(mins):
+        return f"{mins//60:02d}:{mins%60:02d}"
 
     con = get_db()
     cur = con.cursor()
@@ -2416,6 +2434,31 @@ def os_edit(id):
     cur.execute('SELECT item_paint FROM projeto_paint ORDER BY item_paint')
     items = [r['item_paint'] for r in cur.fetchall()]
 
+    cur.execute("""
+        SELECT
+            atividade,
+            SUM(duracao_minutos) AS minutos
+        FROM horas
+        WHERE os_codigo = %s
+        GROUP BY atividade
+    """, (os["codigo"],))
+
+    horas_map = {r["atividade"]: r["minutos"] or 0 for r in cur.fetchall()}
+    
+    horas_plan = horas_map.get("1. Planejamento", 0)
+    horas_exec = horas_map.get("2. Execução", 0)
+    horas_rp   = horas_map.get("3. Relatório", 0)
+    horas_rf   = horas_map.get("4. Relatório Final", 0)
+    
+    total_horas = horas_plan + horas_exec + horas_rp + horas_rf
+    
+    media_percentual = int((
+        (os.get("plan0100") or 0) +
+        (os.get("exec0100") or 0) +
+        (os.get("rp0100") or 0) +
+        (os.get("rf0100") or 0)
+    ) / 4)
+
     if request.method == 'POST':
         codigo_novo = request.form.get('codigo')
         item = request.form.get('item_paint')
@@ -2433,6 +2476,18 @@ def os_edit(id):
         dt_inicio = request.form.get("dt_inicio") or None
         dt_previsao_fim = request.form.get("dt_previsao_fim") or None
         dt_conc = request.form.get('dt_conclusao') or None
+        keys = request.form.get("keys")
+        uo = ", ".join(request.form.getlist("uo"))
+        
+        plan0100 = to_int(request.form.get("plan0100"))
+        exec0100 = to_int(request.form.get("exec0100"))
+        rp0100   = to_int(request.form.get("rp0100"))
+        rf0100   = to_int(request.form.get("rf0100"))
+        
+        rp_dt_envio_sup = request.form.get("rp_dt_envio_sup") or None
+        rp_dt_envio_ua  = request.form.get("rp_dt_envio_ua") or None
+        rf_dt_envio_sup = request.form.get("rf_dt_envio_sup") or None
+        rf_dt_envio_ua  = request.form.get("rf_dt_envio_ua") or None
 
         try:
             # ---- atualiza OS ----
@@ -2441,13 +2496,25 @@ def os_edit(id):
                     codigo=%s, item_paint=%s, resumo=%s, unidade=%s, supervisao=%s, 
                     coordenacao=%s, equipe=%s, observacao=%s, status=%s, 
                     plan=%s, exec=%s, rp=%s, rf=%s,
-                    dt_inicio=%s, dt_previsao_fim=%s, dt_conclusao=%s
+                    dt_inicio=%s, dt_previsao_fim=%s, dt_conclusao=%s,
+            
+                    keys=%s, uo=%s,
+                    plan0100=%s, exec0100=%s, rp0100=%s, rf0100=%s,
+                    rp_dt_envio_sup=%s, rp_dt_envio_ua=%s,
+                    rf_dt_envio_sup=%s, rf_dt_envio_ua=%s
+            
                 WHERE id=%s
             """, (
                 codigo_novo, item, resumo, unidade, supervisao,
                 coordenacao, equipe, observacao, status,
                 plan, exec_, rp, rf,
                 dt_inicio, dt_previsao_fim, dt_conc,
+            
+                keys, uo,
+                plan0100, exec0100, rp0100, rf0100,
+                rp_dt_envio_sup, rp_dt_envio_ua,
+                rf_dt_envio_sup, rf_dt_envio_ua,
+            
                 id
             ))
 
@@ -2484,98 +2551,242 @@ def os_edit(id):
 
     # ---------------- FORM HTML ----------------
     html = f"""
-    <h3>Editar O.S {os['codigo']}</h3>
+    <style>
+    .card {{
+        border:1px solid #cbd5e1;
+        border-radius:10px;
+        padding:15px;
+        margin-bottom:15px;
+        background:#f8fafc;
+    }}
+    .titulo {{
+        font-weight:bold;
+        font-size:16px;
+        margin-bottom:10px;
+        display:flex;
+        align-items:center;
+        gap:8px;
+    }}
+    .grid {{
+        display:grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+        gap:10px;
+    }}
+    .badge {{
+        background:#e2e8f0;
+        padding:5px 8px;
+        border-radius:6px;
+        font-weight:bold;
+    }}
+    .box_horas {{
+        background:#1e293b;
+        color:white;
+        padding:6px 10px;
+        border-radius:6px;
+        font-weight:bold;
+        display:inline-block;
+    }}
+    input, select {{
+        padding:6px;
+        border-radius:6px;
+        border:1px solid #cbd5e1;
+        width:100%;
+    }}
+    </style>
+    
+    <h2 style="display:flex;align-items:center;gap:10px;">
+        📄 <span>Ordem de Serviço nº {os['codigo']}</span>
+    </h2>
+    
     <form method='post'>
-      <div>Código: <input name='codigo' value='{os['codigo']}'></div>
-
-      <div>Item PAINT:
-        <select name='item_paint'>
+    
+    <div class="card">
+    <div class="titulo">📌 Dados Gerais</div>
+    
+    <div class="grid">
+        <div>Código:<br><input name='codigo' value='{os['codigo']}'></div>
+    
+        <div>Item PAINT:<br>
+            <select name='item_paint'>
     """
-
+    
     for it in items:
         sel = "selected" if it == os['item_paint'] else ""
         html += f"<option value='{it}' {sel}>{it}</option>"
-
-    html += "</select></div>"
-
-    # >>> CAMPO RESUMO <<<
+    
     html += f"""
-    <div>Resumo: 
-        <input name='resumo' value="{resumo_atual}" style='width:300px'>
+            </select>
+        </div>
+    
+        <div>Resumo:<br>
+            <input name='resumo' value='{resumo_atual}'>
+        </div>
+    
+        <div>Status:<br>
+            <select name='status'>
+                <option {'selected' if os['status']=='Andamento' else ''}>Andamento</option>
+                <option {'selected' if os['status']=='Concluido' else ''}>Concluido</option>
+            </select>
+        </div>
     </div>
+    
+    <br>
+    
+    <div class="grid">
+        <div>Palavras-chave:<br>
+            <input name='keys' value="{os.get('keys','') or ''}">
+        </div>
+    
+        <div>Unidade:<br>
+            <select name='unidade' multiple size='5'>
     """
-
-    # unidades
-    unidades_opcoes = ["DAC", "DIRAE", "DMAD", "DOSE", "DACGR"]
-    html += "<div>Unidade:<br><select name='unidade' multiple size='5' style='width:260px'>"
+    
+    unidades_opcoes = ["DAC","DIRAE","DMAD","DOSE","DACGR"]
     for u in unidades_opcoes:
         sel = "selected" if u in unidade_atual else ""
         html += f"<option value='{u}' {sel}>{u}</option>"
-    html += "</select></div>"
-
+    
+    html += """
+            </select>
+        </div>
+    
+        <div>UO:<br>
+            <select name='uo' multiple size='5'>
+    """
+    
+    uos = ["CM","SEGOV","SMGAS","PGM","SMA","SMF","SME","SMCT","SMS","SEDES",
+           "SMAGRO","SEINFRA","SETTRAN","DMAE","IPREMU","FUTEL","FERUB",
+           "EMAM","CGM","SESURB","SMH","SEJUV","SECOM","SEDEI","SMGE",
+           "SEPLAN","SSEG","ARESAN","EXTERNO","OUTROS"]
+    
+    uo_atual = (os.get("uo") or "").split(", ")
+    
+    for u in uos:
+        sel = "selected" if u in uo_atual else ""
+        html += f"<option value='{u}' {sel}>{u}</option>"
+    
+    html += """
+            </select>
+        </div>
+    </div>
+    </div>
+    
+    <div class="card">
+    <div class="titulo">⚙️ Gestão do Projeto</div>
+    
+    <div class="grid">
+        <div>Data Início:<br>
+            <input type='date' name='dt_inicio' value='{os['dt_inicio'] or ''}'>
+        </div>
+    
+        <div>Previsão Fim:<br>
+            <input type='date' name='dt_previsao_fim' value='{os['dt_previsao_fim'] or ''}'>
+        </div>
+    
+        <div>Conclusão:<br>
+            <input type='date' name='dt_conclusao' value='{os['dt_conclusao'] or ''}'>
+        </div>
+    </div>
+    
+    <br>
+    <div style="display:flex;gap:15px;">
+        <b>Flags:</b><br>
+        <label><input type='checkbox' name='plan' {'checked' if os.get('plan') else ''}> PLAN</label>
+        <label><input type='checkbox' name='exec' {'checked' if os.get('exec') else ''}> EXEC</label>
+        <label><input type='checkbox' name='rp' {'checked' if os.get('rp') else ''}> RP</label>
+        <label><input type='checkbox' name='rf' {'checked' if os.get('rf') else ''}> RF</label>
+    </div>
+    <div class="grid">
+    
+        <div>
+            <b>Planejamento</b><br>
+            <input name='plan0100' type='number' min='0' max='100' value='{os.get('plan0100',0)}'> %
+            <div class="box_horas">{horas_plan//60:02}:{horas_plan%60:02}</div>
+        </div>
+    
+        <div>
+            <b>Execução</b><br>
+            <input name='exec0100' type='number' min='0' max='100' value='{os.get('exec0100',0)}'> %
+            <div class="box_horas">{horas_exec//60:02}:{horas_exec%60:02}</div>
+        </div>
+    
+        <div>
+            <b>Relatório (RP)</b><br>
+            <input name='rp0100' type='number' min='0' max='100' value='{os.get('rp0100',0)}'> %
+            <div class="box_horas">{horas_rp//60:02}:{horas_rp%60:02}</div>
+            <br>Sup: <input type='date' name='rp_dt_envio_sup' value='{os.get('rp_dt_envio_sup') or ''}'>
+            UA: <input type='date' name='rp_dt_envio_ua' value='{os.get('rp_dt_envio_ua') or ''}'>
+        </div>
+    
+        <div>
+            <b>Relatório Final (RF)</b><br>
+            <input name='rf0100' type='number' min='0' max='100' value='{os.get('rf0100',0)}'> %
+            <div class="box_horas">{horas_rf//60:02}:{horas_rf%60:02}</div>
+            <br>Sup: <input type='date' name='rf_dt_envio_sup' value='{os.get('rf_dt_envio_sup') or ''}'>
+            UA: <input type='date' name='rf_dt_envio_ua' value='{os.get('rf_dt_envio_ua') or ''}'>
+        </div>
+    
+    </div>
+    
+    <br>
+    
+    <div class="grid">
+        <div>
+            <b>Total Geral</b><br>
+            <span class="badge">{media_percentual}%</span>
+        </div>
+    
+        <div>
+            <b>Total Horas</b><br>
+            <span class="badge">{total_horas//60:02}:{total_horas%60:02}</span>
+        </div>
+    </div>
+    
+    </div>
+    
+    <div class="card">
+    <div class="titulo">👥 Equipe</div>
+    
+    <div class="grid">
+    """
+    
     # supervisão
-    html += "<div>Supervisão:<br><select name='supervisao' multiple size='6' style='width:260px'>"
+    html += "<div>Supervisão:<br><select name='supervisao' multiple size='5'>"
     for c in colabs:
         sel = "selected" if c in supervisao_atual else ""
-        html += f"<option value='{c}' {sel}>{c}</option>"
+        html += f"<option {sel}>{c}</option>"
     html += "</select></div>"
-
+    
     # coordenação
-    html += "<div>Coordenação:<br><select name='coordenacao' multiple size='6' style='width:260px'>"
+    html += "<div>Coordenação:<br><select name='coordenacao' multiple size='5'>"
     for c in colabs:
         sel = "selected" if c in coordenacao_atual else ""
-        html += f"<option value='{c}' {sel}>{c}</option>"
+        html += f"<option {sel}>{c}</option>"
     html += "</select></div>"
-
+    
     # equipe
-    html += "<div>Equipe:<br><select name='equipe' multiple size='7' style='width:260px'>"
+    html += "<div>Equipe:<br><select name='equipe' multiple size='6'>"
     for c in colabs:
         sel = "selected" if c in equipe_atual else ""
-        html += f"<option value='{c}' {sel}>{c}</option>"
+        html += f"<option {sel}>{c}</option>"
     html += "</select></div>"
-
-    # observação
-    html += f"<div>Observação: <input name='observacao' value='{os['observacao'] or ''}'></div>"
-
-    # status
-    html += "<div>Status: <select name='status'>"
-    html += f"<option value='Andamento' {'selected' if os['status']=='Andamento' else ''}>Andamento</option>"
-    html += f"<option value='RP-Syria' {'selected' if os['status']=='RP_Syria' else ''}>RP-Syria</option>"
-    html += f"<option value='RP-MariaCristina' {'selected' if os['status']=='RP_MariaCristina' else ''}>RP-MariaCristina</option>"
-    html += f"<option value='Concluido' {'selected' if os['status']=='Concluido' else ''}>Concluído</option>"
-    html += "</select></div>"
-
-    # flags
+    
     html += f"""
-    <div>Flags:
-      <label><input type='checkbox' name='plan' {'checked' if os['plan'] else ''}> PLAN</label>
-      <label><input type='checkbox' name='exec' {'checked' if os['exec'] else ''}> EXEC</label>
-      <label><input type='checkbox' name='rp' {'checked' if os['rp'] else ''}> RP</label>
-      <label><input type='checkbox' name='rf' {'checked' if os['rf'] else ''}> RF</label>
     </div>
-    """
-
-    html += f"""
-    <div>Data início: 
-        <input type='date' name='dt_inicio' value='{os['dt_inicio'] or ''}'>
     </div>
     
-    <div>Previsão fim: 
-        <input type='date' name='dt_previsao_fim' value='{os['dt_previsao_fim'] or ''}'>
+    <div class="card">
+    <div class="titulo">📝 Observações</div>
+    <input name='observacao' value='{os['observacao'] or ''}' style='width:100%'>
     </div>
-    """
     
-    # data conclusão
-    html += f"""
-    <div>Data conclusão: 
-        <input type='date' name='dt_conclusao' value='{os['dt_conclusao'] or ''}'>
+    <div style="margin-top:15px;">
+        <button class='btn btn-primary'>Salvar</button>
+        <a class='btn' href='/os'>Voltar</a>
     </div>
+    
+    </form>
     """
-
-    html += "<div><button class='btn btn-primary'>Salvar</button></div>"
-    html += "</form>"
-
-    html += "<a class='btn' href='/os'>Voltar</a>"
 
     return render_template_string(BASE.replace('{% block content %}{% endblock %}', html),
                                   user=session['user'], perfil=session['perfil'])

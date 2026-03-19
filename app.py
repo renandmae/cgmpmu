@@ -2776,8 +2776,8 @@ def os_edit(id):
                 <span class="badge">{h_total}</span>
             </div>
         </div>
-        """
-        html += f"""
+    """
+    html += f"""
         <br>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
@@ -2828,7 +2828,9 @@ def os_edit(id):
             }}
         }});
         </script>
-        """
+    """
+    
+    html += f"""
     
     <div class="card">
     <div class="titulo">👥 Equipe</div>

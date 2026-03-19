@@ -2348,46 +2348,129 @@ def os_view(id):
 
     con = get_db()
     cur = con.cursor()
-    cur.execute("SELECT * FROM os WHERE id=%s", (id,))
-    r = cur.fetchone()
-    con.close()
 
-    if not r:
+    # OS
+    cur.execute("SELECT * FROM os WHERE id=%s", (id,))
+    os = cur.fetchone()
+
+    if not os:
+        con.close()
         return "O.S não encontrada"
 
-    def icon(v):
-        if v == 1:
-            return "<span style='color:#2563eb;font-size:18px;'>●</span>"
-        else:
-            return "<span style='color:#dc2626;font-size:18px;'>x</span>"
+    # HISTÓRICO (100 mais recentes)
+    cur.execute("""
+        SELECT 
+            h.*,
+            c.nome as colaborador
+        FROM horas h
+        JOIN colaboradores c ON c.id = h.colaborador_id
+        WHERE h.os_codigo = %s
+        ORDER BY h.data DESC, h.id DESC
+        LIMIT 100
+    """, (os['codigo'],))
+
+    horas = cur.fetchall()
+    con.close()
+
+    def fmt_data(d):
+        return d.strftime('%d/%m/%Y') if d else ''
+
+    def fmt_horas(mins):
+        if not mins:
+            return "00:00"
+        return f"{mins//60:02d}:{mins%60:02d}"
+
+    def tipo_label(t):
+        if not t:
+            return ''
+        return t.replace("1. ", "").replace("2. ", "").replace("3. ", "").replace("4. ", "")
 
     html = f"""
-    <h3>Visualizar O.S {r['codigo']}</h3>
-    <p><strong>Código:</strong> {r['codigo']}</p>
-    <p><strong>Item PAINT:</strong> {r['item_paint']}</p>
-    <p><strong>Resumo:</strong> {r['resumo']}</p>
-    <p><strong>Unidade:</strong> {r['unidade'] if r['unidade'] else ''}</p>
-    <p><strong>Supervisão:</strong> {r['supervisao']}</p>
-    <p><strong>Coordenação:</strong> {r['coordenacao']}</p>
-    <p><strong>Equipe:</strong> {r['equipe']}</p>
-    <p><strong>Observação:</strong> {r['observacao']}</p>
-    <p><strong>Status:</strong> {r['status']}</p>
-    <p><strong>Flags:</strong>
-    PLAN={icon(r['plan'])} |
-    EXEC={icon(r['exec'])} |
-    RP={icon(r['rp'])} |
-    RF={icon(r['rf'])}
-</p>
-    <p><strong>Data Início:</strong> {r['dt_inicio'] or ''}</p>
-    <p><strong>Previsão Fim:</strong> {r['dt_previsao_fim'] or ''}</p>
-    <p><strong>Data Conclusão:</strong> {r['dt_conclusao'] or ''}</p>
+    <style>
+    .card {{
+        border:2px solid #2c5aa0;
+        border-radius:15px;
+        padding:20px;
+        margin-bottom:20px;
+        background:#eef3fb;
+    }}
+    .titulo {{
+        font-size:22px;
+        font-weight:bold;
+        display:flex;
+        align-items:center;
+        gap:10px;
+        margin-bottom:10px;
+        color:#2c5aa0;
+    }}
+    table {{
+        width:100%;
+        border-collapse:collapse;
+        margin-top:10px;
+    }}
+    th {{
+        background:#2c5aa0;
+        color:white;
+        padding:8px;
+        text-align:left;
+    }}
+    td {{
+        padding:8px;
+        border-bottom:1px solid #ccc;
+    }}
+    .ver-todos {{
+        text-align:right;
+        margin-top:10px;
+        font-weight:bold;
+    }}
+    </style>
 
-    <a class='btn' href='/os/edit/{r["id"]}'>Editar</a>
-    <a class='btn' href='/os'>Voltar</a>
+    <div class="titulo">
+        📄 Ordem de Serviço nº {os['codigo']}
+    </div>
+
+    <div class="card">
+        <div class="titulo">🕒 Histórico de Lançamentos</div>
+
+        <table>
+            <tr>
+                <th>Servidor</th>
+                <th>Data</th>
+                <th>Duração</th>
+                <th>Tipo</th>
+                <th>Observação</th>
+            </tr>
     """
 
-    return render_template_string(BASE.replace('{% block content %}{% endblock %}', html),
-                                  user=session['user'], perfil=session['perfil'])
+    for h in horas:
+        obs = (h["observacoes"] or "").strip()
+        if len(obs) > 120:
+            obs = obs[:120] + "..."
+
+        html += f"""
+        <tr>
+            <td>{h['colaborador']}</td>
+            <td>{fmt_data(h['data'])}</td>
+            <td>{fmt_horas(h['duracao_minutos'])}</td>
+            <td>{tipo_label(h['atividade'])}</td>
+            <td title="{h['observacoes'] or ''}">{obs}</td>
+        </tr>
+        """
+
+    html += f"""
+        </table>
+
+        <div class="ver-todos">
+            <a href="/horas?os={os['codigo']}">Ver Todos ↗</a>
+        </div>
+    </div>
+    """
+
+    return render_template_string(
+        BASE.replace('{% block content %}{% endblock %}', html),
+        user=session['user'],
+        perfil=session['perfil']
+    )
     
 @app.route('/os/edit/<int:id>', methods=['GET', 'POST'])
 def os_edit(id):

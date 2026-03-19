@@ -2744,7 +2744,7 @@ def os_edit(id):
         <div><span class="box_horas">{h_rp}</span></div>
     
         <div></div>
-        <div colspan="2">
+        <div style="grid-column: span 2;">
             Sup: <input type='date' name='rp_dt_envio_sup' value='{rp_sup or ""}'>
             UA: <input type='date' name='rp_dt_envio_ua' value='{rp_ua or ""}'>
         </div>
@@ -2756,7 +2756,7 @@ def os_edit(id):
         <div><span class="box_horas">{h_rf}</span></div>
     
         <div></div>
-        <div colspan="2">
+        <div style="grid-column: span 2;">
             Sup: <input type='date' name='rf_dt_envio_sup' value='{rf_sup or ""}'>
             UA: <input type='date' name='rf_dt_envio_ua' value='{rf_ua or ""}'>
         </div>
@@ -2776,6 +2776,7 @@ def os_edit(id):
                 <span class="badge">{h_total}</span>
             </div>
         </div>
+        """
         html += f"""
         <br>
         

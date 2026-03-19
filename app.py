@@ -2388,16 +2388,6 @@ def os_view(id):
 
     return render_template_string(BASE.replace('{% block content %}{% endblock %}', html),
                                   user=session['user'], perfil=session['perfil'])
-
-
-def to_int(v):
-        try:
-            return int(v)
-        except:
-            return 0
-    
-def fmt_horas(mins):
-        return f"{mins//60:02d}:{mins%60:02d}"
     
 @app.route('/os/edit/<int:id>', methods=['GET', 'POST'])
 def os_edit(id):
@@ -2414,6 +2404,9 @@ def os_edit(id):
     
     def fmt_horas(mins):
         return f"{mins//60:02d}:{mins%60:02d}"
+
+    def checked(v):
+        return 'checked' if str(v) == '1' else ''
 
     con = get_db()
     cur = con.cursor()
@@ -2451,6 +2444,12 @@ def os_edit(id):
     horas_rf   = horas_map.get("4. Relatório Final", 0)
     
     total_horas = horas_plan + horas_exec + horas_rp + horas_rf
+
+    h_plan = fmt_horas(horas_plan)
+    h_exec = fmt_horas(horas_exec)
+    h_rp   = fmt_horas(horas_rp)
+    h_rf   = fmt_horas(horas_rf)
+    h_total = fmt_horas(total_horas)
     
     media_percentual = int((
         (os.get("plan0100") or 0) +
@@ -2476,6 +2475,9 @@ def os_edit(id):
         dt_inicio = request.form.get("dt_inicio") or None
         dt_previsao_fim = request.form.get("dt_previsao_fim") or None
         dt_conc = request.form.get('dt_conclusao') or None
+        dt_inicio_val = fmt(os.get('dt_inicio'))
+        dt_prev_val   = fmt(os.get('dt_previsao_fim'))
+        dt_conc_val   = fmt(os.get('dt_conclusao'))
         keys = request.form.get("keys")
         uo = ", ".join(request.form.getlist("uo"))
         
@@ -2488,6 +2490,11 @@ def os_edit(id):
         rp_dt_envio_ua  = request.form.get("rp_dt_envio_ua") or None
         rf_dt_envio_sup = request.form.get("rf_dt_envio_sup") or None
         rf_dt_envio_ua  = request.form.get("rf_dt_envio_ua") or None
+
+        rp_sup = fmt(os.get('rp_dt_envio_sup'))
+        rp_ua  = fmt(os.get('rp_dt_envio_ua'))
+        rf_sup = fmt(os.get('rf_dt_envio_sup'))
+        rf_ua  = fmt(os.get('rf_dt_envio_ua'))
 
         try:
             # ---- atualiza OS ----
@@ -2646,7 +2653,7 @@ def os_edit(id):
         sel = "selected" if u in unidade_atual else ""
         html += f"<option value='{u}' {sel}>{u}</option>"
     
-    html += """
+    html += f"""
             </select>
         </div>
     
@@ -2665,7 +2672,7 @@ def os_edit(id):
         sel = "selected" if u in uo_atual else ""
         html += f"<option value='{u}' {sel}>{u}</option>"
     
-    html += """
+    html += f"""
             </select>
         </div>
     </div>
@@ -2676,54 +2683,54 @@ def os_edit(id):
     
     <div class="grid">
         <div>Data Início:<br>
-            <input type='date' name='dt_inicio' value='{os['dt_inicio'] or ''}'>
+            <input type='date' name='dt_inicio' value='{dt_inicio_val}' or ''}'>
         </div>
     
         <div>Previsão Fim:<br>
-            <input type='date' name='dt_previsao_fim' value='{os['dt_previsao_fim'] or ''}'>
+            <input type='date' name='dt_previsao_fim' value='{dt_prev_val}' or ''}'>
         </div>
     
         <div>Conclusão:<br>
-            <input type='date' name='dt_conclusao' value='{os['dt_conclusao'] or ''}'>
+            <input type='date' name='dt_conclusao' value='{dt_conc_val}' or ''}'>
         </div>
     </div>
     
     <br>
     <div style="display:flex;gap:15px;">
         <b>Flags:</b><br>
-        <label><input type='checkbox' name='plan' {'checked' if os.get('plan') else ''}> PLAN</label>
-        <label><input type='checkbox' name='exec' {'checked' if os.get('exec') else ''}> EXEC</label>
-        <label><input type='checkbox' name='rp' {'checked' if os.get('rp') else ''}> RP</label>
-        <label><input type='checkbox' name='rf' {'checked' if os.get('rf') else ''}> RF</label>
+        <label><input type='checkbox' name='plan' {checked(os.get('plan'))}> PLAN</label>
+        <label><input type='checkbox' name='exec' {checked(os.get('exec'))}> EXEC</label>
+        <label><input type='checkbox' name='rp'   {checked(os.get('rp'))}> RP</label>
+        <label><input type='checkbox' name='rf'   {checked(os.get('rf'))}> RF</label>
     </div>
     <div class="grid">
     
         <div>
             <b>Planejamento</b><br>
             <input name='plan0100' type='number' min='0' max='100' value='{os.get('plan0100',0)}'> %
-            <div class="box_horas">{horas_plan//60:02}:{horas_plan%60:02}</div>
+            <div class="box_horas">{h_plan}</div>
         </div>
     
         <div>
             <b>Execução</b><br>
             <input name='exec0100' type='number' min='0' max='100' value='{os.get('exec0100',0)}'> %
-            <div class="box_horas">{horas_exec//60:02}:{horas_exec%60:02}</div>
+            <div class="box_horas">{h_exec}</div>
         </div>
     
         <div>
             <b>Relatório (RP)</b><br>
             <input name='rp0100' type='number' min='0' max='100' value='{os.get('rp0100',0)}'> %
-            <div class="box_horas">{horas_rp//60:02}:{horas_rp%60:02}</div>
-            <br>Sup: <input type='date' name='rp_dt_envio_sup' value='{os.get('rp_dt_envio_sup') or ''}'>
-            UA: <input type='date' name='rp_dt_envio_ua' value='{os.get('rp_dt_envio_ua') or ''}'>
+            <div class="box_horas">{h_rp}</div>
+            <br>Sup: <input type='date' name='rp_dt_envio_sup' value='{rp_sup}' or ''}'>
+            UA: <input type='date' name='rp_dt_envio_ua' value='{rp_ua}' or ''}'>
         </div>
     
         <div>
             <b>Relatório Final (RF)</b><br>
             <input name='rf0100' type='number' min='0' max='100' value='{os.get('rf0100',0)}'> %
-            <div class="box_horas">{horas_rf//60:02}:{horas_rf%60:02}</div>
-            <br>Sup: <input type='date' name='rf_dt_envio_sup' value='{os.get('rf_dt_envio_sup') or ''}'>
-            UA: <input type='date' name='rf_dt_envio_ua' value='{os.get('rf_dt_envio_ua') or ''}'>
+            <div class="box_horas">{h_rf}</div>
+            <br>Sup: <input type='date' name='rf_dt_envio_sup' value='{rf_sup}' or ''}'>
+            UA: <input type='date' name='rf_dt_envio_ua' value='{rf_ua}' or ''}'>
         </div>
     
     </div>
@@ -2738,7 +2745,7 @@ def os_edit(id):
     
         <div>
             <b>Total Horas</b><br>
-            <span class="badge">{total_horas//60:02}:{total_horas%60:02}</span>
+            <span class="badge">{h_total}</span>
         </div>
     </div>
     

@@ -2764,90 +2764,93 @@ def os_view(id):
     perfil = session['perfil']
 
     con = get_db()
-    cur = con.cursor()
+    try:
+        cur = con.cursor()
 
-    # verifica se é participante da OS
-    cur.execute("""
-        SELECT 1
-        FROM os
-        WHERE id = %s
-          AND (
-            equipe ILIKE %s OR
-            coordenacao ILIKE %s OR
-            supervisao ILIKE %s
-          )
-    """, (id, f"%{user}%", f"%{user}%", f"%{user}%"))
+        # verifica se é participante da OS
+        cur.execute("""
+            SELECT 1
+            FROM os
+            WHERE id = %s
+              AND (
+                equipe ILIKE %s OR
+                coordenacao ILIKE %s OR
+                supervisao ILIKE %s
+              )
+        """, (id, f"%{user}%", f"%{user}%", f"%{user}%"))
+        
+        participa = cur.fetchone()
+        
+        # regra de acesso
+        if perfil != 'admin' and not participa:
+            con.close()
+            return 'Acesso negado'
     
-    participa = cur.fetchone()
+        # OS
+        cur.execute("SELECT * FROM os WHERE id=%s", (id,))
+        os = cur.fetchone()
     
-    # regra de acesso
-    if perfil != 'admin' and not participa:
+        if not os:
+            con.close()
+            return "O.S não encontrada"
+    
+        # ---------------- FILTROS ----------------
+        modo = request.args.get('modo', 'recentes')  # recentes | todos | mes
+        mes = request.args.get('mes')
+        ano = datetime.now().year
+    
+        # ---------------- QUERY DINÂMICA ----------------
+        sql = """
+            SELECT h.data, h.duracao_minutos, h.atividade, h.observacoes, c.nome as colaborador
+            FROM horas h
+            JOIN colaboradores c ON c.id = h.colaborador_id
+            WHERE h.os_codigo = %s
+        """
+        params = [os['codigo']]
+    
+        if modo == 'mes' and mes:
+            sql += " AND EXTRACT(MONTH FROM h.data) = %s AND EXTRACT(YEAR FROM h.data) = %s"
+            params += [mes, ano]
+    
+        sql += " ORDER BY h.data DESC, h.id DESC"
+    
+        if modo == 'todos':
+            sql += " LIMIT 1000"  # proteção
+        elif modo == 'recentes':
+            sql += " LIMIT 100"
+    
+        cur.execute(sql, tuple(params))
+    
+        # HORAS POR COLABORADOR
+        cur.execute("""
+            SELECT 
+                c.nome as colaborador,
+                SUM(h.duracao_minutos) as minutos
+            FROM horas h
+            JOIN colaboradores c ON c.id = h.colaborador_id
+            WHERE h.os_codigo = %s
+            GROUP BY c.nome
+            ORDER BY minutos DESC
+        """, (os['codigo'],))
+        
+        horas_colab = cur.fetchall()
+        total_min = sum([hc['minutos'] or 0 for hc in horas_colab])
+    
+        cur.execute("""
+            SELECT status,
+                   COUNT(*) as qtd,
+                   STRING_AGG(colaborador, ', ') as nomes
+            FROM os_status_user
+            WHERE os_codigo = %s
+            GROUP BY status
+        """, (os['codigo'],))
+        
+        status_data = cur.fetchall()
+        labels = [s['status'] or 'Sem status' for s in status_data]
+        values = [s['qtd'] for s in status_data]
+        nomes = [s['nomes'] for s in status_data]
+    finally:
         con.close()
-        return 'Acesso negado'
-
-    # OS
-    cur.execute("SELECT * FROM os WHERE id=%s", (id,))
-    os = cur.fetchone()
-
-    if not os:
-        con.close()
-        return "O.S não encontrada"
-
-    # ---------------- FILTROS ----------------
-    modo = request.args.get('modo', 'recentes')  # recentes | todos | mes
-    mes = request.args.get('mes')
-    ano = datetime.now().year
-
-    # ---------------- QUERY DINÂMICA ----------------
-    sql = """
-        SELECT h.*, c.nome as colaborador
-        FROM horas h
-        JOIN colaboradores c ON c.id = h.colaborador_id
-        WHERE h.os_codigo = %s
-    """
-    params = [os['codigo']]
-
-    if modo == 'mes' and mes:
-        sql += " AND EXTRACT(MONTH FROM h.data) = %s AND EXTRACT(YEAR FROM h.data) = %s"
-        params += [mes, ano]
-
-    sql += " ORDER BY h.data DESC, h.id DESC"
-
-    if modo == 'recentes':
-        sql += " LIMIT 100"
-
-    cur.execute(sql, tuple(params))
-    horas = cur.fetchall()
-
-    # HORAS POR COLABORADOR
-    cur.execute("""
-        SELECT 
-            c.nome as colaborador,
-            SUM(h.duracao_minutos) as minutos
-        FROM horas h
-        JOIN colaboradores c ON c.id = h.colaborador_id
-        WHERE h.os_codigo = %s
-        GROUP BY c.nome
-        ORDER BY minutos DESC
-    """, (os['codigo'],))
-    
-    horas_colab = cur.fetchall()
-    total_min = sum([hc['minutos'] or 0 for hc in horas_colab])
-
-    cur.execute("""
-        SELECT status,
-               COUNT(*) as qtd,
-               STRING_AGG(colaborador, ', ') as nomes
-        FROM os_status_user
-        WHERE os_codigo = %s
-        GROUP BY status
-    """, (os['codigo'],))
-    
-    status_data = cur.fetchall()
-    labels = [s['status'] or 'Sem status' for s in status_data]
-    values = [s['qtd'] for s in status_data]
-    nomes = [s['nomes'] for s in status_data]
-    con.close()
 
     # ---------------- HELPERS ----------------
     def fmt_data(d):
@@ -2955,7 +2958,7 @@ def os_view(id):
             </tr>
     """
 
-    for h in horas:
+    for h in cur:
         obs_raw = h["observacoes"] or ""
     
         obs_full = html_lib.escape(obs_raw)
@@ -9725,410 +9728,6 @@ def exportar_notas_auditoria():
         }
     )
 
-import requests
-
-GROQ_MODEL = "openai/gpt-oss-120b"
-
-GROK_API_KEY = "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"
-
-GROK_URL = "https://api.groq.com/openai/v1/chat/completions"
-
-headers = {
-    "Authorization": f"Bearer {GROK_API_KEY}",
-    "Content-Type": "application/json"
-}
-
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres.fvbharlpyxiwakbzyxzw:cgm2025agdt@aws-1-sa-east-1.pooler.supabase.com:5432/postgres"
-)
-
-def get_schema():
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema='public'
-    """)
-
-    tables = cur.fetchall()
-
-    schema = ""
-
-    for t in tables:
-
-        table = t["table_name"]
-
-        cur.execute(f"""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name='{table}'
-        """)
-
-        cols = cur.fetchall()
-
-        col_names = [
-            c["column_name"]
-            for c in cols
-            if c["column_name"] not in ["senha", "password", "hash"]
-]
-
-        schema += f"Tabela {table}: {', '.join(col_names)}\n"
-
-    cur.close()
-    conn.close()
-
-    return schema
-
-def gerar_sql(pergunta, historico):
-
-    schema = get_schema()
-
-    mensagens = [
-        {
-            "role": "system",
-            "content": f"""
-Você é especialista em PostgreSQL.
-
-Estrutura do banco:
-
-{schema}
-
-Regras:
-- Gere apenas SQL
-- Use apenas SELECT
-- Não explique
-- Não use markdown
-"""
-        }
-    ]
-
-    # adiciona histórico da conversa
-    mensagens.extend(historico)
-
-    mensagens.append({
-        "role": "user",
-        "content": pergunta
-    })
-
-    data = {
-        "model": GROQ_MODEL,
-        "messages": mensagens,
-        "temperature": 0
-    }
-
-    r = requests.post(GROK_URL, headers=headers, json=data)
-
-    resposta = r.json()
-
-    if "choices" not in resposta:
-        raise Exception(resposta)
-
-    sql = resposta["choices"][0]["message"]["content"]
-
-    sql = sql.replace("```sql","").replace("```","").strip()
-
-    if ";" in sql:
-        sql = sql.split(";")[0] + ";"
-
-    return sql
-
-def executar_sql(sql):
-
-    if not sql:
-        raise Exception("SQL vazio")
-
-    sql = sql.strip().lower()
-
-    # permitir apenas SELECT
-    if not sql.startswith("select"):
-        raise Exception("Somente SELECT permitido")
-
-    # bloquear operações perigosas
-    if "drop" in sql or "delete" in sql or "update" in sql or "insert" in sql:
-        raise Exception("Operação não permitida")
-
-    # 🔒 BLOQUEAR COLUNAS SENSÍVEIS
-    if any(x in sql for x in ["senha","password","hash"]):
-        raise Exception("Consulta bloqueada: acesso a dados sensíveis")
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    try:
-        # limite de tempo
-        cur.execute("SET statement_timeout TO 30000")
-
-        cur.execute(sql)
-
-        dados = cur.fetchall()
-
-        colunas = [desc.name for desc in cur.description]
-
-    except Exception as e:
-
-        cur.close()
-        conn.close()
-
-        raise Exception(f"Erro na execução SQL: {str(e)}")
-
-    cur.close()
-    conn.close()
-
-    return colunas, dados
-
-def gerar_grafico(colunas, dados):
-
-    if len(colunas) != 2:
-        return None
-
-    labels = []
-    valores = []
-
-    for r in dados:
-
-        vals = list(r.values())
-
-        labels.append(str(vals[0]))
-
-        # converter Decimal para float
-        valores.append(float(vals[1]))
-
-    return {
-        "labels": labels,
-        "values": valores
-    }
-
-def explicar_resultado(pergunta, colunas, dados, historico):
-
-    amostra = []
-
-    for r in dados[:20]:
-        amostra.append(list(r.values()))
-
-    mensagens = [
-        {"role":"system","content":"Você é um analista de dados e explica resultados de consultas SQL."}
-    ]
-
-    mensagens.extend(historico)
-
-    mensagens.append({
-        "role":"user",
-        "content":f"""
-Pergunta do usuário:
-{pergunta}
-
-Colunas retornadas:
-{colunas}
-
-Dados:
-{amostra}
-
-Explique o resultado de forma simples e destaque insights importantes.
-"""
-    })
-
-    data = {
-        "model": GROQ_MODEL,
-        "messages": mensagens,
-        "temperature": 0.2
-    }
-
-    r = requests.post(GROK_URL, headers=headers, json=data)
-
-    resposta = r.json()
-
-    return resposta["choices"][0]["message"]["content"]
-
-@app.route("/ia", methods=["GET","POST"])
-def ia():
-
-    if "chat_history" not in session:
-        session["chat_history"] = []
-
-    sql = ""
-    resultado = ""
-    grafico = None
-    explicacao = ""
-
-    # limpar chat
-    if request.method == "POST" and request.form.get("acao") == "limpar":
-        session["chat_history"] = []
-
-    elif request.method == "POST":
-
-        pergunta = request.form.get("pergunta")
-
-        try:
-
-            sql = gerar_sql(pergunta, session["chat_history"])
-
-            colunas, dados = executar_sql(sql)
-
-            # tabela
-            tabela = "<table border=1 cellpadding=5>"
-
-            tabela += "<tr>"
-            for c in colunas:
-                tabela += f"<th>{c}</th>"
-            tabela += "</tr>"
-
-            for r in dados:
-
-                tabela += "<tr>"
-
-                for v in r.values():
-                    tabela += f"<td>{v}</td>"
-
-                tabela += "</tr>"
-
-            tabela += "</table>"
-
-            resultado = tabela
-
-            # gerar gráfico sem quebrar resposta
-            try:
-                grafico = gerar_grafico(colunas, dados)
-            except:
-                grafico = None
-
-            explicacao = explicar_resultado(
-                pergunta,
-                colunas,
-                dados,
-                session["chat_history"]
-            )
-
-            # salvar histórico
-            session["chat_history"].append({
-                "role": "user",
-                "content": pergunta
-            })
-
-            session["chat_history"].append({
-                "role": "assistant",
-                "content": explicacao
-            })
-
-            # limitar histórico
-            session["chat_history"] = session["chat_history"][-10:]
-
-        except Exception as e:
-
-            resultado = str(e)
-
-    # montar histórico visual
-    chat_html = ""
-
-    for msg in session["chat_history"]:
-
-        if msg["role"] == "user":
-
-            chat_html += f"""
-            <div style="background:#eef;padding:8px;margin:5px;border-radius:5px">
-            <b>Você:</b> {msg['content']}
-            </div>
-            """
-
-        else:
-
-            chat_html += f"""
-            <div style="background:#efe;padding:8px;margin:5px;border-radius:5px">
-            <b>IA:</b> {msg['content']}
-            </div>
-            """
-
-    # gráfico
-    chart_script = ""
-
-    if grafico:
-
-        try:
-
-            labels = json.dumps(grafico["labels"])
-            values = json.dumps(grafico["values"])
-
-            chart_script = f"""
-<div style="width:700px;margin-top:20px">
-<canvas id="grafico"></canvas>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<script>
-
-new Chart(
-document.getElementById('grafico'),
-{{
-type:'bar',
-data:{{
-labels:{labels},
-datasets:[{{
-label:'Resultado',
-data:{values}
-}}]
-}}
-}}
-);
-
-</script>
-"""
-
-        except Exception as e:
-
-            print("Erro ao gerar gráfico:", e)
-
-            chart_script = ""
-
-    html = f"""
-
-<h2>Assistente IA</h2>
-
-<div style="height:300px;overflow:auto;border:1px solid #ccc;padding:10px;margin-bottom:10px">
-{chat_html}
-</div>
-
-<form method="post">
-
-<input name="pergunta" style="width:70%" placeholder="Pergunte algo sobre o banco">
-
-<button>Perguntar</button>
-
-</form>
-
-<form method="post" style="margin-top:5px">
-
-<input type="hidden" name="acao" value="limpar">
-
-<button>🧹 Limpar conversa</button>
-
-</form>
-
-<br>
-
-<b>Resultado:</b>
-
-{resultado}
-
-<br>
-
-<b>Explicação da IA:</b>
-
-<div style="background:#eef;padding:10px;border-radius:5px">
-{explicacao}
-</div>
-
-<br><br>
-
-{chart_script}
-
-"""
-
-    return html
-    
 @app.route("/seed")
 def seed():
     executar_seed()

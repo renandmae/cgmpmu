@@ -732,7 +732,7 @@ tr.analisado { background:#e6ffed; }
         <div class="dropdown">
         <a href="/menu">🏠 Menu</a>
         <a href="/lancar">⏱ Lançar Horas</a>
-        <a href="/lancar">📢  Avisos</a> 
+        <a href="/avisos">📢 Avisos</a> 
         <a href="/assistente">🤖 Assistente IA</a>
         </div>
         </div>
@@ -1273,6 +1273,11 @@ def avisos():
     if 'user' not in session:
         return redirect('/')
 
+    def fmt_data(dt):
+        if not dt:
+            return ''
+        return (dt - timedelta(hours=3)).strftime('%d/%m/%Y %H:%M')
+        
     user = session['user']
     con = get_db()
     cur = con.cursor()
@@ -1280,6 +1285,16 @@ def avisos():
     if request.method == 'POST':
         msg = request.form.get('mensagem')
         parent = request.form.get('parent_id') or None
+
+        delete_id = request.form.get('delete_id')
+
+        if delete_id:
+            cur.execute("""
+                DELETE FROM avisos_posts
+                WHERE id = %s AND colaborador = %s
+            """, (delete_id, user))
+            con.commit()
+            return redirect('/avisos')
 
         cur.execute("""
             INSERT INTO avisos_posts (colaborador, mensagem, parent_id)
@@ -1316,12 +1331,21 @@ def avisos():
                 background:white;
             ">
                 <div style="font-size:12px;color:#666">
-                    <b>{p['colaborador']}</b> - {p['created_at']}
+                    <b>{p['colaborador']}</b> - {fmt_data(p['created_at'])}
                 </div>
 
                 <div>{p['mensagem']}</div>
 
+                <div style="display:flex; gap:10px; margin-top:5px;">
                 <button onclick="responder({p['id']})">Responder</button>
+            
+                <form method="post" style="display:inline;">
+                    <input type="hidden" name="delete_id" value="{p['id']}">
+                    <button style="background:#e74c3c;color:white;border:none;border-radius:5px;cursor:pointer;">
+                        🗑
+                    </button>
+                </form>
+            </div>
 
                 <form method="post" id="resp_{p['id']}" style="display:none;margin-top:5px;">
                     <input type="hidden" name="parent_id" value="{p['id']}">
@@ -2727,7 +2751,10 @@ def os_view(id):
         
     user = session['user']
     perfil = session['perfil']
-    
+
+    con = get_db()
+    cur = con.cursor()
+
     # verifica se é participante da OS
     cur.execute("""
         SELECT 1
@@ -2746,9 +2773,6 @@ def os_view(id):
     if perfil != 'admin' and not participa:
         con.close()
         return 'Acesso negado'
-
-    con = get_db()
-    cur = con.cursor()
 
     # OS
     cur.execute("SELECT * FROM os WHERE id=%s", (id,))

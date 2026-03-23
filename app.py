@@ -2328,10 +2328,10 @@ def os_gestao():
         return d.strftime('%d/%m/%Y') if d else '-'
 
     def pct(v):
-    v = int(v or 0)
-    if v == 100:
-        return f"<span class='pct-ok'>🏁 {v}%</span>"
-    return f"{v}%"
+        v = int(v or 0)
+        if v == 100:
+            return f"<span class='pct-ok'>🏁 {v}%</span>"
+        return f"{v}%"
 
     html = """
     <style>

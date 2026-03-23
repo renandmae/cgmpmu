@@ -3011,7 +3011,7 @@ def os_view(id):
     </div>
     """
     if status_data:
-        html += f"""
+        html += """
         <div class="card" style="max-width:500px; margin:auto;">
             <div class="titulo">📊 Status dos Colaboradores</div>
             <canvas id="graficoStatus" style="max-height:300px;"></canvas>
@@ -3022,41 +3022,45 @@ def os_view(id):
         <script>
         const ctx = document.getElementById('graficoStatus');
         
-        if (ctx) {
-            const data = {
-                labels: %s,
-                datasets: [{
-                    data: %s
-                }]
-            };
+        if (ctx) {{
+            const data = {{
+                labels: {labels},
+                datasets: [{{
+                    data: {values}
+                }}]
+            }};
         
-            const nomes = %s;
+            const nomes = {nomes};
         
-            new Chart(ctx, {
+            new Chart(ctx, {{
                 type: 'pie',
                 data: data,
-                options: {
+                options: {{
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
+                    plugins: {{
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
                                     let i = context.dataIndex;
                                     let total = context.dataset.data.reduce((a,b)=>a+b,0);
                                     let val = context.dataset.data[i];
                                     let perc = ((val/total)*100).toFixed(1);
-        
-                                    return context.label + ": " + val + " (" + perc + "%)\n" + nomes[i];
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
+    
+                                    return context.label + ": " + val + " (" + perc + "%)\\n" + nomes[i];
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+        }}
         </script>
-        """ % (labels, values, nomes)
+        """.format(
+            labels=labels,
+            values=values,
+            nomes=nomes
+        )
 
     return render_template_string(
         BASE.replace('{% block content %}{% endblock %}', html),

@@ -2724,7 +2724,27 @@ from flask import request
 def os_view(id):
     if 'user' not in session:
         return redirect('/')
-    if session['perfil'] != 'admin':
+        
+    user = session['user']
+    perfil = session['perfil']
+    
+    # verifica se é participante da OS
+    cur.execute("""
+        SELECT 1
+        FROM os
+        WHERE id = %s
+          AND (
+            equipe ILIKE %s OR
+            coordenacao ILIKE %s OR
+            supervisao ILIKE %s
+          )
+    """, (id, f"%{user}%", f"%{user}%", f"%{user}%"))
+    
+    participa = cur.fetchone()
+    
+    # regra de acesso
+    if perfil != 'admin' and not participa:
+        con.close()
         return 'Acesso negado'
 
     con = get_db()

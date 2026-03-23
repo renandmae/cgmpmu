@@ -2756,7 +2756,7 @@ from flask import request
 
 @app.route('/os/view/<int:id>')
 def os_view(id):
-import html
+    import html as html_lib
     if 'user' not in session:
         return redirect('/')
         
@@ -2832,7 +2832,21 @@ import html
     """, (os['codigo'],))
     
     horas_colab = cur.fetchall()
+    total_min = sum([hc['minutos'] or 0 for hc in horas_colab])
+
+    cur.execute("""
+        SELECT status,
+               COUNT(*) as qtd,
+               STRING_AGG(colaborador, ', ') as nomes
+        FROM os_status_user
+        WHERE os_codigo = %s
+        GROUP BY status
+    """, (os['codigo'],))
     
+    status_data = cur.fetchall()
+    labels = [s['status'] or 'Sem status' for s in status_data]
+    values = [s['qtd'] for s in status_data]
+    nomes = [s['nomes'] for s in status_data]
     con.close()
 
     # ---------------- HELPERS ----------------
@@ -2943,11 +2957,13 @@ import html
 
     for h in horas:
         obs_raw = h["observacoes"] or ""
-        obs_full = html.escape(obs_raw)
+    
+        obs_full = html_lib.escape(obs_raw)
+    
         obs_short = obs_raw.strip()
         if len(obs_short) > 120:
             obs_short = obs_short[:120] + "..."
-        obs_short = html.escape(obs_short)
+        obs_short = html_lib.escape(obs_short)
 
         html += f"""
         <tr>
@@ -2981,6 +2997,56 @@ import html
             <td>{hc['colaborador']}</td>
             <td>{fmt_horas(hc['minutos'])}</td>
         </tr>
+        """
+        
+        html += f"""
+        <tr style="font-weight:bold; background:#f0f0f0;">
+            <td>TOTAL GERAL</td>
+            <td>{fmt_horas(total_min)}</td>
+        </tr>
+        """
+
+        html += f"""
+        <div class="card">
+            <div class="titulo">📊 Status dos Colaboradores</div>
+            <canvas id="graficoStatus" height="120"></canvas>
+        </div>
+        
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        
+        <script>
+        const ctx = document.getElementById('graficoStatus');
+        
+        const data = {{
+            labels: {labels},
+            datasets: [{{
+                data: {values}
+            }}]
+        }};
+        
+        const nomes = {nomes};
+        
+        new Chart(ctx, {{
+            type: 'pie',
+            data: data,
+            options: {{
+                plugins: {{
+                    tooltip: {{
+                        callbacks: {{
+                            label: function(context) {{
+                                let i = context.dataIndex;
+                                let total = context.dataset.data.reduce((a,b)=>a+b,0);
+                                let val = context.dataset.data[i];
+                                let perc = ((val/total)*100).toFixed(1);
+        
+                                return context.label + ": " + val + " (" + perc + "%)\\n" + nomes[i];
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        }});
+        </script>
         """
 
     return render_template_string(

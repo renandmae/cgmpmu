@@ -994,6 +994,23 @@ def menu_salvar_inline():
 def menu():
     if 'user' not in session:
         return redirect('/')
+        
+status_options = [
+    "Não Iniciado",
+    "Em Andamento",
+    "Pausado",
+    "Aguardando Servidor",
+    "Concluído"
+]
+
+def badge_class(s):
+    return {
+        "Não Iniciado": "st-nao",
+        "Em Andamento": "st-and",
+        "Pausado": "st-pausado",
+        "Aguardando Servidor": "st-aguard",
+        "Concluído": "st-ok"
+    }.get(s, "")
 
     user = session['user']
 
@@ -1075,7 +1092,31 @@ def menu():
 
     .clock {{ background:#eef3fb; }}
     .info {{ background:#2c5aa0; color:white; }}
-
+    
+    .status-box {
+        display:flex;
+        align-items:center;
+        gap:5px;
+    }
+    
+    .badge {
+        padding:4px 8px;
+        border-radius:8px;
+        font-size:12px;
+        color:white;
+        font-weight:bold;
+    }
+    
+    .st-nao { background:#7f8c8d; }
+    .st-and { background:#3498db; }
+    .st-pausado { background:#e67e22; }
+    .st-aguard { background:#9b59b6; }
+    .st-ok { background:#27ae60; }
+    
+    select.status {
+        border:none;
+        background:transparent;
+    }
     </style>
 
     <div class="top-actions">
@@ -1091,29 +1132,39 @@ def menu():
 
         html += f"""
         <div class="linha" data-os="{r['codigo']}">
-
+        
             <div><b>{r['codigo']}</b></div>
-
+        
             <div>{r['resumo']}</div>
-
-            <div>
-                <input class="status"
-                       value="{st.get('status','') or ''}"
-                       placeholder="Status">
+        
+            <div class="status-box">
+                <span class="badge {badge_class(st.get('status'))}">
+                    {st.get('status') or '-'}
+                </span>
+        
+                <select class="status">
+                    <option value=""></option>
+        """
+        for opt in status_options:
+            sel = "selected" if st.get("status") == opt else ""
+            html += f"<option {sel}>{opt}</option>"
+        
+        html += """
+                </select>
             </div>
-
+        
             <div>
                 <input class="obs"
                        value="{st.get('observacao','') or ''}"
                        placeholder="Observação">
             </div>
-
+        
             <a class="icon-btn clock"
                href="/lancar?os={r['codigo']}">⏱</a>
-
+        
             <a class="icon-btn info"
                href="/os/view/{r['id']}">i</a>
-
+        
         </div>
         """
 
@@ -1138,6 +1189,39 @@ def menu():
         })
     })
     </script>
+    <script>
+document.querySelectorAll(".linha").forEach(row=>{
+
+    const select = row.querySelector(".status")
+    const obs = row.querySelector(".obs")
+    const badge = row.querySelector(".badge")
+
+    function salvar(){
+        fetch("/menu/os_status", {
+            method:"POST",
+            headers:{"Content-Type":"application/x-www-form-urlencoded"},
+            body:
+                "os="+encodeURIComponent(row.dataset.os)+
+                "&status="+encodeURIComponent(select.value)+
+                "&obs="+encodeURIComponent(obs.value)
+        })
+
+        badge.innerText = select.value
+
+        badge.className = "badge " + ({
+            "Não Iniciado":"st-nao",
+            "Em Andamento":"st-and",
+            "Pausado":"st-pausado",
+            "Aguardando Servidor":"st-aguard",
+            "Concluído":"st-ok"
+        }[select.value] || "")
+    }
+
+    select.addEventListener("change", salvar)
+    obs.addEventListener("change", salvar)
+
+})
+</script>
     """
 
     return render_template_string(
@@ -1180,7 +1264,6 @@ def avisos():
         return redirect('/')
 
     user = session['user']
-
     con = get_db()
     cur = con.cursor()
 
@@ -1205,22 +1288,44 @@ def avisos():
     posts = cur.fetchall()
     con.close()
 
-    html = """
-    <style>
-    .post {
-        border:1px solid #ccc;
-        border-radius:10px;
-        padding:10px;
-        margin-bottom:10px;
-        background:white;
-    }
-    .meta {
-        font-size:12px;
-        color:#666;
-        margin-bottom:5px;
-    }
-    </style>
+    # organizar threads
+    tree = {}
+    for p in posts:
+        tree.setdefault(p['parent_id'], []).append(p)
 
+    def render(parent=None, nivel=0):
+        html = ""
+        for p in tree.get(parent, []):
+            html += f"""
+            <div style="
+                margin-left:{nivel*20}px;
+                border:1px solid #ccc;
+                border-radius:10px;
+                padding:10px;
+                margin-bottom:10px;
+                background:white;
+            ">
+                <div style="font-size:12px;color:#666">
+                    <b>{p['colaborador']}</b> - {p['created_at']}
+                </div>
+
+                <div>{p['mensagem']}</div>
+
+                <button onclick="responder({p['id']})">Responder</button>
+
+                <form method="post" id="resp_{p['id']}" style="display:none;margin-top:5px;">
+                    <input type="hidden" name="parent_id" value="{p['id']}">
+                    <textarea name="mensagem" style="width:100%;height:60px"></textarea>
+                    <button>Enviar</button>
+                </form>
+            """
+
+            html += render(p['id'], nivel+1)
+            html += "</div>"
+
+        return html
+
+    html = """
     <h2>📢 Avisos</h2>
 
     <form method="post">
@@ -1228,19 +1333,19 @@ def avisos():
         <br><br>
         <button>Postar</button>
     </form>
-
     <br>
     """
 
-    for p in posts:
-        html += f"""
-        <div class="post">
-            <div class="meta">
-                <b>{p['colaborador']}</b> - {p['created_at']}
-            </div>
-            {p['mensagem']}
-        </div>
-        """
+    html += render()
+
+    html += """
+    <script>
+    function responder(id){
+        let f = document.getElementById("resp_"+id)
+        f.style.display = (f.style.display=="none") ? "block" : "none"
+    }
+    </script>
+    """
 
     return render_template_string(
         BASE.replace('{% block content %}{% endblock %}', html),
@@ -3247,6 +3352,7 @@ def lancar():
     # -------------------------
     cur.execute("SELECT codigo, item_paint, resumo FROM os ORDER BY codigo")
     oss = cur.fetchall()
+    os_pre = request.args.get("os")
 
     # -------------------------
     # CARREGAR REQUISIÇÕES DO COLABORADOR
@@ -3433,7 +3539,9 @@ def lancar():
         <select name="os" id="os_select" required>
             <option value=""></option>
             {% for o in oss %}
-                <option value="{{ o.codigo }}" data-item="{{ o.item_paint }}">
+                <option value="{{ o.codigo }}"
+                        data-item="{{ o.item_paint }}"
+                        {% if os_pre == o.codigo %}selected{% endif %}>
                     {{ o.codigo }}{% if o.resumo %} - {{ o.resumo }}{% endif %}
                 </option>
             {% endfor %}
@@ -3680,6 +3788,16 @@ document.addEventListener("input", function(e){
         }
     }
 })
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const osSelect = document.getElementById("os_select");
+
+    if (osSelect && osSelect.value) {
+        osSelect.dispatchEvent(new Event('change'));
+    }
+
+});
 </script>
 
 """
@@ -3688,6 +3806,7 @@ document.addEventListener("input", function(e){
         BASE.replace("{% block content %}{% endblock %}", form_html),
         oss=oss,
         requisicoes=requisicoes,   # ✅ É o que o HTML usa
+        os_pre=os_pre,   # <-- aqui
         colaboradores=colaboradores,
         data_padrao=data_padrao,
         user=session['user'],

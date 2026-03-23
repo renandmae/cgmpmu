@@ -2820,6 +2820,7 @@ def os_view(id):
             sql += " LIMIT 100"
     
         cur.execute(sql, tuple(params))
+        horas = cur.fetchall()
     
         # HORAS POR COLABORADOR
         cur.execute("""
@@ -2958,7 +2959,7 @@ def os_view(id):
             </tr>
     """
 
-    for h in cur:
+    for h in horas:
         obs_raw = h["observacoes"] or ""
     
         obs_full = html_lib.escape(obs_raw)

@@ -2325,7 +2325,14 @@ def os_gestao():
     con.close()
 
     def fmt_data(d):
-        return d.strftime('%d/%m/%Y') if d else '-'
+        if not d:
+            return '-'
+        if isinstance(d, str):
+            try:
+                d = datetime.fromisoformat(d)
+            except:
+                return d
+        return d.strftime('%d/%m/%Y')
 
     def pct(v):
         v = int(v or 0)

@@ -2393,17 +2393,31 @@ def os_gestao():
         display:flex;
         justify-content:center;
         align-items:center;
-        cursor:pointer;
-        font-size:18px;
+        width:34px;
+        height:34px;
+        border-radius:50%;
+        text-decoration:none;
+        font-size:16px;
+        font-weight:bold;
+        transition:0.2s;
     }
 
     .icon-view {
-        color:#2563eb;
-        font-weight:bold;
+        background:#dbeafe;
+        color:#1d4ed8;
     }
-
+    
+    .icon-view:hover {
+        background:#bfdbfe;
+    }
+    
     .icon-edit {
-        color:#f59e0b;
+        background:#fef3c7;
+        color:#b45309;
+    }
+    
+    .icon-edit:hover {
+        background:#fde68a;
     }
 
     .pct-ok {
@@ -2433,8 +2447,8 @@ def os_gestao():
         <div class="cell">Exec.</div>
         <div class="cell">RP</div>
         <div class="cell">RF</div>
-        <div></div>
-        <div></div>
+        <div>Ver</div>
+        <div>Editar</div>
     </div>
     """
 
@@ -2450,14 +2464,8 @@ def os_gestao():
             <div class="cell">{pct(r.get('exec0100'))}</div>
             <div class="cell">{pct(r.get('rp0100'))}</div>
             <div class="cell">{pct(r.get('rf0100'))}</div>
-
-            <div class="icon-btn">
-                <a href="/os/view/{r['id']}" class="icon-view">ℹ</a>
-            </div>
-
-            <div class="icon-btn">
-                <a href="/os/edit/{r['id']}" class="icon-edit">✏</a>
-            </div>
+            <a href="/os/view/{r['id']}" class="icon-btn icon-view">ℹ</a>
+            <a href="/os/edit/{r['id']}" class="icon-btn icon-edit">✏</a>
         </div>
         """
 
@@ -2879,7 +2887,7 @@ def os_edit(id):
             return f"Erro ao atualizar O.S: {e}"
 
         con.close()
-        return redirect('/os')
+        return redirect('/os/gestao')
 
     con.close()
 
@@ -3162,7 +3170,6 @@ def os_edit(id):
 
     return render_template_string(BASE.replace('{% block content %}{% endblock %}', html),
                                   user=session['user'], perfil=session['perfil'])
-
 
 # -------------------------
 # Importar OS por colar texto

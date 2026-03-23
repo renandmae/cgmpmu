@@ -2998,18 +2998,23 @@ def os_view(id):
             <td>{fmt_horas(hc['minutos'])}</td>
         </tr>
         """
-        
+    
+    # TOTAL FORA DO LOOP
+    html += f"""
+    <tr style="font-weight:bold; background:#f0f0f0;">
+        <td>TOTAL GERAL</td>
+        <td>{fmt_horas(total_min)}</td>
+    </tr>
+    """
+    html += """
+        </table>
+    </div>
+    """
+    if status_data:
         html += f"""
-        <tr style="font-weight:bold; background:#f0f0f0;">
-            <td>TOTAL GERAL</td>
-            <td>{fmt_horas(total_min)}</td>
-        </tr>
-        """
-
-        html += f"""
-        <div class="card">
+        <div class="card" style="max-width:500px; margin:auto;">
             <div class="titulo">📊 Status dos Colaboradores</div>
-            <canvas id="graficoStatus" height="120"></canvas>
+            <canvas id="graficoStatus" style="max-height:300px;"></canvas>
         </div>
         
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -3017,37 +3022,41 @@ def os_view(id):
         <script>
         const ctx = document.getElementById('graficoStatus');
         
-        const data = {{
-            labels: {labels},
-            datasets: [{{
-                data: {values}
-            }}]
-        }};
+        if (ctx) {
+            const data = {
+                labels: %s,
+                datasets: [{
+                    data: %s
+                }]
+            };
         
-        const nomes = {nomes};
+            const nomes = %s;
         
-        new Chart(ctx, {{
-            type: 'pie',
-            data: data,
-            options: {{
-                plugins: {{
-                    tooltip: {{
-                        callbacks: {{
-                            label: function(context) {{
-                                let i = context.dataIndex;
-                                let total = context.dataset.data.reduce((a,b)=>a+b,0);
-                                let val = context.dataset.data[i];
-                                let perc = ((val/total)*100).toFixed(1);
+            new Chart(ctx, {
+                type: 'pie',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let i = context.dataIndex;
+                                    let total = context.dataset.data.reduce((a,b)=>a+b,0);
+                                    let val = context.dataset.data[i];
+                                    let perc = ((val/total)*100).toFixed(1);
         
-                                return context.label + ": " + val + " (" + perc + "%)\\n" + nomes[i];
-                            }}
-                        }}
-                    }}
-                }}
-            }}
-        }});
+                                    return context.label + ": " + val + " (" + perc + "%)\n" + nomes[i];
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
         </script>
-        """
+        """ % (labels, values, nomes)
 
     return render_template_string(
         BASE.replace('{% block content %}{% endblock %}', html),

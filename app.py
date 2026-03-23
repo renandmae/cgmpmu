@@ -2518,6 +2518,13 @@ def os_rh():
         return redirect('/')
     if session['perfil'] != 'admin':
         return 'Acesso negado'
+        
+    def fmt_horas(mins):
+        if not mins:
+            return "00:00"
+        h = mins // 60
+        m = mins % 60
+        return f"{h:02d}:{m:02d}"
 
     con = get_db()
     cur = con.cursor()
@@ -2525,14 +2532,29 @@ def os_rh():
     # JOIN entre OS e status por usuário
     cur.execute("""
         SELECT 
-            s.colaborador,
-            s.os_codigo,
+            c.nome AS colaborador,
+            o.codigo AS os_codigo,
             o.resumo,
             s.status,
-            s.observacao
-        FROM os_status_user s
-        JOIN os o ON o.codigo = s.os_codigo
-        ORDER BY s.os_codigo, s.colaborador
+            s.observacao,
+            COALESCE(SUM(h.duracao_minutos),0) AS total_min
+        FROM os o
+        
+        JOIN colaboradores c ON 
+            o.equipe ILIKE '%' || c.nome || '%' OR
+            o.coordenacao ILIKE '%' || c.nome || '%' OR
+            o.supervisao ILIKE '%' || c.nome || '%'
+        
+        LEFT JOIN os_status_user s
+            ON s.os_codigo = o.codigo
+            AND s.colaborador = c.nome
+        
+        LEFT JOIN horas h
+            ON h.os_codigo = o.codigo
+            AND h.colaborador_id = c.id
+        
+        GROUP BY c.nome, o.codigo, o.resumo, s.status, s.observacao
+        ORDER BY o.codigo, c.nome
     """)
 
     rows = cur.fetchall()
@@ -2562,7 +2584,7 @@ def os_rh():
 
     .linha {
         display:grid;
-        grid-template-columns: 1.2fr 1fr 2fr 1.2fr 3fr;
+        grid-template-columns: 1.2fr 1fr 2fr 1.2fr 3fr 1fr;
         gap:10px;
         align-items:center;
         border:2px solid #2c5aa0;
@@ -2617,6 +2639,7 @@ def os_rh():
         <div class="cell">Descrição</div>
         <div class="cell">Status</div>
         <div>Observação</div>
+        <div>Total Horas</div>
     </div>
     """
 
@@ -2641,6 +2664,7 @@ def os_rh():
                 </span>
             </div>
             <div>{r['observacao'] or ''}</div>
+            <div><b>{fmt_horas(r['total_min'])}</b></div>
         </div>
         """
 

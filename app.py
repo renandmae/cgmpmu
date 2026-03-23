@@ -994,30 +994,29 @@ def menu_salvar_inline():
 def menu():
     if 'user' not in session:
         return redirect('/')
-        
-status_options = [
-    "Não Iniciado",
-    "Em Andamento",
-    "Pausado",
-    "Aguardando Servidor",
-    "Concluído"
-]
 
-def badge_class(s):
-    return {
-        "Não Iniciado": "st-nao",
-        "Em Andamento": "st-and",
-        "Pausado": "st-pausado",
-        "Aguardando Servidor": "st-aguard",
-        "Concluído": "st-ok"
-    }.get(s, "")
+    status_options = [
+        "Não Iniciado",
+        "Em Andamento",
+        "Pausado",
+        "Aguardando Servidor",
+        "Concluído"
+    ]
+
+    def badge_class(s):
+        return {
+            "Não Iniciado": "st-nao",
+            "Em Andamento": "st-and",
+            "Pausado": "st-pausado",
+            "Aguardando Servidor": "st-aguard",
+            "Concluído": "st-ok"
+        }.get(s, "")
 
     user = session['user']
 
     con = get_db()
     cur = con.cursor()
 
-    # O.S onde o usuário participa
     cur.execute("""
         SELECT *
         FROM os
@@ -1030,7 +1029,6 @@ def badge_class(s):
 
     oss = cur.fetchall()
 
-    # status por usuário
     cur.execute("""
         SELECT os_codigo, status, observacao
         FROM os_status_user
@@ -1149,7 +1147,7 @@ def badge_class(s):
             sel = "selected" if st.get("status") == opt else ""
             html += f"<option {sel}>{opt}</option>"
         
-        html += """
+        html += f"""
                 </select>
             </div>
         

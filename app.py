@@ -1049,7 +1049,7 @@ def menu():
         gap:20px;
         margin:20px 0;
     }}
-
+    
     .btn-big {{
         border:2px solid #2c5aa0;
         padding:10px 20px;
@@ -1058,7 +1058,7 @@ def menu():
         font-weight:bold;
         color:#2c5aa0;
     }}
-
+    
     .linha {{
         display:grid;
         grid-template-columns: 1fr 2fr 1fr 3fr 60px 60px;
@@ -1069,14 +1069,14 @@ def menu():
         margin-bottom:10px;
         gap:10px;
     }}
-
+    
     .linha input {{
         width:100%;
         border:none;
         background:transparent;
         border-bottom:1px solid #ccc;
     }}
-
+    
     .icon-btn {{
         width:40px;
         height:40px;
@@ -1087,34 +1087,34 @@ def menu():
         text-decoration:none;
         font-weight:bold;
     }}
-
+    
     .clock {{ background:#eef3fb; }}
     .info {{ background:#2c5aa0; color:white; }}
     
-    .status-box {
+    .status-box {{
         display:flex;
         align-items:center;
         gap:5px;
-    }
+    }}
     
-    .badge {
+    .badge {{
         padding:4px 8px;
         border-radius:8px;
         font-size:12px;
         color:white;
         font-weight:bold;
-    }
+    }}
     
-    .st-nao { background:#7f8c8d; }
-    .st-and { background:#3498db; }
-    .st-pausado { background:#e67e22; }
-    .st-aguard { background:#9b59b6; }
-    .st-ok { background:#27ae60; }
+    .st-nao {{ background:#7f8c8d; }}
+    .st-and {{ background:#3498db; }}
+    .st-pausado {{ background:#e67e22; }}
+    .st-aguard {{ background:#9b59b6; }}
+    .st-ok {{ background:#27ae60; }}
     
-    select.status {
+    select.status {{
         border:none;
         background:transparent;
-    }
+    }}
     </style>
 
     <div class="top-actions">

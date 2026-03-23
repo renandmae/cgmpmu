@@ -2309,6 +2309,171 @@ def os_page():
         fmt=fmt
     )
 
+@app.route('/os/gestao')
+def os_gestao():
+    if 'user' not in session:
+        return redirect('/')
+    if session['perfil'] != 'admin':
+        return 'Acesso negado'
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("SELECT * FROM os ORDER BY codigo")
+    rows = cur.fetchall()
+
+    con.close()
+
+    def fmt_data(d):
+        return d.strftime('%d/%m/%Y') if d else '-'
+
+    def pct(v):
+    v = int(v or 0)
+    if v == 100:
+        return f"<span class='pct-ok'>🏁 {v}%</span>"
+    return f"{v}%"
+
+    html = """
+    <style>
+    .titulo-page {
+        text-align:center;
+        font-size:28px;
+        font-weight:bold;
+        margin:20px 0;
+        color:#2c5aa0;
+    }
+
+    .filtro {
+        margin-bottom:20px;
+    }
+
+    .filtro input {
+        width:100%;
+        padding:10px;
+        font-size:16px;
+        border-radius:8px;
+        border:1px solid #ccc;
+    }
+
+    .linha {
+        display:grid;
+        grid-template-columns: 1fr 2fr 1fr 2fr 1fr 0.7fr 0.7fr 0.7fr 0.7fr 0.5fr 0.5fr;
+        gap:10px;
+        align-items:center;
+        border:2px solid #2c5aa0;
+        border-radius:12px;
+        padding:10px;
+        margin-bottom:10px;
+        background:#eef3fb;
+        font-size:14px;
+    }
+
+    .header {
+        font-weight:bold;
+        background:#dbe7ff;
+    }
+
+    .cell {
+        border-right:2px solid #2c5aa0;
+        padding-right:8px;
+    }
+
+    .cell:last-child {
+        border-right:none;
+    }
+
+    .icon-btn {
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        cursor:pointer;
+        font-size:18px;
+    }
+
+    .icon-view {
+        color:#2563eb;
+        font-weight:bold;
+    }
+
+    .icon-edit {
+        color:#f59e0b;
+    }
+
+    .pct-ok {
+        font-weight: bold;
+        color: #15803d;
+        background: #dcfce7;
+        padding: 2px 6px;
+        border-radius: 6px;
+    }
+    </style>
+
+    <div class="titulo-page">
+        Controle das Ordens de Serviço
+    </div>
+
+    <div class="filtro">
+        <input type="text" id="searchInput" placeholder="Filtrar...">
+    </div>
+
+    <div class="linha header">
+        <div class="cell">OS</div>
+        <div class="cell">Descrição</div>
+        <div class="cell">Diretoria</div>
+        <div class="cell">Equipe</div>
+        <div class="cell">Prazo</div>
+        <div class="cell">Planej.</div>
+        <div class="cell">Exec.</div>
+        <div class="cell">RP</div>
+        <div class="cell">RF</div>
+        <div></div>
+        <div></div>
+    </div>
+    """
+
+    for r in rows:
+        html += f"""
+        <div class="linha row">
+            <div class="cell">{r['codigo']}</div>
+            <div class="cell">{r['resumo'] or ''}</div>
+            <div class="cell">{r['unidade'] or ''}</div>
+            <div class="cell">{r['equipe'] or ''}</div>
+            <div class="cell">{fmt_data(r['dt_previsao_fim'])}</div>
+            <div class="cell">{pct(r.get('plan0100'))}</div>
+            <div class="cell">{pct(r.get('exec0100'))}</div>
+            <div class="cell">{pct(r.get('rp0100'))}</div>
+            <div class="cell">{pct(r.get('rf0100'))}</div>
+
+            <div class="icon-btn">
+                <a href="/os/view/{r['id']}" class="icon-view">ℹ</a>
+            </div>
+
+            <div class="icon-btn">
+                <a href="/os/edit/{r['id']}" class="icon-edit">✏</a>
+            </div>
+        </div>
+        """
+
+    html += """
+    <script>
+    document.getElementById("searchInput").addEventListener("keyup", function() {
+        let filter = this.value.toLowerCase();
+        let rows = document.querySelectorAll(".row");
+
+        rows.forEach(row => {
+            let text = row.innerText.toLowerCase();
+            row.style.display = text.includes(filter) ? "" : "none";
+        });
+    });
+    </script>
+    """
+
+    return render_template_string(
+        BASE.replace('{% block content %}{% endblock %}', html),
+        user=session['user'],
+        perfil=session['perfil']
+    )
+
 @app.route('/os/delete/<int:id>')
 def os_delete(id):
     if 'user' not in session:

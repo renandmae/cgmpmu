@@ -9,7 +9,7 @@ from flask import Flask, render_template_string, request, redirect, session, sen
 import io
 import csv
 import json
-from datetime import date, datetime, timedelta
+from datetime import date
 import os
 import psycopg2
 import psycopg2.extras
@@ -1273,9 +1273,19 @@ def avisos():
     if 'user' not in session:
         return redirect('/')
 
+    from datetime import timedelta
+
     def fmt_data(dt):
         if not dt:
             return ''
+        from datetime import datetime, timedelta
+    
+        if isinstance(dt, str):
+            try:
+                dt = datetime.fromisoformat(dt)
+            except:
+                return dt  # fallback
+    
         return (dt - timedelta(hours=3)).strftime('%d/%m/%Y %H:%M')
         
     user = session['user']

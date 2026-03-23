@@ -732,6 +732,7 @@ tr.analisado { background:#e6ffed; }
         <div class="dropdown">
         <a href="/menu">🏠 Menu</a>
         <a href="/lancar">⏱ Lançar Horas</a>
+        <a href="/lancar">📢  Avisos</a> 
         <a href="/assistente">🤖 Assistente IA</a>
         </div>
         </div>
@@ -782,6 +783,7 @@ tr.analisado { background:#e6ffed; }
         <a href="/paint">🎨 PAINT</a>
         <a href="/os">🧾 O.S - Cadastro</a>
         <a href="/os/gestao">🧾 O.S - Gestão</a>
+        <a href="/os/rh">👥 O.S - RH</a>
         <a href="/colaboradores">👥 Colaboradores</a>
         </div>
         </div>
@@ -1061,13 +1063,13 @@ def menu():
     
     .linha {{
         display:grid;
-        grid-template-columns: 1fr 2fr 1fr 3fr 60px 60px;
+        grid-template-columns: 1fr 2fr 1fr 3fr 70px 70px; /* ↑ espaço */
         align-items:center;
         border:2px solid #2c5aa0;
         border-radius:10px;
         padding:10px;
         margin-bottom:10px;
-        gap:10px;
+        gap:15px; /* ↑ espaçamento geral */
     }}
     
     .linha input {{
@@ -1078,19 +1080,29 @@ def menu():
     }}
     
     .icon-btn {{
-        width:40px;
-        height:40px;
+        width:42px;
+        height:42px;
+        min-width:42px;   /* evita encolher */
+        min-height:42px;
         border-radius:50%;
         display:flex;
         align-items:center;
         justify-content:center;
         text-decoration:none;
-        font-weight:bold;
+        font-size:18px;   /* ↑ ícone maior */
     }}
     
-    .clock {{ background:#eef3fb; }}
+    .clock {{    
+    background:#dfe9f8;   /* mais forte */
+    color:#2c5aa0;        /* deixa o ícone mais visível */
+    }}
+    
     .info {{ background:#2c5aa0; color:white; }}
     
+    .linha a.icon-btn {{
+    justify-self:center;
+}}
+
     .status-box {{
         display:flex;
         align-items:center;
@@ -2500,6 +2512,158 @@ def os_gestao():
         perfil=session['perfil']
     )
 
+@app.route('/os/rh')
+def os_rh():
+    if 'user' not in session:
+        return redirect('/')
+    if session['perfil'] != 'admin':
+        return 'Acesso negado'
+
+    con = get_db()
+    cur = con.cursor()
+
+    # JOIN entre OS e status por usuário
+    cur.execute("""
+        SELECT 
+            s.colaborador,
+            s.os_codigo,
+            o.resumo,
+            s.status,
+            s.observacao
+        FROM os_status_user s
+        JOIN os o ON o.codigo = s.os_codigo
+        ORDER BY s.os_codigo, s.colaborador
+    """)
+
+    rows = cur.fetchall()
+    con.close()
+
+    html = """
+    <style>
+    .titulo-page {
+        text-align:center;
+        font-size:28px;
+        font-weight:bold;
+        margin:20px 0;
+        color:#2c5aa0;
+    }
+
+    .filtro {
+        margin-bottom:20px;
+    }
+
+    .filtro input {
+        width:100%;
+        padding:10px;
+        font-size:16px;
+        border-radius:8px;
+        border:1px solid #ccc;
+    }
+
+    .linha {
+        display:grid;
+        grid-template-columns: 1.2fr 1fr 2fr 1.2fr 3fr;
+        gap:10px;
+        align-items:center;
+        border:2px solid #2c5aa0;
+        border-radius:12px;
+        padding:10px;
+        margin-bottom:10px;
+        background:#eef3fb;
+        font-size:14px;
+    }
+
+    .header {
+        font-weight:bold;
+        background:#dbe7ff;
+    }
+
+    .cell {
+        border-right:2px solid #2c5aa0;
+        padding-right:8px;
+    }
+
+    .cell:last-child {
+        border-right:none;
+    }
+
+    .badge {
+        padding:4px 8px;
+        border-radius:8px;
+        font-size:12px;
+        color:white;
+        font-weight:bold;
+        display:inline-block;
+    }
+
+    .st-nao { background:#7f8c8d; }
+    .st-and { background:#3498db; }
+    .st-pausado { background:#e67e22; }
+    .st-aguard { background:#9b59b6; }
+    .st-ok { background:#27ae60; }
+    </style>
+
+    <div class="titulo-page">
+        Controle de Pessoal das Ordens de Serviço
+    </div>
+
+    <div class="filtro">
+        <input type="text" id="searchInput" placeholder="Filtrar...">
+    </div>
+
+    <div class="linha header">
+        <div class="cell">Servidor</div>
+        <div class="cell">OS</div>
+        <div class="cell">Descrição</div>
+        <div class="cell">Status</div>
+        <div>Observação</div>
+    </div>
+    """
+
+    def badge_class(s):
+        return {
+            "Não Iniciado": "st-nao",
+            "Em Andamento": "st-and",
+            "Pausado": "st-pausado",
+            "Aguardando Servidor": "st-aguard",
+            "Concluído": "st-ok"
+        }.get(s, "")
+
+    for r in rows:
+        html += f"""
+        <div class="linha row">
+            <div class="cell">{r['colaborador']}</div>
+            <div class="cell">{r['os_codigo']}</div>
+            <div class="cell">{r['resumo'] or ''}</div>
+            <div class="cell">
+                <span class="badge {badge_class(r['status'])}">
+                    {r['status'] or '-'}
+                </span>
+            </div>
+            <div>{r['observacao'] or ''}</div>
+        </div>
+        """
+
+    html += """
+    <script>
+    document.getElementById("searchInput").addEventListener("keyup", function() {
+        let filter = this.value.toLowerCase();
+        let rows = document.querySelectorAll(".row");
+
+        rows.forEach(row => {
+            let text = row.innerText.toLowerCase();
+            row.style.display = text.includes(filter) ? "" : "none";
+        });
+    });
+    </script>
+    """
+
+    return render_template_string(
+        BASE.replace('{% block content %}{% endblock %}', html),
+        user=session['user'],
+        perfil=session['perfil']
+    )
+
 @app.route('/os/delete/<int:id>')
 def os_delete(id):
     if 'user' not in session:
@@ -2513,7 +2677,6 @@ def os_delete(id):
     con.commit()
     con.close()
     return redirect('/os')
-
 
 @app.route('/os/delete_all')
 def os_delete_all():

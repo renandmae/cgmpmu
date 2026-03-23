@@ -2756,6 +2756,7 @@ from flask import request
 
 @app.route('/os/view/<int:id>')
 def os_view(id):
+import html
     if 'user' not in session:
         return redirect('/')
         
@@ -2941,9 +2942,12 @@ def os_view(id):
     """
 
     for h in horas:
-        obs = (h["observacoes"] or "").strip()
-        if len(obs) > 120:
-            obs = obs[:120] + "..."
+        obs_raw = h["observacoes"] or ""
+        obs_full = html.escape(obs_raw)
+        obs_short = obs_raw.strip()
+        if len(obs_short) > 120:
+            obs_short = obs_short[:120] + "..."
+        obs_short = html.escape(obs_short)
 
         html += f"""
         <tr>
@@ -2951,7 +2955,7 @@ def os_view(id):
             <td>{fmt_data(h['data'])}</td>
             <td>{fmt_horas(h['duracao_minutos'])}</td>
             <td>{tipo_label(h['atividade'])}</td>
-            <td title="{h['observacoes'] or ''}">{obs}</td>
+            <td title="{obs_full}">{obs_short}</td>
         </tr>
         """
 

@@ -780,7 +780,8 @@ tr.analisado { background:#e6ffed; }
         <button class="menu-btn menu5">⚙ Gerencial</button>
         <div class="dropdown">
         <a href="/paint">🎨 PAINT</a>
-        <a href="/os">🧾 O.S</a>
+        <a href="/os">🧾 O.S - Cadastro</a>
+        <a href="/os/gestao">🧾 O.S - Gestão</a>
         <a href="/colaboradores">👥 Colaboradores</a>
         </div>
         </div>
@@ -989,353 +990,260 @@ def menu_salvar_inline():
 
     return {"status":"ok"}
 
-@app.route('/menu', methods=["GET","POST"])
+@app.route('/menu')
 def menu():
-
     if 'user' not in session:
         return redirect('/')
 
-    conn = get_db()
-    cur = conn.cursor()
+    user = session['user']
 
-    # =========================
-    # SALVAR AVISO
-    # =========================
+    con = get_db()
+    cur = con.cursor()
 
-    if request.method == "POST":
-
-        tipo = request.form.get("tipo")
-
-        if tipo == "aviso" and session['perfil'] == "admin":
-
-            mensagem = request.form.get("mensagem")
-
-            cur.execute("""
-            INSERT INTO avisos (mensagem)
-            VALUES (%s)
-            """,(mensagem,))
-
-            conn.commit()
-
-    # =========================
-    # LISTAR COLABORADORES
-    # =========================
-
+    # O.S onde o usuário participa
     cur.execute("""
-    SELECT
-        c.nome as colaborador,
-        a.aniversario,
-        a.atividade,
-        a.data,
-        a.observacao
-    FROM colaboradores c
-    LEFT JOIN atividades_extras a
-        ON a.colaborador = c.nome
-    ORDER BY c.nome
-    """)
+        SELECT *
+        FROM os
+        WHERE 
+            equipe ILIKE %s OR
+            coordenacao ILIKE %s OR
+            supervisao ILIKE %s
+        ORDER BY codigo
+    """, (f"%{user}%", f"%{user}%", f"%{user}%"))
 
-    dados = cur.fetchall()
+    oss = cur.fetchall()
 
-    # =========================
-    # ULTIMO AVISO
-    # =========================
-
+    # status por usuário
     cur.execute("""
-    SELECT mensagem
-    FROM avisos
-    ORDER BY id DESC
-    LIMIT 1
-    """)
+        SELECT os_codigo, status, observacao
+        FROM os_status_user
+        WHERE colaborador = %s
+    """, (user,))
 
-    aviso = cur.fetchone()
+    status_map = {
+        r['os_codigo']: r for r in cur.fetchall()
+    }
 
-    cur.close()
-    conn.close()
+    con.close()
 
-    # =========================
-    # AVISO HTML
-    # =========================
+    html = f"""
+    <style>
+    .top-actions {{
+        display:flex;
+        justify-content:center;
+        gap:20px;
+        margin:20px 0;
+    }}
 
-    aviso_html = ""
+    .btn-big {{
+        border:2px solid #2c5aa0;
+        padding:10px 20px;
+        border-radius:10px;
+        text-decoration:none;
+        font-weight:bold;
+        color:#2c5aa0;
+    }}
 
-    if aviso:
+    .linha {{
+        display:grid;
+        grid-template-columns: 1fr 2fr 1fr 3fr 60px 60px;
+        align-items:center;
+        border:2px solid #2c5aa0;
+        border-radius:10px;
+        padding:10px;
+        margin-bottom:10px;
+        gap:10px;
+    }}
 
-        aviso_html = f"""
-        <div style="padding:20px;background:#fff3cd;border:1px solid #ffeeba;margin-bottom:20px">
-        <b>📢 Avisos Gerais</b><br><br>
-        {aviso['mensagem']}
+    .linha input {{
+        width:100%;
+        border:none;
+        background:transparent;
+        border-bottom:1px solid #ccc;
+    }}
+
+    .icon-btn {{
+        width:40px;
+        height:40px;
+        border-radius:50%;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        text-decoration:none;
+        font-weight:bold;
+    }}
+
+    .clock {{ background:#eef3fb; }}
+    .info {{ background:#2c5aa0; color:white; }}
+
+    </style>
+
+    <div class="top-actions">
+        <a class="btn-big" href="/lancar">⏱ LANÇAR HORAS</a>
+        <a class="btn-big" href="/relatorios">📊 RELATÓRIO</a>
+    </div>
+
+    <h2>Minhas Ordens de Serviço</h2>
+    """
+
+    for r in oss:
+        st = status_map.get(r['codigo'], {})
+
+        html += f"""
+        <div class="linha" data-os="{r['codigo']}">
+
+            <div><b>{r['codigo']}</b></div>
+
+            <div>{r['resumo']}</div>
+
+            <div>
+                <input class="status"
+                       value="{st.get('status','') or ''}"
+                       placeholder="Status">
+            </div>
+
+            <div>
+                <input class="obs"
+                       value="{st.get('observacao','') or ''}"
+                       placeholder="Observação">
+            </div>
+
+            <a class="icon-btn clock"
+               href="/lancar?os={r['codigo']}">⏱</a>
+
+            <a class="icon-btn info"
+               href="/os/view/{r['id']}">i</a>
+
         </div>
         """
 
-    if session['perfil'] == "admin":
+    html += """
+    <script>
+    document.querySelectorAll(".linha input").forEach(inp=>{
+        inp.addEventListener("change", function(){
 
-        aviso_html += """
-        <form method="post" style="margin-bottom:30px">
-        <input type="hidden" name="tipo" value="aviso">
+            let row = this.closest(".linha")
+            let os = row.dataset.os
+            let status = row.querySelector(".status").value
+            let obs = row.querySelector(".obs").value
 
-        <textarea name="mensagem"
-        style="width:500px;height:100px"
-        placeholder="Digite um aviso para todos"></textarea>
-
-        <br><br>
-
-        <button>Publicar Aviso</button>
-
-        </form>
-        """
-
-    # =========================
-    # CARDS
-    # =========================
-
-    cards = ""
-
-    for r in dados:
-        aniv = ""
-        classe_aniv = ""
-        texto_aniv = ""
-        
-        if r["aniversario"]:
-
-            if isinstance(r["aniversario"], str):
-                r["aniversario"] = datetime.strptime(r["aniversario"], "%Y-%m-%d")
-        
-            aniv = r["aniversario"].strftime("%d/%m")
-        
-            hoje = datetime.today()
-        
-            prox = datetime(hoje.year, r["aniversario"].month, r["aniversario"].day)
-        
-            if prox < hoje:
-                prox = datetime(hoje.year + 1, r["aniversario"].month, r["aniversario"].day)
-        
-            dias = (prox - hoje).days
-        
-            if dias == 0:
-                classe_aniv = "aniversario-hoje"
-                texto_aniv = "🎉 Aniversário hoje!"
-        
-            elif dias <= 7:
-                classe_aniv = "aniversario-proximo"
-                texto_aniv = f"🎂 Faltam {dias} dias"
-        editavel = r['colaborador'] == session['user']
-
-        if editavel:
-
-            cards += f"""
-            <div class='card {classe_aniv}' data-nome="{r['colaborador']}">
-
-            <h4 class="nome-colaborador">👤 {r['colaborador']}</h4>
-            <div class="aviso-aniv">{texto_aniv}</div>
-
-            <label>🎂 Aniversário</label>
-            <input type='text'
-            class='inline-save'
-            name='aniversario'
-            placeholder='dd/mm'
-            value='{aniv}'>
-
-            <label>📝 Atividade extra</label>
-            <textarea
-            class='inline-save'
-            name='atividade'>{r['atividade'] or ""}</textarea>
-
-            <label>📅 Data</label>
-            <input type='date'
-            class='inline-save'
-            name='data'
-            value='{r['data'] or ""}'>
-
-            <label>💬 Observação</label>
-            <textarea
-            class='inline-save'
-            name='obs'>{r['observacao'] or ""}</textarea>
-
-            </div>
-            """
-
-        else:
-
-            cards += f"""
-            <div class='card {classe_aniv}' data-nome="{r['colaborador']}">
-
-            <h4 class="nome-colaborador">👤 {r['colaborador']}</h4>
-            <div class="aviso-aniv">{texto_aniv}</div>
-
-            <b>🎂 Aniversário:</b> {aniv}<br><br>
-            <b>📝 Atividade:</b><br>
-            {r['atividade'] or ""}<br><br>
-
-            <b>📅 Data:</b> {r['data'] or ""}<br><br>
-
-            <b>💬 Observação:</b><br>
-            {r['observacao'] or ""}
-
-            </div>
-            """
-
-    # =========================
-    # HTML FINAL
-    # =========================
-    menu_ia = ""
-    
-    if session.get("perfil") == "admin":
-        menu_ia = "<a href='/ia'>🤖 Assistente IA</a>"
-
-    content = f"""
-
-<style>
-
-.cards-container{{
-display:grid;
-grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
-gap:20px;
-}}
-
-.card{{
-background:white;
-border:1px solid #ddd;
-border-radius:10px;
-padding:15px;
-box-shadow:0 2px 6px rgba(0,0,0,0.05);
-}}
-
-.card h4{{
-margin-top:0;
-}}
-
-.card textarea{{
-width:100%;
-min-height:90px;
-resize:vertical;
-margin-bottom:10px;
-}}
-
-.card input{{
-width:100%;
-margin-bottom:10px;
-}}
-
-.menu-top{{
-display:flex;
-gap:20px;
-font-weight:bold;
-margin-bottom:20px;
-}}
-
-.aniversario-hoje{{
-background:#ffe0e0;
-border:2px solid #ff6b6b;
-}}
-
-.aniversario-mes{{
-background:#fff7d6;
-}}
-
-.aviso-aniv{{
-font-weight:bold;
-margin-bottom:10px;
-color:#d35400;
-}}
-
-.aniversario-proximo{{
-background:#fff3cd;
-border:2px solid #f1c40f;
-}}
-
-</style>
-
-<div class='menu-top'>
-<a href='/lancar'>⏱ Lançar horas</a>
-<a href='/relatorios'>📊 Relatórios</a>
-{menu_ia}
-</div>
-
-{aviso_html}
-
-<h3>Menu</h3>
-<div style="margin-bottom:20px">
-
-<input
-type="text"
-id="busca_colaborador"
-placeholder="🔎 Pesquisar colaborador"
-onkeyup="filtrarColaborador()"
-style="width:300px;padding:8px;margin-bottom:20px">
-
-</div>
-
-<div id="status_save" style="margin-bottom:10px;color:green"></div>
-
-<div class="cards-container">
-{cards}
-</div>
-
-<script>
-document.querySelectorAll(".inline-save").forEach(el=>{{
-el.addEventListener("change",function(){{
-
-document.getElementById("status_save").innerText="💾 Salvando..."
-
-let card=this.closest(".card")
-
-let atividade=card.querySelector("[name=atividade]")?.value||""
-let data=card.querySelector("[name=data]")?.value||""
-let obs=card.querySelector("[name=obs]")?.value||""
-let aniversario=card.querySelector("[name=aniversario]")?.value||""
-
-if(aniversario.includes("/")){{
-let p=aniversario.split("/")
-if(p.length==2){{
-aniversario="2000-"+p[1]+"-"+p[0]
-}}
-}}
-
-fetch("/menu_salvar_inline",{{
-method:"POST",
-headers:{{"Content-Type":"application/x-www-form-urlencoded"}},
-body:
-"atividade="+encodeURIComponent(atividade)+
-"&data="+encodeURIComponent(data)+
-"&obs="+encodeURIComponent(obs)+
-"&aniversario="+encodeURIComponent(aniversario)
-}})
-.then(r=>r.json())
-.then(()=>{{
-document.getElementById("status_save").innerText="✅ Salvo"
-}})
-.catch(()=>{{
-document.getElementById("status_save").innerText="❌ Erro ao salvar"
-}})
-
-}})
-}})
-</script>
-
-<script>
-function filtrarColaborador(){{
-
-let filtro=document.getElementById("busca_colaborador").value.toLowerCase()
-
-document.querySelectorAll(".card").forEach(card=>{{
-
-let nome=card.querySelector(".nome-colaborador").innerText.toLowerCase()
-
-if(nome.includes(filtro)){{
-card.style.display="block"
-}}else{{
-card.style.display="none"
-}}
-
-}})
-
-}}
-</script>
-
-"""
+            fetch("/menu/os_status", {
+                method:"POST",
+                headers:{"Content-Type":"application/x-www-form-urlencoded"},
+                body:
+                    "os="+encodeURIComponent(os)+
+                    "&status="+encodeURIComponent(status)+
+                    "&obs="+encodeURIComponent(obs)
+            })
+        })
+    })
+    </script>
+    """
 
     return render_template_string(
-        BASE.replace('{% block content %}{% endblock %}', content),
+        BASE.replace('{% block content %}{% endblock %}', html),
+        user=session['user'],
+        perfil=session['perfil']
+    )
+
+@app.route('/menu/os_status', methods=['POST'])
+def salvar_status_os():
+    if 'user' not in session:
+        return '', 403
+
+    os_codigo = request.form.get('os')
+    status = request.form.get('status')
+    obs = request.form.get('obs')
+    user = session['user']
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+        INSERT INTO os_status_user (os_codigo, colaborador, status, observacao)
+        VALUES (%s,%s,%s,%s)
+        ON CONFLICT (os_codigo, colaborador)
+        DO UPDATE SET
+            status = EXCLUDED.status,
+            observacao = EXCLUDED.observacao,
+            updated_at = now()
+    """, (os_codigo, user, status, obs))
+
+    con.commit()
+    con.close()
+
+    return '', 204
+
+@app.route('/avisos', methods=['GET','POST'])
+def avisos():
+    if 'user' not in session:
+        return redirect('/')
+
+    user = session['user']
+
+    con = get_db()
+    cur = con.cursor()
+
+    if request.method == 'POST':
+        msg = request.form.get('mensagem')
+        parent = request.form.get('parent_id') or None
+
+        cur.execute("""
+            INSERT INTO avisos_posts (colaborador, mensagem, parent_id)
+            VALUES (%s,%s,%s)
+        """, (user, msg, parent))
+
+        con.commit()
+
+    cur.execute("""
+        SELECT *
+        FROM avisos_posts
+        ORDER BY created_at DESC
+        LIMIT 100
+    """)
+
+    posts = cur.fetchall()
+    con.close()
+
+    html = """
+    <style>
+    .post {
+        border:1px solid #ccc;
+        border-radius:10px;
+        padding:10px;
+        margin-bottom:10px;
+        background:white;
+    }
+    .meta {
+        font-size:12px;
+        color:#666;
+        margin-bottom:5px;
+    }
+    </style>
+
+    <h2>📢 Avisos</h2>
+
+    <form method="post">
+        <textarea name="mensagem" style="width:100%;height:80px"></textarea>
+        <br><br>
+        <button>Postar</button>
+    </form>
+
+    <br>
+    """
+
+    for p in posts:
+        html += f"""
+        <div class="post">
+            <div class="meta">
+                <b>{p['colaborador']}</b> - {p['created_at']}
+            </div>
+            {p['mensagem']}
+        </div>
+        """
+
+    return render_template_string(
+        BASE.replace('{% block content %}{% endblock %}', html),
         user=session['user'],
         perfil=session['perfil']
     )

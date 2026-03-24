@@ -9327,10 +9327,18 @@ def notas_auditoria():
     # =========================
     # PAGINAÇÃO
     # =========================
-    page = int(request.args.get("page", 1))
-    per_page = int(request.args.get("per_page", 25))
-
-    if per_page not in (10, 25, 50, 100):
+    try:
+        page = int(request.args.get("page", 1))
+        if page < 1:
+            page = 1
+    except:
+        page = 1
+    
+    try:
+        per_page = int(request.args.get("per_page", 25))
+        if per_page not in (10, 25, 50, 100):
+            per_page = 25
+    except:
         per_page = 25
 
     offset = (page - 1) * per_page
@@ -9398,7 +9406,7 @@ def notas_auditoria():
         count_params.append(f"%{busca}%")
 
     cur.execute(count_sql, count_params)
-    total = cur.fetchone()[0]
+    total = cur.fetchone()["count"]
 
     # =========================
     # LISTAR NOTAS (COM LIMIT)

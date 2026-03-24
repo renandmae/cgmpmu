@@ -733,7 +733,6 @@ tr.analisado { background:#e6ffed; }
         <a href="/menu">🏠 Menu</a>
         <a href="/lancar">⏱ Lançar Horas</a>
         <a href="/avisos">📢 Avisos</a> 
-        <a href="/assistente">🤖 Assistente IA</a>
         </div>
         </div>
         
@@ -749,9 +748,14 @@ tr.analisado { background:#e6ffed; }
         <div class="menu-group">
         <button class="menu-btn menu3">📄 Requisições/N.A</button>
         <div class="dropdown">
+        {% if perfil == 'admin' %}
         <a href="/requisicoes">📄 Requisições</a>
-        <a href="/notas-auditoria">🧾 Notas Auditoria</a>
         <a href="/requisicoes/importar">📥 Import</a>
+        {% else %}
+        <a href="/minhas_delegacoes">📄 Requisições</a>
+        {% endif %}
+        
+        <a href="/notas-auditoria">🧾 Notas Auditoria</a>
         </div>
         </div>
         
@@ -782,8 +786,8 @@ tr.analisado { background:#e6ffed; }
         <div class="dropdown">
         <a href="/paint">🎨 PAINT</a>
         <a href="/os">🧾 O.S - Cadastro</a>
-        <a href="/os/gestao">🧾 O.S - Gestão</a>
-        <a href="/os/rh">👥 O.S - RH</a>
+        <a href="/os/gestao">🗂️ O.S - Gestão</a>
+        <a href="/os/rh">👨‍👩‍👧‍👦 O.S - RH</a>
         <a href="/colaboradores">👥 Colaboradores</a>
         </div>
         </div>
@@ -795,7 +799,11 @@ tr.analisado { background:#e6ffed; }
         <div class="dropdown">
         <a href="/admin_projetos">📂 Projetos</a>
         <a href="/painel_requisicoes">📊 Painel</a>
+        
+        {% if perfil == 'admin' %}
         <a href="/visao">📉 Visão/h</a>
+        {% endif %}
+        
         </div>
         </div>
         
@@ -6113,8 +6121,7 @@ tr.analisado td:first-child::before {
         <th>Nota</th>
         <th>Nº Nota</th>
         <th>Ofício</th>
-        <th>Monitoramento</th>
-        <th>Resposta</th>
+        <th>Monit?</th>
         <th>Obs</th>
         <th>Ação</th>
     </tr>
@@ -6173,17 +6180,6 @@ tr.analisado td:first-child::before {
             </select>
         </td>
 
-        <!-- MONITORAMENTO RESPOSTA -->
-        <td>
-            <input
-                type="text"
-                class="campo-inline"
-                data-id="{{ r.id }}"
-                data-campo="monitoramento_resposta"
-                value="{{ r.monitoramento_resposta or '' }}"
-                style="width:260px;">
-        </td>
-        
         <!-- OBSERVAÇÕES -->
         <td>
             <input
@@ -6290,7 +6286,6 @@ document.querySelectorAll(".campo-inline, .status-select").forEach(el => {
         fd.append("num_nota", tr.querySelector("[data-campo='num_nota']").value);
         fd.append("oficio", tr.querySelector("[data-campo='oficio']").value);
         fd.append("monitoramento", tr.querySelector("[data-campo='monitoramento']").value);
-        fd.append("monitoramento_resposta", tr.querySelector("[data-campo='monitoramento_resposta']").value);
         fd.append("observacoes", tr.querySelector("[data-campo='observacoes']").value);
 
         fetch("/requisicoes", { method:"POST", body: fd })
@@ -9555,6 +9550,9 @@ def ver_nota(num_nota):
             r.secretaria,
             r.tipo,
             r.criterio,
+            r.edital,
+            r.contrato,
+            r.nome_fornecedor,
             r.valor_requisicao,
             c.nome AS colaborador
         FROM requisicoes r
@@ -9572,6 +9570,9 @@ def ver_nota(num_nota):
             r.secretaria,
             r.tipo,
             r.criterio,
+            r.edital,
+            r.contrato,
+            r.nome_fornecedor,
             r.valor_requisicao,
             c.nome AS colaborador
         FROM requisicoes r
@@ -9599,6 +9600,9 @@ def ver_nota(num_nota):
         <th>Secretaria</th>
         <th>Tipo</th>
         <th>Critério</th>
+        <th>Edital</th>
+        <th>Contrato</th>
+        <th>Fornecedor</th>
         <th>Responsável</th>
         <th style="text-align:right">Valor</th>
     </tr>
@@ -9613,6 +9617,9 @@ def ver_nota(num_nota):
         <td>{{r.secretaria}}</td>
         <td>{{r.tipo}}</td>
         <td>{{r.criterio}}</td>
+         <td>{{r.edital}}</td>
+         <td>{{r.contrato}}</td>
+          <td>{{r.fornecedor}}</td>
         <td>{{r.colaborador}}</td>
         <td style="text-align:right">
             {{fmt_br(r.valor_requisicao)}}
@@ -9654,6 +9661,9 @@ def exportar_notas_auditoria():
         r.secretaria,
         r.tipo,
         r.criterio,
+        r.edital,
+        r.contrato,
+        r.nome_fornecedor,
         r.valor_requisicao,
         c.nome AS colaborador,
         na.valor_posterior,
@@ -9696,6 +9706,9 @@ def exportar_notas_auditoria():
             "secretaria",
             "tipo",
             "criterio",
+            "edital",
+            "contrato",
+            "nome_fornecedor",
             "colaborador",
             "valor_requisicao"
         ]
@@ -9714,6 +9727,9 @@ def exportar_notas_auditoria():
                 str(d["secretaria"] or ""),
                 str(d["tipo"] or ""),
                 str(d["criterio"] or ""),
+                str(d["edital"] or ""),
+                str(d["contrato"] or ""),
+                str(d["nome_fornecedor"] or ""),
                 str(d["colaborador"] or ""),
                 fmt_br(d["valor_requisicao"]) if d["valor_requisicao"] else ""
             ]

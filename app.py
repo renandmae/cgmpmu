@@ -4625,6 +4625,9 @@ def editar(hid):
         
                 hora_id = cur.fetchone()["id"]
         
+            # ✅ FUNDAMENTAL (resolve seu bug)
+            ids_enviados.add(hora_id)
+        
             # requisicoes
             cur.execute("DELETE FROM horas_requisicoes WHERE hora_id = %s", (hora_id,))
         

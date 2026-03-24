@@ -4479,7 +4479,7 @@ def editar(hid):
                 WHEN %s THEN COUNT(hr.requisicao_id) = 0
                 ELSE array_agg(hr.requisicao_id ORDER BY hr.requisicao_id) = %s
             END
-        ORDER BY h.hora_inicio
+        ORDER BY h.data, h.id
     """, (
         base["colaborador_id"],
         base["data"],
@@ -4616,8 +4616,6 @@ def editar(hid):
                     item,
                     os_codigo,
                     atividade,
-                    horas_ini[i],
-                    horas_fim[i],
                     duracao,
                     minutos,
                     observacoes
@@ -5517,8 +5515,6 @@ def export_csv():
         h.id AS hora_id,
         c.nome AS colaborador,
         h.data,
-        h.hora_inicio,
-        h.hora_fim,
         h.item_paint,
         h.os_codigo,
         h.atividade,
@@ -5559,7 +5555,6 @@ def export_csv():
     # Cabeçalho
     cw.writerow([
         "Hora ID", "Colaborador", "Data",
-        "Hora Início", "Hora Fim",
         "Item PAINT", "OS", "Atividade",
         "Duração", "Minutos", "Obs",
         "Requisições", "Qtd Requisições", "Valor Total",
@@ -5578,8 +5573,6 @@ def export_csv():
             r["hora_id"],
             r["colaborador"],
             data_fmt,
-            r["hora_inicio"],
-            r["hora_fim"],
             r["item_paint"],
             r["os_codigo"],
             r["atividade"],
@@ -5626,8 +5619,6 @@ def export_minhas():
             h.id AS hora_id,
             c.nome AS colaborador,
             h.data,
-            h.hora_inicio,
-            h.hora_fim,
             h.item_paint,
             h.os_codigo,
             h.atividade,
@@ -5653,7 +5644,7 @@ def export_minhas():
         WHERE h.colaborador_id = %s
 
         GROUP BY
-            h.id, c.nome, h.data, h.hora_inicio, h.hora_fim,
+            h.id, c.nome, h.data,
             h.item_paint, h.os_codigo, h.atividade,
             h.duracao, h.duracao_minutos, h.observacoes
 
@@ -5668,7 +5659,6 @@ def export_minhas():
 
     cw.writerow([
         "Hora ID", "Colaborador", "Data",
-        "Hora Início", "Hora Fim",
         "Item PAINT", "OS", "Atividade",
         "Duração", "Minutos", "Obs",
         "Requisições", "Qtd Requisições", "Valor Total",
@@ -5686,8 +5676,6 @@ def export_minhas():
             r["hora_id"],
             r["colaborador"],
             data_fmt,
-            r["hora_inicio"],
-            r["hora_fim"],
             r["item_paint"],
             r["os_codigo"],
             r["atividade"],
@@ -5739,8 +5727,6 @@ def export_filtrado():
             h.id AS hora_id,
             c.nome AS colaborador,
             h.data,
-            h.hora_inicio,
-            h.hora_fim,
             h.item_paint,
             h.os_codigo,
             h.atividade,
@@ -5767,7 +5753,7 @@ def export_filtrado():
         WHERE h.id IN ({",".join(["%s"] * len(ids))})
 
         GROUP BY
-            h.id, c.nome, h.data, h.hora_inicio, h.hora_fim,
+            h.id, c.nome, h.data,
             h.item_paint, h.os_codigo, h.atividade,
             h.duracao, h.duracao_minutos, h.observacoes
 
@@ -5785,7 +5771,6 @@ def export_filtrado():
 
     writer.writerow([
         "Hora ID", "Colaborador", "Data",
-        "Hora Início", "Hora Fim",
         "Item PAINT", "OS", "Atividade",
         "Duração", "Minutos", "Obs",
         "Requisições", "Qtd Requisições",
@@ -5804,8 +5789,6 @@ def export_filtrado():
             r["hora_id"],
             r["colaborador"],
             data_fmt,
-            r["hora_inicio"],
-            r["hora_fim"],
             r["item_paint"],
             r["os_codigo"],
             r["atividade"],
@@ -5863,8 +5846,6 @@ def export_preventivas():
         c.nome AS colaborador,
 
         h.data,
-        h.hora_inicio,
-        h.hora_fim,
         h.duracao_minutos
 
         FROM requisicoes r
@@ -5875,7 +5856,7 @@ def export_preventivas():
     
         WHERE r.servidor_id IS NOT NULL                    -- 👈 filtro explícito
     
-        ORDER BY r.id, h.data, h.hora_inicio
+        ORDER BY r.id, h.data
     """)
 
 
@@ -5894,8 +5875,6 @@ def export_preventivas():
         "data_inicio": "",
         "data_fim": "",
         "datas": [],
-        "hora_ini": [],
-        "hora_fim": [],
         "duracao_total_min": 0
     })
 
@@ -5920,8 +5899,6 @@ def export_preventivas():
                 data_fmt = str(r["data"])
 
             g["datas"].append(data_fmt)
-            g["hora_ini"].append(str(r["hora_inicio"]))
-            g["hora_fim"].append(str(r["hora_fim"]))
             g["duracao_total_min"] += r["duracao_minutos"] or 0
 
     # ---------------- GERAR CSV ----------------
@@ -5936,8 +5913,6 @@ def export_preventivas():
         "Data Início",
         "Data Fim",
         "Datas Trabalhadas",
-        "Horas Início",
-        "Horas Fim",
         "Horas Totais",
         "Status",
         "Tipo",
@@ -5955,8 +5930,6 @@ def export_preventivas():
             g["data_inicio"],
             g["data_fim"],
             "\n".join(g["datas"]),
-            "\n".join(g["hora_ini"]),
-            "\n".join(g["hora_fim"]),
             duracao_total,
             g["status"],
             g["tipo"],

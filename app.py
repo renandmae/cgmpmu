@@ -4545,8 +4545,7 @@ def editar(hid):
     
         ids_form = request.form.getlist("hora_id[]")
         datas = request.form.getlist("data[]")
-        horas_ini = request.form.getlist("hora_ini[]")
-        horas_fim = request.form.getlist("hora_fim[]")
+        duracoes = request.form.getlist("duracao[]")
     
         if not datas:
             con.close()
@@ -4564,9 +4563,17 @@ def editar(hid):
         for i in range(len(datas)):
             hid_atual = ids_form[i] or None
     
-            ini = parse_hora(horas_ini[i])
-            fim = parse_hora(horas_fim[i])
-            minutos = (fim - ini).seconds // 60
+            dur = duracoes[i]
+            if not dur:
+                continue
+            try:
+                h, m = map(int, dur.split(":"))
+                if m >= 60:
+                    raise ValueError
+            except:
+                continue
+            minutos = h * 60
+            minutos += m
             duracao = f"{minutos//60:02d}:{minutos%60:02d}"
     
             if hid_atual:
@@ -4576,8 +4583,6 @@ def editar(hid):
                 cur.execute("""
                     UPDATE horas SET
                         data=%s,
-                        hora_inicio=%s,
-                        hora_fim=%s,
                         duracao=%s,
                         duracao_minutos=%s,
                         os_codigo=%s,
@@ -4587,8 +4592,6 @@ def editar(hid):
                     WHERE id=%s
                 """, (
                     datas[i],
-                    horas_ini[i],
-                    horas_fim[i],
                     duracao,
                     minutos,
                     os_codigo,
@@ -4603,9 +4606,9 @@ def editar(hid):
             else:
                 cur.execute("""
                     INSERT INTO horas
-                    (colaborador_id, data, item_paint, os_codigo, atividade, hora_inicio, hora_fim,
+                    (colaborador_id, data, item_paint, os_codigo, atividade,
                      duracao, duracao_minutos, observacoes)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                     RETURNING id
                 """, (
                     base["colaborador_id"],
@@ -4694,8 +4697,7 @@ def editar(hid):
 <div class="registro">
     <input type="hidden" name="hora_id[]" value="{{ r.id }}">
     <input type="date" name="data[]" value="{{ r.data }}">
-    <input type="time" name="hora_ini[]" value="{{ r.hora_inicio }}">
-    <input type="time" name="hora_fim[]" value="{{ r.hora_fim }}">
+    <input type="text" name="duracao[]" value="{{ r.duracao }}" placeholder="HH:MM" required>
     <button type="button" onclick="remover(this)">🗑</button>
 </div>
 {% endfor %}
@@ -4772,7 +4774,7 @@ function adicionar() {
     const clone = base.cloneNode(true);
 
     clone.querySelector("input[name='hora_id[]']").value = "";
-    clone.querySelectorAll("input[type='date'], input[type='time']").forEach(i => i.value = "");
+    clone.querySelectorAll("input[type='date'], input[name='duracao[]']").forEach(i => i.value = "");
 
     document.getElementById("registros").appendChild(clone);
 }
@@ -4800,6 +4802,18 @@ document.querySelectorAll(".req-item input").forEach(chk => {
             .classList.toggle("selecionada", this.checked);
     });
 });
+
+document.addEventListener("input", function(e){
+    if(e.target.name === "duracao[]"){
+        let v = e.target.value.replace(/\D/g, "")
+
+        if(v.length >= 3){
+            e.target.value = v.slice(0, v.length-2) + ":" + v.slice(-2)
+        } else {
+            e.target.value = v
+        }
+    }
+})
 
 </script>
 """

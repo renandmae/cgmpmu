@@ -4560,26 +4560,28 @@ def editar(hid):
         ids_existentes = {r["id"] for r in registros}
         ids_enviados = set()
     
-        for i in range(len(datas)):
-            hid_atual = ids_form[i] or None
-    
-            dur = duracoes[i]
+        if not (len(datas) == len(duracoes) == len(ids_form)):
+            con.close()
+            return "Erro nos dados enviados"
+        
+        for hid_atual, data, dur in zip(ids_form, datas, duracoes):
+        
             if not dur:
                 continue
+        
             try:
                 h, m = map(int, dur.split(":"))
                 if m >= 60:
-                    raise ValueError
+                    continue
             except:
                 continue
-            minutos = h * 60
-            minutos += m
+        
+            minutos = h * 60 + m
             duracao = f"{minutos//60:02d}:{minutos%60:02d}"
-    
+        
             if hid_atual:
                 hid_atual = int(hid_atual)
-                ids_enviados.add(hid_atual)
-    
+        
                 cur.execute("""
                     UPDATE horas SET
                         data=%s,
@@ -4591,7 +4593,7 @@ def editar(hid):
                         observacoes=%s
                     WHERE id=%s
                 """, (
-                    datas[i],
+                    data,
                     duracao,
                     minutos,
                     os_codigo,
@@ -4600,9 +4602,9 @@ def editar(hid):
                     observacoes,
                     hid_atual
                 ))
-    
+        
                 hora_id = hid_atual
-    
+        
             else:
                 cur.execute("""
                     INSERT INTO horas
@@ -4612,7 +4614,7 @@ def editar(hid):
                     RETURNING id
                 """, (
                     base["colaborador_id"],
-                    datas[i],
+                    data,
                     item,
                     os_codigo,
                     atividade,
@@ -4620,12 +4622,12 @@ def editar(hid):
                     minutos,
                     observacoes
                 ))
-    
+        
                 hora_id = cur.fetchone()["id"]
-    
-            # 🔁 REQUISIÇÕES (apaga e recria)
+        
+            # requisicoes
             cur.execute("DELETE FROM horas_requisicoes WHERE hora_id = %s", (hora_id,))
-    
+        
             for req_id in requisicoes_ids:
                 cur.execute("""
                     INSERT INTO horas_requisicoes (hora_id, requisicao_id)

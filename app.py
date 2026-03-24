@@ -9325,6 +9325,17 @@ def notas_auditoria():
     cur = con.cursor()
 
     # =========================
+    # PAGINAÇÃO
+    # =========================
+    page = int(request.args.get("page", 1))
+    per_page = int(request.args.get("per_page", 25))
+
+    if per_page not in (10, 25, 50, 100):
+        per_page = 25
+
+    offset = (page - 1) * per_page
+
+    # =========================
     # SALVAR EDIÇÃO DA NOTA
     # =========================
     if request.method == "POST":
@@ -9360,9 +9371,38 @@ def notas_auditoria():
     busca = request.args.get("busca","").strip()
 
     # =========================
-    # LISTAR NOTAS
+    # COUNT TOTAL (PAGINAÇÃO)
     # =========================
+    count_sql = """
+    SELECT COUNT(DISTINCT r.num_nota)
+    FROM requisicoes r
+    LEFT JOIN colaboradores c ON c.id = r.servidor_id
+    WHERE r.num_nota IS NOT NULL
+      AND r.num_nota <> ''
+    """
 
+    count_params = []
+
+    if session.get("perfil") != "admin":
+        count_sql += " AND r.servidor_id = %s"
+        count_params.append(session.get("user_id"))
+
+    if busca:
+        count_sql += """
+        AND (
+            r.num_nota ILIKE %s
+            OR c.nome ILIKE %s
+        )
+        """
+        count_params.append(f"%{busca}%")
+        count_params.append(f"%{busca}%")
+
+    cur.execute(count_sql, count_params)
+    total = cur.fetchone()[0]
+
+    # =========================
+    # LISTAR NOTAS (COM LIMIT)
+    # =========================
     sql = """
     SELECT
         r.num_nota,
@@ -9391,12 +9431,10 @@ def notas_auditoria():
 
     params = []
 
-    # filtro colaborador
     if session.get("perfil") != "admin":
         sql += " AND r.servidor_id = %s"
         params.append(session.get("user_id"))
 
-    # filtro busca
     if busca:
         sql += """
         AND (
@@ -9408,7 +9446,6 @@ def notas_auditoria():
         params.append(f"%{busca}%")
 
     sql += """
-
     GROUP BY
         r.num_nota,
         na.valor_posterior,
@@ -9416,14 +9453,19 @@ def notas_auditoria():
         na.status
 
     ORDER BY r.num_nota
+    LIMIT %s OFFSET %s
     """
 
-    cur.execute(sql, params)
+    params.extend([per_page, offset])
 
+    cur.execute(sql, params)
     notas = cur.fetchall()
 
     con.close()
 
+    # =========================
+    # HTML
+    # =========================
     html = """
 
     <h2>Notas de Auditoria</h2>
@@ -9438,6 +9480,16 @@ def notas_auditoria():
         <input type="text" name="busca"
         placeholder="Buscar por nota ou colaborador"
         value="{{request.args.get('busca','')}}">
+        
+        Exibir:
+        <select name="per_page" onchange="this.form.submit()">
+            {% for opt in [10,25,50,100] %}
+            <option value="{{opt}}" {% if opt==per_page %}selected{% endif %}>
+                {{opt}}
+            </option>
+            {% endfor %}
+        </select>
+
         <button class="btn">Pesquisar</button>
     </form>
 
@@ -9481,14 +9533,11 @@ def notas_auditoria():
 
         <td>
         <select name="status">
-
             <option value=""></option>
-
             <option value="MONITORADA"
             {% if n.status=="MONITORADA" %}selected{% endif %}>
             Monitorada
             </option>
-
         </select>
         </td>
 
@@ -9514,6 +9563,18 @@ def notas_auditoria():
     {% endfor %}
 
     </table>
+
+    <div style="margin-top:10px;">
+        {% if page > 1 %}
+            <a href="?page={{page-1}}&per_page={{per_page}}&busca={{request.args.get('busca','')}}">Anterior</a>
+        {% endif %}
+
+        Página {{page}}
+
+        {% if page * per_page < total %}
+            <a href="?page={{page+1}}&per_page={{per_page}}&busca={{request.args.get('busca','')}}">Próxima</a>
+        {% endif %}
+    </div>
     """
 
     return render_template_string(
@@ -9522,7 +9583,10 @@ def notas_auditoria():
         fmt_br=fmt_br,
         user=session['user'],
         perfil=session['perfil'],
-        request=request
+        request=request,
+        page=page,
+        per_page=per_page,
+        total=total
     )
     
 @app.route("/notas-auditoria/<path:num_nota>")
@@ -9609,9 +9673,9 @@ def ver_nota(num_nota):
         <td>{{r.secretaria}}</td>
         <td>{{r.tipo}}</td>
         <td>{{r.criterio}}</td>
-         <td>{{r.edital}}</td>
-         <td>{{r.contrato}}</td>
-          <td>{{r.fornecedor}}</td>
+         <td>{{r.edital or ''}}</td>
+         <td>{{r.contrato or ''}}</td>
+          <td>{{r.nome_fornecedor or ''}}</td>
         <td>{{r.colaborador}}</td>
         <td style="text-align:right">
             {{fmt_br(r.valor_requisicao)}}

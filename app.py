@@ -3181,7 +3181,6 @@ def os_edit(id):
         rp0100   = to_int(request.form.get("rp0100"))
         rf0100   = to_int(request.form.get("rf0100"))
         
-        rp_dt_envio_sup = request.form.get("rp_dt_envio_sup") or None
         rp_dt_envio_ua  = request.form.get("rp_dt_envio_ua") or None
         rf_dt_envio_sup = request.form.get("rf_dt_envio_sup") or None
         rf_dt_envio_ua  = request.form.get("rf_dt_envio_ua") or None
@@ -3197,7 +3196,7 @@ def os_edit(id):
             
                     keys=%s, uo=%s,
                     plan0100=%s, exec0100=%s, rp0100=%s, rf0100=%s,
-                    rp_dt_envio_sup=%s, rp_dt_envio_ua=%s,
+                    rp_dt_envio_ua=%s,
                     rf_dt_envio_sup=%s, rf_dt_envio_ua=%s
             
                 WHERE id=%s
@@ -3209,7 +3208,7 @@ def os_edit(id):
             
                 keys, uo,
                 plan0100, exec0100, rp0100, rf0100,
-                rp_dt_envio_sup, rp_dt_envio_ua,
+                rp_dt_envio_ua,
                 rf_dt_envio_sup, rf_dt_envio_ua,
             
                 id
@@ -3251,7 +3250,6 @@ def os_edit(id):
     dt_prev_val   = fmt_date_input(os.get('dt_previsao_fim'))
     dt_conc_val   = fmt_date_input(os.get('dt_conclusao'))
     
-    rp_sup = fmt_date_input(os.get('rp_dt_envio_sup'))
     rp_ua  = fmt_date_input(os.get('rp_dt_envio_ua'))
     rf_sup = fmt_date_input(os.get('rf_dt_envio_sup'))
     rf_ua  = fmt_date_input(os.get('rf_dt_envio_ua'))
@@ -3386,7 +3384,11 @@ def os_edit(id):
             <input type='date' name='dt_inicio' value='{dt_inicio_val or ""}'>
         </div>
     
-        <div>Previsão Fim:<br>
+        <div>Previsão Inicial:<br>
+            <input type='date' name='rf_dt_envio_sup' value='{rf_sup or ""}'>
+        </div>
+
+        <div>Previsão Atualizada:<br>
             <input type='date' name='dt_previsao_fim' value='{dt_prev_val or ""}'>
         </div>
     
@@ -3396,64 +3398,75 @@ def os_edit(id):
     </div>
     
     <br>
-    <div style="display:flex;gap:15px;">
-        <b>Flags:</b><br>
-        <label><input type='checkbox' name='plan' {checked(os.get('plan'))}> PLAN</label>
-        <label><input type='checkbox' name='exec' {checked(os.get('exec'))}> EXEC</label>
-        <label><input type='checkbox' name='rp'   {checked(os.get('rp'))}> RP</label>
-        <label><input type='checkbox' name='rf'   {checked(os.get('rf'))}> RF</label>
-    </div>
     <div class="grid">
-    
-        <div>
-            <b>Planejamento</b><br>
-            <div style="display:flex;align-items:center;gap:5px;">
-                <input name='plan0100' type='number' min='0' max='100'
-                       value='{os.get('plan0100',0)}'
-                       style='width:70px;'> 
-                <span>%</span>
-            </div>
-            <div class="box_horas">{h_plan}</div>
+
+    <div>
+        <b>Planejamento</b><br>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <input name='plan0100' type='number' min='0' max='100'
+                   value='{os.get('plan0100',0)}'
+                   style='width:70px;'>
+            <span>%</span>
+
+            <label style="display:flex;align-items:center;gap:4px;">
+                <input type='checkbox' name='plan' {checked(os.get('plan'))}>
+                PLAN
+            </label>
         </div>
-    
-        <div>
-            <b>Execução</b><br>
-                        <div style="display:flex;align-items:center;gap:5px;">
-                <input name='exec0100' type='number' min='0' max='100'
-                       value='{os.get('exec0100',0)}'
-                       style='width:70px;'> 
-                <span>%</span>
-            </div>
-            <div class="box_horas">{h_exec}</div>
-        </div>
-    
-        <div>
-            <b>Relatório (RP)</b><br>
-                        <div style="display:flex;align-items:center;gap:5px;">
-                <input name='rp0100' type='number' min='0' max='100'
-                       value='{os.get('rp0100',0)}'
-                       style='width:70px;'> 
-                <span>%</span>
-            </div>
-            <div class="box_horas">{h_rp}</div>
-            <br>Sup: <input type='date' name='rp_dt_envio_sup' value='{rp_sup or ""}'>
-            UA: <input type='date' name='rp_dt_envio_ua' value='{rp_ua or ""}'>
-        </div>
-    
-        <div>
-            <b>Relatório Final (RF)</b><br>
-                        <div style="display:flex;align-items:center;gap:5px;">
-                <input name='rf0100' type='number' min='0' max='100'
-                       value='{os.get('rf0100',0)}'
-                       style='width:70px;'> 
-                <span>%</span>
-            </div>
-            <div class="box_horas">{h_rf}</div>
-            <br>Sup: <input type='date' name='rf_dt_envio_sup' value='{rf_sup or ""}'>
-            UA: <input type='date' name='rf_dt_envio_ua' value='{rf_ua or ""}'>
-        </div>
-    
+        <div class="box_horas">{h_plan}</div>
     </div>
+
+    <div>
+        <b>Execução</b><br>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <input name='exec0100' type='number' min='0' max='100'
+                   value='{os.get('exec0100',0)}'
+                   style='width:70px;'>
+            <span>%</span>
+
+            <label style="display:flex;align-items:center;gap:4px;">
+                <input type='checkbox' name='exec' {checked(os.get('exec'))}>
+                EXEC
+            </label>
+        </div>
+        <div class="box_horas">{h_exec}</div>
+    </div>
+
+    <div>
+        <b>Relatório (RP)</b><br>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <input name='rp0100' type='number' min='0' max='100'
+                   value='{os.get('rp0100',0)}'
+                   style='width:70px;'>
+            <span>%</span>
+
+            <label style="display:flex;align-items:center;gap:4px;">
+                <input type='checkbox' name='rp' {checked(os.get('rp'))}>
+                RP
+            </label>
+        </div>
+        <div class="box_horas">{h_rp}</div>
+        Enviado para Unid. Audit:
+        <input type='date' name='rp_dt_envio_ua' value='{rp_ua or ""}'>
+    </div>
+
+    <div>
+        <b>Relatório Final (RF)</b><br>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <input name='rf0100' type='number' min='0' max='100'
+                   value='{os.get('rf0100',0)}'
+                   style='width:70px;'>
+            <span>%</span>
+
+            <label style="display:flex;align-items:center;gap:4px;">
+                <input type='checkbox' name='rf' {checked(os.get('rf'))}>
+                RF
+            </label>
+        </div>
+        <div class="box_horas">{h_rf}</div>
+    </div>
+
+</div>
     
     <br>
     

@@ -982,10 +982,12 @@ def menu():
         SELECT *
         FROM os
         WHERE 
+        (
             equipe ILIKE %s OR
             coordenacao ILIKE %s OR
             supervisao ILIKE %s
-            AND (status IS NULL OR status <> 'Concluido')
+        )
+        AND (status IS NULL OR status <> 'Concluido')
         ORDER BY codigo
     """, (f"%{user}%", f"%{user}%", f"%{user}%"))
 
@@ -9924,17 +9926,19 @@ def exportar_notas_auditoria():
 
     from collections import defaultdict
     def gerar():
-    
+
         yield "\ufeff"
     
         header = [
             "num_nota",
+            "qtd_requisicoes",
             "valor_nota",
             "valor_posterior",
             "diferenca",
             "status",
             "observacoes",
-            "requisicoes"
+            "chaves",
+            "valores_requisicoes"
         ]
     
         yield ";".join(header) + "\n"
@@ -9948,8 +9952,9 @@ def exportar_notas_auditoria():
     
             base = itens[0]
     
-            valor_nota = base["valor_nota"] or 0
-            valor_post = base["valor_posterior"] or 0
+            valor_nota = float(base["valor_nota"] or 0)
+    
+            # 🔹 tratamento correto
             if base["valor_posterior"] is not None:
                 valor_post = float(base["valor_posterior"])
                 diferenca = valor_nota - valor_post
@@ -9957,23 +9962,27 @@ def exportar_notas_auditoria():
                 valor_post = None
                 diferenca = None
     
-            # juntar requisições (1 célula)
-            reqs = []
-            for i in itens:
-                reqs.append(
-                    f'{i["chave"]} ({fmt_br(i["valor_requisicao"])})'
-                )
+            # 🔹 separar chaves e valores
+            chaves = []
+            valores = []
     
-            reqs_str = "\n".join(reqs)
+            for i in itens:
+                chaves.append(str(i["chave"]))
+                valores.append(fmt_br(i["valor_requisicao"]))
+    
+            chaves_str = "\n".join(chaves)
+            valores_str = "\n".join(valores)
     
             linha = [
                 str(nota),
+                str(len(itens)),  # qtd_requisicoes
                 fmt_br(valor_nota),
                 fmt_br(valor_post) if valor_post is not None else "",
                 fmt_br(diferenca) if diferenca is not None else "",
                 str(base["status"] or ""),
                 str(base["observacoes"] or ""),
-                reqs_str
+                chaves_str,
+                valores_str
             ]
     
             yield ";".join(linha) + "\n"

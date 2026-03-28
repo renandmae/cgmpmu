@@ -985,7 +985,7 @@ def menu():
             equipe ILIKE %s OR
             coordenacao ILIKE %s OR
             supervisao ILIKE %s
-            AND (status IS NULL OR status <> 'Concluído')
+            AND (status IS NULL OR status <> 'Concluido')
         ORDER BY codigo
     """, (f"%{user}%", f"%{user}%", f"%{user}%"))
 
@@ -8786,21 +8786,37 @@ def dashboard():
     cur.execute("""
         WITH universo AS (
             SELECT DISTINCT ON (chave)
-                chave, sigla, valor_requisicao, status_analise
+                chave, sigla, valor_requisicao, status_analise, num_nota
             FROM requisicoes
             ORDER BY chave, created_at DESC
         ),
         base AS (
             SELECT
                 sigla,
+        
                 COUNT(*) AS qtd_total,
                 COUNT(*) FILTER (WHERE status_analise='ANALISADO') AS qtd_analisadas,
+        
                 SUM(valor_requisicao) AS valor_total,
                 SUM(valor_requisicao)
-                    FILTER (WHERE status_analise='ANALISADO') AS valor_analisado
+                    FILTER (WHERE status_analise='ANALISADO') AS valor_analisado,
+        
+                COUNT(DISTINCT num_nota) FILTER (
+                    WHERE num_nota IS NOT NULL AND num_nota <> ''
+                ) AS qtd_notas,
+        
+                COUNT(*) FILTER (
+                    WHERE num_nota IS NOT NULL AND num_nota <> ''
+                ) AS qtd_req_com_nota,
+        
+                SUM(valor_requisicao) FILTER (
+                    WHERE num_nota IS NOT NULL AND num_nota <> ''
+                ) AS valor_req_com_nota
+        
             FROM universo
             GROUP BY sigla
         )
+        
         SELECT *,
             ROUND((valor_analisado/NULLIF(valor_total,0))*100,2) AS perc_valor,
             ROUND((qtd_analisadas::numeric/NULLIF(qtd_total,0))*100,2) AS perc_qtd
@@ -8811,16 +8827,25 @@ def dashboard():
 
     # TOTAL GERAL
     total = {
-        "sigla": "TOTAL",
-        "qtd_total": cards["qtd_universo"],
-        "qtd_analisadas": cards["qtd_analisadas"],
-        "valor_total": cards["valor_universo"],
-        "valor_analisado": cards["valor_analisado"],
-        "perc_valor": round(cards["valor_analisado"] / cards["valor_universo"] * 100, 2)
-                        if cards["valor_universo"] else 0,
-        "perc_qtd": round(cards["qtd_analisadas"] / cards["qtd_universo"] * 100, 2)
-                        if cards["qtd_universo"] else 0
-    }
+    "sigla": "TOTAL",
+    "qtd_total": cards["qtd_universo"],
+    "qtd_analisadas": cards["qtd_analisadas"],
+    "valor_total": cards["valor_universo"],
+    "valor_analisado": cards["valor_analisado"],
+
+    "perc_valor": round(cards["valor_analisado"] / cards["valor_universo"] * 100, 2)
+        if cards["valor_universo"] else 0,
+
+    "perc_qtd": round(cards["qtd_analisadas"] / cards["qtd_universo"] * 100, 2)
+        if cards["qtd_universo"] else 0,
+
+    # NOVOS CAMPOS
+    "qtd_notas": sum(r["qtd_notas"] or 0 for r in tabela),
+
+    "qtd_req_com_nota": sum(r["qtd_req_com_nota"] or 0 for r in tabela),
+
+    "valor_req_com_nota": sum(r["valor_req_com_nota"] or 0 for r in tabela),
+}
 
     # =====================================================
     # 4 – PIZZA CRITÉRIO (ANALISADAS)
@@ -8959,6 +8984,96 @@ def dashboard():
     """)
     tabela_colaboradores = cur.fetchall()
 
+    # =====================================================
+    # 9 – CARDS
+    # =====================================================
+    cur.execute("""
+    WITH notas AS (
+        SELECT
+            r.num_nota,
+            SUM(r.valor_requisicao) AS valor_nota
+        FROM requisicoes r
+        WHERE r.num_nota IS NOT NULL
+          AND r.num_nota <> ''
+        GROUP BY r.num_nota
+    ),
+    auditoria AS (
+        SELECT
+            n.num_nota,
+            n.valor_nota,
+            COALESCE(na.valor_posterior,0) AS valor_posterior
+        FROM notas n
+        LEFT JOIN notas_auditoria na
+            ON na.num_nota = n.num_nota
+    )
+    SELECT
+        COUNT(*) AS qtd_notas,
+        SUM(valor_nota) AS valor_notas,
+    
+        SUM(
+            CASE
+                WHEN valor_nota > valor_posterior
+                THEN valor_nota - valor_posterior
+                ELSE 0
+            END
+        ) AS beneficio,
+    
+        SUM(valor_nota) AS base_total
+    FROM auditoria
+    """)
+    cards_notas = cur.fetchone()
+
+    perc_beneficio = (
+    (cards_notas["beneficio"] / cards_notas["base_total"]) * 100
+    if cards_notas["base_total"] else 0
+)
+
+    # 10 – Gráfico Notas por Sigla
+    cur.execute("""
+    SELECT
+        sigla,
+        COUNT(DISTINCT num_nota) AS qtd
+    FROM requisicoes
+    WHERE num_nota IS NOT NULL
+      AND num_nota <> ''
+    GROUP BY sigla
+    ORDER BY sigla
+    """)
+    graf_notas_sigla = cur.fetchall()
+    
+    # 11 – Cards Reqs com Nota
+    cur.execute("""
+    SELECT
+        COUNT(*) FILTER (
+            WHERE num_nota IS NOT NULL AND num_nota <> ''
+        ) AS qtd_req_nota,
+    
+        COUNT(*) FILTER (
+            WHERE status_analise='ANALISADO'
+        ) AS total_analisadas,
+    
+        SUM(valor_requisicao) FILTER (
+            WHERE num_nota IS NOT NULL AND num_nota <> ''
+        ) AS valor_req_nota,
+    
+        SUM(valor_requisicao) FILTER (
+            WHERE status_analise='ANALISADO'
+        ) AS valor_total_analisado
+    
+    FROM requisicoes
+    """)
+    card_req_nota = cur.fetchone()
+
+    perc_qtd_req_nota = (
+    card_req_nota["qtd_req_nota"] / card_req_nota["total_analisadas"] * 100
+    if card_req_nota["total_analisadas"] else 0
+)
+
+    perc_valor_req_nota = (
+        card_req_nota["valor_req_nota"] / card_req_nota["valor_total_analisado"] * 100
+        if card_req_nota["valor_total_analisado"] else 0
+    )
+    
     cur.close()
     conn.close()
 
@@ -9038,12 +9153,31 @@ canvas { background:white; border-radius:12px;
     <div class="card"><h4>Valor Universo</h4><strong>R$ {{ fmt_br(cards.valor_universo) }}</strong></div>
     <div class="card"><h4>Valor Analisado</h4><strong>R$ {{ fmt_br(cards.valor_analisado) }}</strong></div>
 </div>
+<div class="cards">
+    <div class="card">
+        <h4>Qtd Notas</h4>
+        <strong>{{ cards_notas.qtd_notas }}</strong>
+    </div>
+
+    <div class="card">
+        <h4>Valor Notas</h4>
+        <strong>R$ {{ fmt_br(cards_notas.valor_notas) }}</strong>
+    </div>
+
+    <div class="card">
+        <h4>Benefício Financeiro</h4>
+        <strong>
+            R$ {{ fmt_br(cards_notas.beneficio) }}
+            ({{ perc_beneficio|round(2) }}%)
+        </strong>
+    </div>
+</div>
 
 <h3>📋 Comparativo por Sigla</h3>
 <table>
 <tr>
 <th>Sigla</th><th>Qtd</th><th>Analis.</th><th>%</th>
-<th>Valor</th><th>Valor Anal.</th><th>%</th>
+<th>Valor</th><th>Vlr Analis.</th><th>%</th><th>Qtd Not.</th><th>Reqs Not.</th><th>Valor Reqs. Not.</th>
 </tr>
 {% for r in tabela %}
 <tr>
@@ -9054,6 +9188,9 @@ canvas { background:white; border-radius:12px;
 <td>R$ {{ fmt_br(r.valor_total) }}</td>
 <td>R$ {{ fmt_br(r.valor_analisado) }}</td>
 <td>{{ r.perc_valor }}%</td>
+<td>{{ r.qtd_notas }}</td>
+<td>{{ r.qtd_req_com_nota }}</td>
+<td>R$ {{ fmt_br(r.valor_req_com_nota) }}</td>
 </tr>
 {% endfor %}
 <tfoot>
@@ -9065,6 +9202,9 @@ canvas { background:white; border-radius:12px;
 <td>R$ {{ fmt_br(total.valor_total) }}</td>
 <td>R$ {{ fmt_br(total.valor_analisado) }}</td>
 <td>{{ total.perc_valor }}%</td>
+<td>{{ total.qtd_notas }}</td>
+<td>{{ total.qtd_req_com_nota }}</td>
+<td>R$ {{ fmt_br(total.valor_req_com_nota) }}</td>
 </tr>
 </tfoot>
 </table>
@@ -9113,7 +9253,32 @@ canvas { background:white; border-radius:12px;
     <div class="chart-box"><canvas id="empilhado"></canvas></div>
     <div class="chart-box"><canvas id="valor"></canvas></div>
 </div>
+<div class="chart-box">
+    <canvas id="notas_sigla"></canvas>
+</div>
+<div class="cards">
+    <div class="card">
+        <h4>Requisições com Nota</h4>
 
+        <div style="margin-top:8px;">
+            <div>
+                <span style="color:#666;">Qtd:</span><br>
+                <strong>
+                    {{ card_req_nota.qtd_req_nota }}
+                    ({{ perc_qtd_req_nota|round(2) }}%)
+                </strong>
+            </div>
+
+            <div style="margin-top:10px;">
+                <span style="color:#666;">Valor:</span><br>
+                <strong>
+                    R$ {{ fmt_br(card_req_nota.valor_req_nota) }}
+                    ({{ perc_valor_req_nota|round(2) }}%)
+                </strong>
+            </div>
+        </div>
+    </div>
+</div>
 <script>
 Chart.register(ChartDataLabels);
 
@@ -9132,6 +9297,9 @@ const criterios = [...new Set(dadosEmpilhado.map(d => d.criterio))];
 
 const valorLabels = {{ barras_valor | map(attribute='criterio') | list | tojson }};
 const valorData   = {{ barras_valor | map(attribute='valor') | list | tojson }};
+
+const notasSiglaLabels = {{ graf_notas_sigla | map(attribute='sigla') | list | tojson }};
+const notasSiglaData   = {{ graf_notas_sigla | map(attribute='qtd') | list | tojson }};
 </script>
 
 
@@ -9264,6 +9432,23 @@ if (valorData.length) {
     });
 }
 
+if (notasSiglaData.length) {
+    new Chart(document.getElementById("notas_sigla"), {
+        type: 'bar',
+        data: {
+            labels: notasSiglaLabels,
+            datasets: [{
+                label: 'Qtd Notas',
+                data: notasSiglaData
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+}
 </script>
 
 </body>
@@ -9277,6 +9462,12 @@ graf_tipo=graf_tipo,
 empilhado=empilhado,
 barras_valor=barras_valor,
 tabela_colaboradores=tabela_colaboradores,  # 👈 FALTAVA ISSO
+cards_notas=cards_notas,
+perc_beneficio=perc_beneficio,
+graf_notas_sigla=graf_notas_sigla,
+card_req_nota=card_req_nota,
+perc_qtd_req_nota=perc_qtd_req_nota,
+perc_valor_req_nota=perc_valor_req_nota,
 fmt_br=fmt_br
 )
 
@@ -9390,8 +9581,11 @@ def notas_auditoria():
 
         STRING_AGG(DISTINCT c.nome, ', ') AS responsavel,
         
-        COALESCE(SUM(r.valor_requisicao),0)
-    - COALESCE(na.valor_posterior,0) AS diferenca
+        CASE 
+            WHEN na.valor_posterior IS NOT NULL 
+            THEN SUM(r.valor_requisicao) - na.valor_posterior
+            ELSE NULL
+        END AS diferenca
 
     FROM requisicoes r
 
@@ -9507,7 +9701,11 @@ def notas_auditoria():
         <input name="valor_posterior"
         value="{{fmt_br(n.valor_posterior) if n.valor_posterior else ''}}">
         </td>
-        <td>{{fmt_br(n.diferenca)}}</td>
+        <td>
+            {% if n.diferenca is not none %}
+                {{fmt_br(n.diferenca)}}
+            {% endif %}
+        </td>
         <td>
         <select name="status">
             <option value=""></option>
@@ -9752,7 +9950,12 @@ def exportar_notas_auditoria():
     
             valor_nota = base["valor_nota"] or 0
             valor_post = base["valor_posterior"] or 0
-            diferenca = valor_nota - valor_post
+            if base["valor_posterior"] is not None:
+                valor_post = float(base["valor_posterior"])
+                diferenca = valor_nota - valor_post
+            else:
+                valor_post = None
+                diferenca = None
     
             # juntar requisições (1 célula)
             reqs = []
@@ -9766,8 +9969,8 @@ def exportar_notas_auditoria():
             linha = [
                 str(nota),
                 fmt_br(valor_nota),
-                fmt_br(valor_post),
-                fmt_br(diferenca),
+                fmt_br(valor_post) if valor_post is not None else "",
+                fmt_br(diferenca) if diferenca is not None else "",
                 str(base["status"] or ""),
                 str(base["observacoes"] or ""),
                 reqs_str

@@ -946,59 +946,10 @@ HEADER_LOGIN = """
 </div>
 """
 
-
-
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/')
-
-@app.route("/menu_salvar_inline", methods=["POST"])
-def menu_salvar_inline():
-
-    if 'user' not in session:
-        return {"status":"erro"}
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    atividade = request.form.get("atividade") or None
-    data = request.form.get("data") or None
-    obs = request.form.get("obs") or None
-    aniversario = request.form.get("aniversario") or None
-
-    cur.execute("""
-    SELECT id FROM atividades_extras
-    WHERE colaborador=%s
-    """,(session['user'],))
-
-    existe = cur.fetchone()
-
-    if existe:
-
-        cur.execute("""
-        UPDATE atividades_extras
-        SET atividade=%s,
-            data=%s,
-            observacao=%s,
-            aniversario=%s
-        WHERE colaborador=%s
-        """,(atividade,data,obs,aniversario,session['user']))
-
-    else:
-
-        cur.execute("""
-        INSERT INTO atividades_extras
-        (colaborador, atividade, data, observacao, aniversario)
-        VALUES (%s,%s,%s,%s,%s)
-        """,(session['user'],atividade,data,obs,aniversario))
-
-    conn.commit()
-
-    cur.close()
-    conn.close()
-
-    return {"status":"ok"}
 
 @app.route('/menu')
 def menu():
@@ -1034,6 +985,7 @@ def menu():
             equipe ILIKE %s OR
             coordenacao ILIKE %s OR
             supervisao ILIKE %s
+            AND (status IS NULL OR status <> 'Concluído')
         ORDER BY codigo
     """, (f"%{user}%", f"%{user}%", f"%{user}%"))
 
@@ -9437,6 +9389,9 @@ def notas_auditoria():
         na.status,
 
         STRING_AGG(DISTINCT c.nome, ', ') AS responsavel
+        
+        COALESCE(SUM(r.valor_requisicao),0)
+    - COALESCE(na.valor_posterior,0) AS diferenca
 
     FROM requisicoes r
 
@@ -9524,6 +9479,7 @@ def notas_auditoria():
         <th>Qtd Requisições</th>
         <th>Valor Nota</th>
         <th>Valor Posterior</th>
+        <th>Diferença</th>
         <th>Status</th>
         <th>Observações</th>
         <th>Ação</th>
@@ -9551,7 +9507,7 @@ def notas_auditoria():
         <input name="valor_posterior"
         value="{{fmt_br(n.valor_posterior) if n.valor_posterior else ''}}">
         </td>
-
+        <td>{{fmt_br(n.diferenca)}}</td>
         <td>
         <select name="status">
             <option value=""></option>
@@ -9768,49 +9724,55 @@ def exportar_notas_auditoria():
     dados = cur.fetchall()
     con.close()
 
+    from collections import defaultdict
     def gerar():
-
-        # BOM para Excel reconhecer UTF-8
+    
         yield "\ufeff"
-
+    
         header = [
             "num_nota",
             "valor_nota",
             "valor_posterior",
+            "diferenca",
             "status",
             "observacoes",
-            "chave_requisicao",
-            "secretaria",
-            "tipo",
-            "criterio",
-            "edital",
-            "contrato",
-            "nome_fornecedor",
-            "colaborador",
-            "valor_requisicao"
+            "requisicoes"
         ]
-
+    
         yield ";".join(header) + "\n"
-
+    
+        agrupado = defaultdict(list)
+    
         for d in dados:
-
+            agrupado[d["num_nota"]].append(d)
+    
+        for nota, itens in agrupado.items():
+    
+            base = itens[0]
+    
+            valor_nota = base["valor_nota"] or 0
+            valor_post = base["valor_posterior"] or 0
+            diferenca = valor_nota - valor_post
+    
+            # juntar requisições (1 célula)
+            reqs = []
+            for i in itens:
+                reqs.append(
+                    f'{i["chave"]} ({fmt_br(i["valor_requisicao"])})'
+                )
+    
+            reqs_str = "\n".join(reqs)
+    
             linha = [
-                str(d["num_nota"] or ""),
-                fmt_br(d["valor_nota"]) if d["valor_nota"] else "",
-                fmt_br(d["valor_posterior"]) if d["valor_posterior"] else "",
-                str(d["status"] or ""),
-                str(d["observacoes"] or ""),
-                str(d["chave"] or ""),
-                str(d["secretaria"] or ""),
-                str(d["tipo"] or ""),
-                str(d["criterio"] or ""),
-                str(d["edital"] or ""),
-                str(d["contrato"] or ""),
-                str(d["nome_fornecedor"] or ""),
-                str(d["colaborador"] or ""),
-                fmt_br(d["valor_requisicao"]) if d["valor_requisicao"] else ""
+                str(nota),
+                fmt_br(valor_nota),
+                fmt_br(valor_post),
+                fmt_br(diferenca),
+                str(base["status"] or ""),
+                str(base["observacoes"] or ""),
+                reqs_str
             ]
-
+    
             yield ";".join(linha) + "\n"
 
     return Response(

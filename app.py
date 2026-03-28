@@ -9162,6 +9162,7 @@ canvas { background:white; border-radius:12px;
     <div class="card"><h4>Valor Universo</h4><strong>R$ {{ fmt_br(cards.valor_universo) }}</strong></div>
     <div class="card"><h4>Valor Analisado</h4><strong>R$ {{ fmt_br(cards.valor_analisado) }}</strong></div>
 </div>
+<br>
 <div class="cards">
     <div class="card">
         <h4>Qtd Notas</h4>

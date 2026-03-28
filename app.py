@@ -9388,7 +9388,7 @@ def notas_auditoria():
         na.observacoes,
         na.status,
 
-        STRING_AGG(DISTINCT c.nome, ', ') AS responsavel
+        STRING_AGG(DISTINCT c.nome, ', ') AS responsavel,
         
         COALESCE(SUM(r.valor_requisicao),0)
     - COALESCE(na.valor_posterior,0) AS diferenca

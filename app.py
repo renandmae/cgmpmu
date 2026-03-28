@@ -9003,7 +9003,7 @@ def dashboard():
         SELECT
             n.num_nota,
             n.valor_nota,
-            COALESCE(na.valor_posterior,0) AS valor_posterior
+            na.valor_posterior
         FROM notas n
         LEFT JOIN notas_auditoria na
             ON na.num_nota = n.num_nota
@@ -9012,15 +9012,19 @@ def dashboard():
         COUNT(*) AS qtd_notas,
         SUM(valor_nota) AS valor_notas,
     
+        -- 🔹 benefício só quando tem valor_posterior E valor_nota > valor_posterior
         SUM(
             CASE
-                WHEN valor_nota > valor_posterior
+                WHEN valor_posterior IS NOT NULL
+                 AND valor_nota > valor_posterior
                 THEN valor_nota - valor_posterior
                 ELSE 0
             END
         ) AS beneficio,
     
+        -- 🔹 base continua sendo TOTAL das notas (correto)
         SUM(valor_nota) AS base_total
+    
     FROM auditoria
     """)
     cards_notas = cur.fetchone()
@@ -9034,7 +9038,10 @@ def dashboard():
     cur.execute("""
     SELECT
         sigla,
-        COUNT(DISTINCT num_nota) AS qtd
+        COUNT(DISTINCT num_nota) AS qtd_notas,
+        COUNT(*) FILTER (
+            WHERE num_nota IS NOT NULL AND num_nota <> ''
+        ) AS qtd_req_nota
     FROM requisicoes
     WHERE num_nota IS NOT NULL
       AND num_nota <> ''
@@ -9255,7 +9262,7 @@ canvas { background:white; border-radius:12px;
     <div class="chart-box"><canvas id="empilhado"></canvas></div>
     <div class="chart-box"><canvas id="valor"></canvas></div>
 </div>
-<div class="chart-box">
+<div class="chart-box" style="height:400px;">
     <canvas id="notas_sigla"></canvas>
 </div>
 <div class="cards">
@@ -9301,7 +9308,8 @@ const valorLabels = {{ barras_valor | map(attribute='criterio') | list | tojson 
 const valorData   = {{ barras_valor | map(attribute='valor') | list | tojson }};
 
 const notasSiglaLabels = {{ graf_notas_sigla | map(attribute='sigla') | list | tojson }};
-const notasSiglaData   = {{ graf_notas_sigla | map(attribute='qtd') | list | tojson }};
+const notasData        = {{ graf_notas_sigla | map(attribute='qtd_notas') | list | tojson }};
+const reqsData         = {{ graf_notas_sigla | map(attribute='qtd_req_nota') | list | tojson }};
 </script>
 
 
@@ -9434,20 +9442,37 @@ if (valorData.length) {
     });
 }
 
-if (notasSiglaData.length) {
+if (notasData.length) {
     new Chart(document.getElementById("notas_sigla"), {
         type: 'bar',
         data: {
             labels: notasSiglaLabels,
-            datasets: [{
-                label: 'Qtd Notas',
-                data: notasSiglaData
-            }]
+            datasets: [
+                {
+                    label: 'Qtd Notas',
+                    data: notasData
+                },
+                {
+                    label: 'Req com Nota',
+                    data: reqsData
+                }
+            ]
         },
         options: {
-            indexAxis: 'y',
+            indexAxis: 'y',  // 👈 horizontal
             responsive: true,
-            maintainAspectRatio: false
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                datalabels: {
+                    anchor: 'end',
+                    align: 'right'
+                }
+            }
         }
     });
 }
@@ -9924,9 +9949,16 @@ def exportar_notas_auditoria():
     dados = cur.fetchall()
     con.close()
 
+    import csv
+    import io
     from collections import defaultdict
+    
     def gerar():
-
+    
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_ALL)
+    
+        # BOM
         yield "\ufeff"
     
         header = [
@@ -9941,7 +9973,10 @@ def exportar_notas_auditoria():
             "valores_requisicoes"
         ]
     
-        yield ";".join(header) + "\n"
+        writer.writerow(header)
+        yield output.getvalue()
+        output.seek(0)
+        output.truncate(0)
     
         agrupado = defaultdict(list)
     
@@ -9954,7 +9989,6 @@ def exportar_notas_auditoria():
     
             valor_nota = float(base["valor_nota"] or 0)
     
-            # 🔹 tratamento correto
             if base["valor_posterior"] is not None:
                 valor_post = float(base["valor_posterior"])
                 diferenca = valor_nota - valor_post
@@ -9962,7 +9996,6 @@ def exportar_notas_auditoria():
                 valor_post = None
                 diferenca = None
     
-            # 🔹 separar chaves e valores
             chaves = []
             valores = []
     
@@ -9970,22 +10003,22 @@ def exportar_notas_auditoria():
                 chaves.append(str(i["chave"]))
                 valores.append(fmt_br(i["valor_requisicao"]))
     
-            chaves_str = "\n".join(chaves)
-            valores_str = "\n".join(valores)
-    
             linha = [
                 str(nota),
-                str(len(itens)),  # qtd_requisicoes
+                str(len(itens)),
                 fmt_br(valor_nota),
                 fmt_br(valor_post) if valor_post is not None else "",
                 fmt_br(diferenca) if diferenca is not None else "",
                 str(base["status"] or ""),
                 str(base["observacoes"] or ""),
-                chaves_str,
-                valores_str
+                "\n".join(chaves),   # agora funciona
+                "\n".join(valores)   # agora funciona
             ]
     
-            yield ";".join(linha) + "\n"
+            writer.writerow(linha)
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
 
     return Response(
         gerar(),

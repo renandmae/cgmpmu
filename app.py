@@ -2767,6 +2767,10 @@ def os_view(id):
             FROM horas h
             JOIN colaboradores c ON c.id = h.colaborador_id
             WHERE h.os_codigo = %s
+            AND (
+                h.observacoes IS NULL
+                OR h.observacoes NOT ILIKE 'Lançamento automático%'
+            )
         """
         params = [os['codigo']]
     

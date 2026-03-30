@@ -2769,7 +2769,7 @@ def os_view(id):
             WHERE h.os_codigo = %s
             AND (
                 h.observacoes IS NULL
-                OR h.observacoes NOT ILIKE 'Lançamento automático%'
+                OR h.observacoes NOT ILIKE 'Lançamento automático%%'
             )
         """
         params = [os['codigo']]

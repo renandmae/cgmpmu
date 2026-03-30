@@ -3682,6 +3682,7 @@ def lancar():
         os_codigo = request.form.get('os')
         atividade = request.form.get('atividade')
         observacoes = request.form.get('observacoes')
+        coparticipantes = request.form.getlist("coparticipantes[]")
     
         requisicoes_ids = request.form.getlist("requisicoes[]")
     
@@ -3692,62 +3693,63 @@ def lancar():
             con.close()
             return "Nenhum lançamento informado"
     
+        # lista de colaboradores que receberão o lançamento
+        destinatarios = [session["user_id"]] + [int(c) for c in coparticipantes]
         for data, duracao in zip(datas, duracoes):
-
             if not duracao:
                 continue
-        
             try:
                 h, m = map(int, duracao.split(":"))
                 if m >= 60:
                     raise ValueError
             except:
                 continue
+                
             minutos = h * 60 + m
-            
-            # ---- validar data
+        
             dt = datetime.strptime(data, "%Y-%m-%d")
             if dt.year != 2026:
                 con.close()
                 return "Só é permitido lançar horas em 2026"
-    
-            # ---- calcular duração
+        
+            duracao_fmt = f"{minutos//60:02d}:{minutos%60:02d}"
+        
+            for colab_id in destinatarios:
             
-            duracao = f"{minutos//60:02d}:{minutos%60:02d}"
-    
-            # -------------------------
-            # INSERE A HORA
-            # -------------------------
-            cur.execute("""
-                INSERT INTO horas
-                (colaborador_id, data, item_paint, os_codigo,
-                 atividade, hora_inicio, hora_fim,
-                 duracao, duracao_minutos, observacoes)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                RETURNING id
-            """, (
-                session["user_id"],
-                data,
-                item,
-                os_codigo,
-                atividade,
-                None,
-                None,
-                duracao,
-                minutos,
-                observacoes
-            ))
-    
-            hora_id = cur.fetchone()["id"]
-    
-            # -------------------------
-            # VÍNCULO COM REQUISIÇÕES
-            # -------------------------
-            for req_id in requisicoes_ids:
+                if colab_id == session["user_id"]:
+                    obs_final = observacoes
+                else:
+                    obs_final = f"Lançamento automático da O.S {os_codigo} por {session['user']}"
+            
+                    if observacoes:
+                        obs_final += f" | {observacoes}"
+            
                 cur.execute("""
-                    INSERT INTO horas_requisicoes (hora_id, requisicao_id)
-                    VALUES (%s, %s)
-                """, (hora_id, req_id))
+                    INSERT INTO horas
+                    (colaborador_id, data, item_paint, os_codigo,
+                     atividade, hora_inicio, hora_fim,
+                     duracao, duracao_minutos, observacoes)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    RETURNING id
+                """, (
+                    colab_id,
+                    data,
+                    item,
+                    os_codigo,
+                    atividade,
+                    None,
+                    None,
+                    duracao_fmt,
+                    minutos,
+                    obs_final
+                ))
+                hora_id = cur.fetchone()["id"]
+                # vincular requisições (para TODOS)
+                for req_id in requisicoes_ids:
+                    cur.execute("""
+                        INSERT INTO horas_requisicoes (hora_id, requisicao_id)
+                        VALUES (%s, %s)
+                    """, (hora_id, req_id))
     
             # -------------------------
             # OS 1.15 – Atendimento
@@ -4014,6 +4016,17 @@ def lancar():
         <label>Observação geral:</label>
         <textarea name="observacoes" rows="4" style="width:100%;"></textarea>
     </div>
+
+    <div style="margin-top:10px;">
+    <label>Co-participantes</label><br>
+    <select name="coparticipantes[]" multiple size="6" style="width:100%;">
+        {% for c in colaboradores %}
+            {% if c.id != session["user_id"] %}
+                <option value="{{ c.id }}">{{ c.nome }}</option>
+            {% endif %}
+        {% endfor %}
+    </select>
+</div>
 
     <button class="btn" style="margin-top:15px;">
         Registrar Lançamento(s)

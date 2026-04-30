@@ -4021,7 +4021,7 @@ def lancar():
         <textarea name="observacoes" rows="4" style="width:100%;"></textarea>
     </div>
 
-    <div style="margin-top:10px;">
+    <div id="box_coparticipantes" style="margin-top:10px;">
     <label>Co-participantes</label><br>
     <select name="coparticipantes[]" multiple size="6" style="width:100%;">
         {% for c in colaboradores %}
@@ -4068,6 +4068,15 @@ document.addEventListener("DOMContentLoaded", function () {
         boxAtendimento.style.display = (codigoOS === "1.15/2026") ? "block" : "none";
         boxConsultoria.style.display =
             (codigoOS === "1.14/2026" || codigoOS === "1.16/2026") ? "block" : "none";
+            
+        // ✅ NOVO: esconder coparticipantes
+        const boxCop = document.getElementById("box_coparticipantes");
+    
+        if (["1.14/2026", "1.15/2026", "1.16/2026"].includes(codigoOS)) {
+            boxCop.style.display = "none";
+        } else {
+            boxCop.style.display = "block";
+        }
     });
 
     // busca rápida
@@ -4340,25 +4349,29 @@ def relatorios():
     html += "</table>"
 
     if perfil == "admin":
-        html += """
-            <a class='btn' href='/export'>Exportar todas as horas (CSV)</a>
+        html += f"""
+            <div style="margin-top:15px;">
+            
+            <select id="mes_export" style="padding:6px;">
+                <option value="">Selecione o mês...</option>
+        """
     
-            <button class='btn' style='margin-left:10px' onclick='exportarFiltrado()'>
-                Exportar filtrado
+        for num, nome in meses.items():
+            selected = "selected" if num == mes_filtro else ""
+            html += f"<option value='{num}' {selected}>{nome}</option>"
+    
+        html += """
+            </select>
+    
+            <button class="btn" onclick="exportarMes()" style="margin-left:10px;">
+                Exportar mês
             </button>
     
             <a class="btn" style="margin-left:10px" href="/export_preventivas">
                 Exportar Preventivas
             </a>
-        """
-    
-    html += """
-            <a class='btn' style='margin-left:10px; background:#16a085;'
-               href='/export_minhas'>
-               Exportar minhas horas
-            </a>
         </div>
-    """
+        """
 
     # ---------------- SCRIPTS ----------------
     html += """
@@ -4374,32 +4387,16 @@ def relatorios():
         });
     });
 
+function exportarMes() {
+    const mes = document.getElementById("mes_export").value;
 
-function exportarFiltrado() {
-    const ids = [];
-
-    document.querySelectorAll("#tabelaMarcacoes tr").forEach((tr, i) => {
-        if (i === 0) return;
-        if (tr.style.display === "none") return;
-
-        const link = tr.querySelector("a");
-        if (!link) return;
-
-        const partes = link.href.split("/editar/");
-        if (partes.length < 2) return;
-
-        ids.push(partes[1]);
-    });
-
-    if (ids.length === 0) {
-        alert("Nenhum registro filtrado para exportar.");
+    if (!mes) {
+        alert("Selecione um mês para exportar.");
         return;
     }
 
-    document.getElementById("ids_filtrados").value = ids.join(",");
-    document.getElementById("formExportFiltrado").submit();
+    window.location.href = "/export?mes=" + mes;
 }
-
     </script>
     """
 
@@ -5490,73 +5487,73 @@ new Chart(document.getElementById('graficoHoras'), {{
 
 @app.route('/export')
 def export_csv():
-    if 'user' not in session:
+    if 'user' not in session or session["perfil"] != "admin":
         return redirect('/')
 
     import csv, io
-    from datetime import datetime
+
+    mes = request.args.get("mes")
+
+    if not mes:
+        return "Selecione um mês para exportar."
 
     con = get_db()
     cur = con.cursor()
 
     cur.execute("""
-            SELECT
-        h.id AS hora_id,
-        c.nome AS colaborador,
-        h.data,
-        h.item_paint,
-        h.os_codigo,
-        h.atividade,
-        h.duracao,
-        h.duracao_minutos,
-        h.observacoes,
-    
-        -- dados agregados das requisições
-        string_agg(r.chave, ', ') AS requisicoes,
-        COUNT(r.id)               AS qtd_requisicoes,
-        COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
-    
-        MIN(r.data_inicio)        AS data_inicio_requisicao,
-        MAX(r.data_fim)           AS data_fim_requisicao,
-        string_agg(DISTINCT r.status_analise, ', ') AS status_requisicao,
-        string_agg(DISTINCT r.tipo, ', ')            AS tipo_requisicao,
-        string_agg(DISTINCT r.criterio, ', ')        AS criterio_requisicao
-    
-    FROM horas h
-    JOIN colaboradores c ON c.id = h.colaborador_id
-    LEFT JOIN horas_requisicoes hr ON hr.hora_id = h.id
-    LEFT JOIN requisicoes r ON r.id = hr.requisicao_id
-    
-    GROUP BY
-        h.id, c.nome, h.data, h.hora_inicio, h.hora_fim,
-        h.item_paint, h.os_codigo, h.atividade,
-        h.duracao, h.duracao_minutos, h.observacoes
-    
-    ORDER BY h.data;
+        SELECT
+            h.id AS hora_id,
+            c.nome AS colaborador,
+            h.data,
+            h.item_paint,
+            h.os_codigo,
+            h.atividade,
+            h.duracao,
+            h.duracao_minutos,
+            h.observacoes,
 
-    """)
+            string_agg(r.chave, ', ') AS requisicoes,
+            COUNT(r.id) AS qtd_requisicoes,
+            COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
+
+            MIN(r.data_inicio) AS data_inicio_requisicao,
+            MAX(r.data_fim) AS data_fim_requisicao,
+            string_agg(DISTINCT r.status_analise, ', ') AS status_requisicao,
+            string_agg(DISTINCT r.tipo, ', ') AS tipo_requisicao,
+            string_agg(DISTINCT r.criterio, ', ') AS criterio_requisicao
+
+        FROM horas h
+        JOIN colaboradores c ON c.id = h.colaborador_id
+        LEFT JOIN horas_requisicoes hr ON hr.hora_id = h.id
+        LEFT JOIN requisicoes r ON r.id = hr.requisicao_id
+
+        WHERE EXTRACT(MONTH FROM h.data) = %s
+
+        GROUP BY
+            h.id, c.nome, h.data,
+            h.item_paint, h.os_codigo, h.atividade,
+            h.duracao, h.duracao_minutos, h.observacoes
+
+        ORDER BY h.data
+    """, (mes,))
+
     rows = cur.fetchall()
     con.close()
 
     si = io.StringIO()
     cw = csv.writer(si, delimiter=";")
 
-    # Cabeçalho
     cw.writerow([
         "Hora ID", "Colaborador", "Data",
         "Item PAINT", "OS", "Atividade",
         "Duração", "Minutos", "Obs",
-        "Requisições", "Qtd Requisições", "Valor Total",
-        "Data Início Req", "Data Fim Req",
-        "Status Req", "Tipo Req", "Critério Req"
+        "Requisições", "Qtd", "Valor Total",
+        "Data Início", "Data Fim",
+        "Status", "Tipo", "Critério"
     ])
 
-
     for r in rows:
-        try:
-            data_fmt = r["data"].strftime("%d/%m/%Y")
-        except:
-            data_fmt = r["data"]
+        data_fmt = r["data"].strftime("%d/%m/%Y") if r["data"] else ""
 
         cw.writerow([
             r["hora_id"],
@@ -5587,7 +5584,7 @@ def export_csv():
         output,
         mimetype="text/csv",
         as_attachment=True,
-        download_name="horas_completo.csv"
+        download_name=f"horas_mes_{mes}.csv"
     )
 
 @app.route('/export_minhas')
@@ -5691,115 +5688,6 @@ def export_minhas():
         mimetype="text/csv",
         as_attachment=True,
         download_name="minhas_horas.csv"
-    )
-
-@app.route('/export_filtrado', methods=['POST'])
-def export_filtrado():
-    if 'user' not in session or session['perfil'] != 'admin':
-        return redirect('/')
-
-    ids_raw = request.form.get("ids", "")
-    if not ids_raw:
-        return "Nenhum ID recebido.", 400
-
-    ids = [x.strip() for x in ids_raw.split(",") if x.strip()]
-
-    import csv, io
-    from datetime import datetime
-    from flask import Response
-
-    con = get_db()
-    cur = con.cursor()
-
-    sql = f"""
-        SELECT
-            h.id AS hora_id,
-            c.nome AS colaborador,
-            h.data,
-            h.item_paint,
-            h.os_codigo,
-            h.atividade,
-            h.duracao,
-            h.duracao_minutos,
-            h.observacoes,
-
-            -- dados agregados das requisições
-            string_agg(r.chave, ', ') AS requisicoes,
-            COUNT(r.id)               AS qtd_requisicoes,
-            -- COALESCE(SUM(r.valor_requisicao), 0) AS valor_total_requisicoes,
-
-            MIN(r.data_inicio)        AS data_inicio_requisicao,
-            MAX(r.data_fim)           AS data_fim_requisicao,
-            string_agg(DISTINCT r.status_analise, ', ') AS status_requisicao,
-            string_agg(DISTINCT r.tipo, ', ')            AS tipo_requisicao,
-            string_agg(DISTINCT r.criterio, ', ')        AS criterio_requisicao
-
-        FROM horas h
-        JOIN colaboradores c ON c.id = h.colaborador_id
-        LEFT JOIN horas_requisicoes hr ON hr.hora_id = h.id
-        LEFT JOIN requisicoes r ON r.id = hr.requisicao_id
-
-        WHERE h.id IN ({",".join(["%s"] * len(ids))})
-
-        GROUP BY
-            h.id, c.nome, h.data,
-            h.item_paint, h.os_codigo, h.atividade,
-            h.duracao, h.duracao_minutos, h.observacoes
-
-        ORDER BY h.data
-    """
-
-    cur.execute(sql, ids)
-    rows = cur.fetchall()
-    con.close()
-
-    # ---------- CSV ----------
-    output = io.StringIO()
-    output.write("\ufeff")  # BOM Excel
-    writer = csv.writer(output, delimiter=";")
-
-    writer.writerow([
-        "Hora ID", "Colaborador", "Data",
-        "Item PAINT", "OS", "Atividade",
-        "Duração", "Minutos", "Obs",
-        "Requisições", "Qtd Requisições",
-        # "Valor Total",
-        "Data Início Req", "Data Fim Req",
-        "Status Req", "Tipo Req", "Critério Req"
-    ])
-
-    for r in rows:
-        try:
-            data_fmt = r["data"].strftime("%d/%m/%Y")
-        except:
-            data_fmt = r["data"]
-
-        writer.writerow([
-            r["hora_id"],
-            r["colaborador"],
-            data_fmt,
-            r["item_paint"],
-            r["os_codigo"],
-            r["atividade"],
-            r["duracao"],
-            r["duracao_minutos"],
-            r["observacoes"],
-            r["requisicoes"] or "",
-            r["qtd_requisicoes"] or 0,
-            # f"{r['valor_total_requisicoes']:.2f}",
-            r["data_inicio_requisicao"],
-            r["data_fim_requisicao"],
-            r["status_requisicao"],
-            r["tipo_requisicao"],
-            r["criterio_requisicao"],
-        ])
-
-    return Response(
-        output.getvalue(),
-        mimetype="text/csv; charset=utf-8",
-        headers={
-            "Content-Disposition": "attachment; filename=horas_filtradas_completo.csv"
-        }
     )
 
 def minutos_para_hhmm(minutos):
@@ -7250,7 +7138,38 @@ def importar_requisicoes_background(arquivo_bytes, data_corte):
                 data_medicao, data_liquidacao, empenho,
                 ficha_despesa, data_corte
             FROM requisicoes_staging
-            ON CONFLICT (chave) DO NOTHING
+            ON CONFLICT (chave) DO UPDATE
+            SET
+                -- 💰 VALOR (baseado em data_corte agora)
+                valor_requisicao = CASE
+                    WHEN
+                        EXCLUDED.valor_requisicao IS NOT NULL
+                        AND requisicoes.valor_requisicao IS DISTINCT FROM EXCLUDED.valor_requisicao
+                        AND (
+                            requisicoes.data_corte IS NULL
+                            OR EXCLUDED.data_corte > requisicoes.data_corte
+                        )
+                    THEN EXCLUDED.valor_requisicao
+                    ELSE requisicoes.valor_requisicao
+                END,
+            
+                -- 📅 DATA_TRAMITACAO (mantém a mais recente)
+                data_tramitacao = CASE
+                    WHEN EXCLUDED.data_tramitacao IS NULL
+                        THEN requisicoes.data_tramitacao
+                    WHEN requisicoes.data_tramitacao IS NULL
+                        THEN EXCLUDED.data_tramitacao
+                    ELSE GREATEST(requisicoes.data_tramitacao, EXCLUDED.data_tramitacao)
+                END,
+            
+                -- 📅 DATA_CORTE (AGORA É A BASE)
+                data_corte = CASE
+                    WHEN requisicoes.data_corte IS NULL
+                        THEN EXCLUDED.data_corte
+                    WHEN EXCLUDED.data_corte IS NULL
+                        THEN requisicoes.data_corte
+                    ELSE GREATEST(requisicoes.data_corte, EXCLUDED.data_corte)
+                END
         """)
 
         progresso_import["inseridos"] = cur.rowcount
@@ -7679,12 +7598,17 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 FROM requisicoes_staging_completa
                 ORDER BY
                     chave,
+            
+                    -- 1️⃣ prioridade: quem tem servidor
                     CASE 
                         WHEN servidor_nome IS NOT NULL 
                              AND TRIM(servidor_nome) <> '' 
                         THEN 0 
                         ELSE 1 
-                    END
+                    END,
+            
+                    -- 2️⃣ MAIS RECENTE (AGORA CORRETO)
+                    data_corte DESC
             ) s
             
             ON CONFLICT (chave) DO UPDATE
@@ -7693,11 +7617,33 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 secretaria = EXCLUDED.secretaria,
                 requisicao_num = EXCLUDED.requisicao_num,
                 tipo_documento = EXCLUDED.tipo_documento,
-                valor_requisicao = EXCLUDED.valor_requisicao,
+            
+                -- 💰 VALOR (regra correta)
+                valor_requisicao = CASE
+                    WHEN
+                        EXCLUDED.valor_requisicao IS NOT NULL
+                        AND requisicoes.valor_requisicao IS DISTINCT FROM EXCLUDED.valor_requisicao
+                        AND (
+                            COALESCE(EXCLUDED.data_tramitacao, EXCLUDED.data_corte)
+                            >
+                            COALESCE(requisicoes.data_tramitacao, requisicoes.data_corte)
+                        )
+                    THEN EXCLUDED.valor_requisicao
+                    ELSE requisicoes.valor_requisicao
+                END,
+            
                 nome_solicitante = EXCLUDED.nome_solicitante,
                 data_criacao = EXCLUDED.data_criacao,
                 status_atual = EXCLUDED.status_atual,
-                data_tramitacao = EXCLUDED.data_tramitacao,
+            
+                -- 📅 DATA (nunca retrocede)
+                data_tramitacao = CASE
+                    WHEN COALESCE(EXCLUDED.data_tramitacao, EXCLUDED.data_corte) >
+                         COALESCE(requisicoes.data_tramitacao, requisicoes.data_corte)
+                    THEN COALESCE(EXCLUDED.data_tramitacao, EXCLUDED.data_corte)
+                    ELSE requisicoes.data_tramitacao
+                END,
+            
                 natureza_despesa = EXCLUDED.natureza_despesa,
                 item_despesa = EXCLUDED.item_despesa,
                 nome_fornecedor = EXCLUDED.nome_fornecedor,
@@ -7707,22 +7653,31 @@ def importar_requisicoes_completa_background(arquivo_bytes):
                 data_liquidacao = EXCLUDED.data_liquidacao,
                 empenho = EXCLUDED.empenho,
                 ficha_despesa = EXCLUDED.ficha_despesa,
-                tipo = EXCLUDED.tipo,
-                criterio = EXCLUDED.criterio,
-                servidor_id = EXCLUDED.servidor_id,
-                nota = EXCLUDED.nota,
-                num_nota = EXCLUDED.num_nota,
-                oficio = EXCLUDED.oficio,
-                monitoramento = EXCLUDED.monitoramento,
-                monitoramento_resposta = EXCLUDED.monitoramento_resposta,
-                observacoes = EXCLUDED.observacoes,
-                status_analise = EXCLUDED.status_analise,
-                sigla = EXCLUDED.sigla
             
-            WHERE EXCLUDED.servidor_id IS NOT NULL;
-
+                -- 🔁 TIPO e CRITÉRIO
+                tipo = COALESCE(EXCLUDED.tipo, requisicoes.tipo),
+                criterio = COALESCE(EXCLUDED.criterio, requisicoes.criterio),
+            
+                -- 🧑‍💼 SERVIDOR (não sobrescreve com NULL)
+                servidor_id = COALESCE(EXCLUDED.servidor_id, requisicoes.servidor_id),
+            
+                nota = COALESCE(EXCLUDED.nota, requisicoes.nota),
+                num_nota = COALESCE(EXCLUDED.num_nota, requisicoes.num_nota),
+                oficio = COALESCE(EXCLUDED.oficio, requisicoes.oficio),
+                monitoramento = COALESCE(EXCLUDED.monitoramento, requisicoes.monitoramento),
+                monitoramento_resposta = COALESCE(EXCLUDED.monitoramento_resposta, requisicoes.monitoramento_resposta),
+                observacoes = COALESCE(EXCLUDED.observacoes, requisicoes.observacoes),
+            
+                status_analise = COALESCE(EXCLUDED.status_analise, requisicoes.status_analise),
+                sigla = COALESCE(EXCLUDED.sigla, requisicoes.sigla)
+            
+            -- ⚠️ IMPORTANTE: não bloqueia update inteiro por causa do servidor
+            WHERE
+                (
+                    EXCLUDED.servidor_id IS NOT NULL
+                    OR requisicoes.servidor_id IS NULL
+                );
         """)
-
         progresso_import["inseridos"] = cur.rowcount
         progresso_import["duplicados"] = progresso_import["total"] - cur.rowcount
 
@@ -7818,258 +7773,6 @@ def importar_requisicoes_completo():
 }, 1500);
     </script>
     """)
-
-@app.route("/requisicoes/importar-colar", methods=["GET","POST"])
-def importar_requisicoes_colar():
-
-    if request.method == "GET":
-        return """
-        <h2>Importar Requisições (CTRL + C / CTRL + V)</h2>
-
-        <form method="POST">
-            <textarea name="dados" style="width:100%;height:400px;"></textarea>
-            <br><br>
-            <button type="submit">Importar</button>
-        </form>
-
-        <p>
-        Copie diretamente do Excel e cole aqui.<br>
-        Não precisa salvar arquivo.
-        </p>
-        """
-
-    dados = request.form.get("dados")
-
-    if not dados:
-        return "Nenhum dado enviado."
-
-    import io
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("TRUNCATE requisicoes_staging_completa")
-
-    buffer = io.StringIO()
-
-    linhas = dados.splitlines()
-
-    for linha in linhas:
-
-        if not linha.strip():
-            continue
-
-        col = linha.split("\t")
-
-        if len(col) < 33:
-            continue
-
-        valor = col[5]
-
-        if valor:
-
-            valor = valor.strip()
-
-            if valor.startswith("R$"):
-                valor = valor.replace("R$","").replace(".","").replace(",",".").strip()
-
-        registro = [
-            col[0],
-            col[1],
-            col[2],
-            col[3],
-            col[4],
-            valor,
-            col[6],
-            col[7],
-            col[8],
-            col[9],
-            col[10],
-            col[11],
-            col[13],
-            col[14],
-            col[15],
-            col[16],
-            col[17],
-            col[18],
-            col[19],
-            col[20],
-            col[24],
-            col[25],
-            col[26],
-            col[27],
-            col[28],
-            col[29],
-            col[31],
-            col[32]
-        ]
-
-        buffer.write("\t".join([str(v) if v else "" for v in registro]) + "\n")
-
-    buffer.seek(0)
-
-    cur.copy_from(
-        buffer,
-        "requisicoes_staging_completa",
-        sep="\t",
-        null=""
-    )
-
-    buffer.close()
-
-    # EXECUTA MESMA LÓGICA DO IMPORT COMPLETO
-
-    cur.execute("""
-    INSERT INTO requisicoes (
-        chave, data_corte, secretaria, requisicao_num,
-        tipo_documento, valor_requisicao, nome_solicitante,
-        data_criacao, status_atual, data_tramitacao,
-        natureza_despesa, item_despesa, nome_fornecedor,
-        edital, contrato, data_medicao, data_liquidacao,
-        empenho, ficha_despesa, tipo,
-        criterio, servidor_id, nota, num_nota,
-        oficio, monitoramento, monitoramento_resposta,
-        observacoes, status_analise,
-        sigla
-    )
-
-    SELECT
-        s.chave,
-        s.data_corte,
-        s.secretaria,
-        s.requisicao_num,
-        s.tipo_documento,
-        s.valor_requisicao,
-        s.nome_solicitante,
-        s.data_criacao,
-        s.status_atual,
-        s.data_tramitacao,
-        s.natureza_despesa,
-        s.item_despesa,
-        s.nome_fornecedor,
-        s.edital,
-        s.contrato,
-        s.data_medicao,
-        s.data_liquidacao,
-        s.empenho,
-        s.ficha_despesa,
-
-        CASE
-            WHEN TRIM(s.tipo) IN ('CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO')
-                THEN TRIM(s.tipo)
-
-            WHEN s.tipo IS NULL
-            OR TRIM(s.tipo)=''
-            OR TRIM(s.tipo)='∄'
-            OR TRIM(s.tipo) NOT IN ('CONTRATAÇÃO','LIQUIDAÇÃO','ADITAMENTO')
-
-            THEN
-                CASE
-
-                    WHEN s.tipo_documento IN (
-                    'REQUISIÇÕES DE COMPRAS',
-                    'REQUERIMENTO PARA REGISTRO DE PREÇOS',
-                    'REQUISIÇÃO DE TERMO DE COLABORAÇÃO',
-                    'REQUISIÇÃO DE TERMO DE FOMENTO',
-                    'REQUISIÇÕES CONSOME SALDO',
-                    'REQUISIÇÃO DE PAGAMENTOS DIVERSOS',
-                    'REQUISIÇÃO EXTRA ORÇAMENTARIA',
-                    'CONTRATO DE GESTÃO'
-                    ) THEN 'CONTRATAÇÃO'
-
-                    WHEN s.tipo_documento IN (
-                    'REQUISIÇÕES P/ LIQUIDAR',
-                    'REQUISIÇÕES P/ LIQUIDAR PAGAMENTOS DIVERSOS'
-                    ) THEN 'LIQUIDAÇÃO'
-
-                    WHEN s.tipo_documento IN (
-                    'REQUISIÇÕES P/ ADITAR'
-                    ) THEN 'ADITAMENTO'
-
-                    ELSE NULL
-                END
-        END,
-
-        s.criterio,
-
-        CASE UPPER(TRIM(s.servidor_nome))
-            WHEN 'ANA PAULA' THEN 2
-            WHEN 'ALEXANDRA' THEN 1
-            WHEN 'MICHELLE' THEN 14
-            WHEN 'PAULA' THEN 15
-            WHEN 'PRISCILLA' THEN 17
-            WHEN 'SYRIA' THEN 18
-            WHEN 'THAMY' THEN 19
-            WHEN 'MARIANA CAVANHA' THEN 13
-        END,
-
-        s.nota,
-        s.num_nota,
-        s.oficio,
-        s.monitoramento,
-        s.monitoramento_resposta,
-        s.observacoes,
-
-        CASE
-            WHEN s.criterio IS NOT NULL AND TRIM(s.criterio) <> ''
-            THEN 'ANALISADO'
-        END,
-
-        COALESCE(
-            UPPER(NULLIF(split_part(s.chave,'/',3),'')),
-
-            CASE SUBSTRING(LPAD(s.secretaria::text,2,'0'),1,2)
-                WHEN '07' THEN 'SME'
-                WHEN '09' THEN 'SMS'
-                WHEN '17' THEN 'DMAE'
-            END
-        )
-
-    FROM (
-        SELECT DISTINCT ON (chave) *
-        FROM requisicoes_staging_completa
-        ORDER BY chave
-    ) s
-
-    ON CONFLICT (chave) DO UPDATE
-    SET
-        data_corte = EXCLUDED.data_corte,
-        secretaria = EXCLUDED.secretaria,
-        requisicao_num = EXCLUDED.requisicao_num,
-        tipo_documento = EXCLUDED.tipo_documento,
-        valor_requisicao = EXCLUDED.valor_requisicao,
-        nome_solicitante = EXCLUDED.nome_solicitante,
-        data_criacao = EXCLUDED.data_criacao,
-        status_atual = EXCLUDED.status_atual,
-        data_tramitacao = EXCLUDED.data_tramitacao,
-        natureza_despesa = EXCLUDED.natureza_despesa,
-        item_despesa = EXCLUDED.item_despesa,
-        nome_fornecedor = EXCLUDED.nome_fornecedor,
-        edital = EXCLUDED.edital,
-        contrato = EXCLUDED.contrato,
-        data_medicao = EXCLUDED.data_medicao,
-        data_liquidacao = EXCLUDED.data_liquidacao,
-        empenho = EXCLUDED.empenho,
-        ficha_despesa = EXCLUDED.ficha_despesa,
-        tipo = EXCLUDED.tipo,
-        criterio = EXCLUDED.criterio,
-        servidor_id = EXCLUDED.servidor_id,
-        nota = EXCLUDED.nota,
-        num_nota = EXCLUDED.num_nota,
-        oficio = EXCLUDED.oficio,
-        monitoramento = EXCLUDED.monitoramento,
-        monitoramento_resposta = EXCLUDED.monitoramento_resposta,
-        observacoes = EXCLUDED.observacoes,
-        status_analise = EXCLUDED.status_analise,
-        sigla = EXCLUDED.sigla
-
-    WHERE EXCLUDED.servidor_id IS NOT NULL
-    """)
-
-    conn.commit()
-    conn.close()
-
-    return "Importação concluída!"
 
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
@@ -9192,6 +8895,28 @@ canvas { background:white; border-radius:12px;
     </div>
 
     <div class="card">
+        <h4>Requisições com Nota</h4>
+
+        <div style="margin-top:8px;">
+            <div>
+                <span style="color:#666;">Qtd:</span><br>
+                <strong>
+                    {{ card_req_nota.qtd_req_nota }}
+                    ({{ perc_qtd_req_nota|round(2) }}%)
+                </strong>
+            </div>
+
+            <div style="margin-top:10px;">
+                <span style="color:#666;">Valor:</span><br>
+                <strong>
+                    R$ {{ fmt_br(card_req_nota.valor_req_nota) }}
+                    ({{ perc_valor_req_nota|round(2) }}%)
+                </strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
         <h4>Benefício Financeiro</h4>
         <strong>
             R$ {{ fmt_br(cards_notas.beneficio) }}
@@ -9283,29 +9008,7 @@ canvas { background:white; border-radius:12px;
 <div class="chart-box" style="height:400px;">
     <canvas id="notas_sigla"></canvas>
 </div>
-<div class="cards">
-    <div class="card">
-        <h4>Requisições com Nota</h4>
 
-        <div style="margin-top:8px;">
-            <div>
-                <span style="color:#666;">Qtd:</span><br>
-                <strong>
-                    {{ card_req_nota.qtd_req_nota }}
-                    ({{ perc_qtd_req_nota|round(2) }}%)
-                </strong>
-            </div>
-
-            <div style="margin-top:10px;">
-                <span style="color:#666;">Valor:</span><br>
-                <strong>
-                    R$ {{ fmt_br(card_req_nota.valor_req_nota) }}
-                    ({{ perc_valor_req_nota|round(2) }}%)
-                </strong>
-            </div>
-        </div>
-    </div>
-</div>
 <script>
 Chart.register(ChartDataLabels);
 

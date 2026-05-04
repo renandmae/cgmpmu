@@ -2383,7 +2383,7 @@ def os_gestao():
 
     .linha {
         display:grid;
-        grid-template-columns: 1fr 2fr 1fr 2fr 1fr 0.7fr 0.7fr 0.7fr 0.7fr 0.5fr 0.5fr;
+        grid-template-columns: 1fr 2fr 1fr 2fr 1fr 0.7fr 0.7fr 0.7fr 0.7fr 0.5fr 0.5fr 0.5fr;
         gap:10px;
         align-items:center;
         border:2px solid #2c5aa0;

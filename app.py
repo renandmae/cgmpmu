@@ -2977,18 +2977,6 @@ function addRec(){{
     document.getElementById("recs").appendChild(div)
 }}
 
-function abrirDocs(){
-    fetch("/os/docs/%s")
-    .then(r => r.text())
-    .then(pasta => {
-        if(pasta.includes("não encontrada")){
-            alert(pasta)
-        } else {
-            window.location.href = "file:///" + pasta.replaceAll("\\\\","/")
-        }
-    })
-}
-
 </script>
 """
 

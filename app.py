@@ -2468,6 +2468,7 @@ def os_gestao():
         <div class="cell">RF</div>
         <div>Ver</div>
         <div>Editar</div>
+        <div>Ficha</div>
     </div>
     """
 
@@ -2485,6 +2486,7 @@ def os_gestao():
             <div class="cell">{pct(r.get('rf0100'))}</div>
             <a href="/os/view/{r['id']}" class="icon-btn icon-view">ℹ</a>
             <a href="/os/edit/{r['id']}" class="icon-btn icon-edit">✏</a>
+            <a href="/os/ficha/{r['id']}" class="icon-btn icon-view">📋</a>
         </div>
         """
 

@@ -2716,7 +2716,7 @@ def abrir_docs(os_id):
 
     if pasta:
         os.startfile(pasta)  # Windows
-        return "Abrindo pasta..."
+        return redirect(f"file:///{pasta.replace('\\', '/')}")
     else:
         return "Pasta não encontrada"
 
@@ -2728,9 +2728,6 @@ def ficha_os(os_id):
     con = get_db()
     cur = con.cursor()
 
-    # -------------------------
-    # BUSCAR OS
-    # -------------------------
     cur.execute("SELECT * FROM os WHERE id = %s", (os_id,))
     os_data = cur.fetchone()
 
@@ -2776,7 +2773,6 @@ def ficha_os(os_id):
 
         ficha_id = cur.fetchone()["id"]
 
-        # limpa e reinsere recomendações
         cur.execute("DELETE FROM ficha_recomendacoes WHERE ficha_id = %s", (ficha_id,))
 
         recs = request.form.getlist("recomendacoes[]")
@@ -2792,7 +2788,7 @@ def ficha_os(os_id):
         return redirect(f"/os/ficha/{os_id}")
 
     # -------------------------
-    # CARREGAR FICHA
+    # CARREGAR
     # -------------------------
     cur.execute("SELECT * FROM ficha_auditoria WHERE os_id = %s", (os_id,))
     ficha = cur.fetchone()
@@ -2805,68 +2801,177 @@ def ficha_os(os_id):
     con.close()
 
     # -------------------------
-    # HTML
+    # HTML BONITO
     # -------------------------
     html = f"""
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-        <h2>Ficha de Auditoria - {os_data['codigo']}</h2>
-    
-        <a href="/os/docs/{os_id}" target="_blank"
-           style="
-                background:#2563eb;
-                color:white;
-                padding:8px 12px;
-                border-radius:8px;
-                text-decoration:none;
-                font-size:14px;
-           ">
-           📁 Documentação da OS
+<style>
+.card {{
+    background:white;
+    border-radius:12px;
+    padding:20px;
+    margin-bottom:20px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.05);
+}}
+
+.titulo {{
+    font-size:22px;
+    font-weight:bold;
+}}
+
+.sub {{
+    color:#666;
+    font-size:13px;
+}}
+
+.grid-risco {{
+    display:flex;
+    gap:10px;
+    margin-top:10px;
+}}
+
+.risco {{
+    flex:1;
+    border:1px solid #ddd;
+    padding:10px;
+    border-radius:10px;
+    cursor:pointer;
+}}
+
+textarea, input[type="date"] {{
+    width:100%;
+    padding:10px;
+    border-radius:8px;
+    border:1px solid #ccc;
+    margin-top:5px;
+}}
+
+.btn {{
+    background:#2563eb;
+    color:white;
+    padding:10px 16px;
+    border:none;
+    border-radius:8px;
+}}
+
+.rec-item {{
+    display:flex;
+    gap:10px;
+    margin-top:10px;
+}}
+</style>
+
+<div class="card">
+    <div style="display:flex; justify-content:space-between;">
+        <div>
+            <div class="titulo">Ficha de Auditoria - {os_data['codigo']}</div>
+            <div class="sub">{os_data['resumo'] or ''}</div>
+        </div>
+
+        <a href="/os/docs/{os_id}" target="_blank" class="btn">
+            📁 Documentação
         </a>
     </div>
+</div>
 
-    <form method="post">
+<form method="post">
 
-    <h3>Nível de Risco</h3>
-    <label><input type="radio" name="nivel_risco" value="baixo"> Baixo</label>
-    <label><input type="radio" name="nivel_risco" value="medio"> Médio</label>
-    <label><input type="radio" name="nivel_risco" value="alto"> Alto</label>
-    <label><input type="radio" name="nivel_risco" value="extremo"> Extremo</label>
+<div class="card">
+    <b>Nível de Risco</b>
 
-    <h3>5 Cs</h3>
-    <textarea name="criterio">{ficha["criterio"] if ficha else ""}</textarea>
-    <textarea name="condicao">{ficha["condicao"] if ficha else ""}</textarea>
-    <textarea name="causa">{ficha["causa"] if ficha else ""}</textarea>
-    <textarea name="impacto">{ficha["impacto"] if ficha else ""}</textarea>
-    <textarea name="acao">{ficha["acao"] if ficha else ""}</textarea>
-
-    <h3>Recomendações</h3>
-    <div id="recs">
+    <div class="grid-risco">
+        {"".join([f'''
+        <label class="risco">
+            <input type="radio" name="nivel_risco" value="{v}"
+            {"checked" if ficha and ficha["nivel_risco"]==v else ""}>
+            <b>{t}</b><br>
+            <small>{d}</small>
+        </label>
+        ''' for v,t,d in [
+            ("baixo","Baixo","Impacto mínimo"),
+            ("medio","Médio","Requer atenção"),
+            ("alto","Alto","Ação urgente"),
+            ("extremo","Extremo","Crítico")
+        ]])}
     </div>
-    <button type="button" onclick="addRec()">+ Adicionar</button>
+</div>
 
-    <h3>Monitoramento</h3>
-    <input type="checkbox" name="monitoramento" {"checked" if ficha and ficha["requer_monitoramento"] else ""}>
-    <input type="date" name="data_monitoramento" value="{ficha["data_monitoramento"] if ficha else ""}">
-    <textarea name="obs_monitoramento">{ficha["observacao_monitoramento"] if ficha else ""}</textarea>
+<div class="card">
+    <b>5 Cs da Auditoria</b>
+
+    <label>Critério</label>
+    <textarea name="criterio">{ficha["criterio"] if ficha else ""}</textarea>
+
+    <label>Condição</label>
+    <textarea name="condicao">{ficha["condicao"] if ficha else ""}</textarea>
+
+    <label>Causa</label>
+    <textarea name="causa">{ficha["causa"] if ficha else ""}</textarea>
+
+    <label>Impacto</label>
+    <textarea name="impacto">{ficha["impacto"] if ficha else ""}</textarea>
+
+    <label>Ação</label>
+    <textarea name="acao">{ficha["acao"] if ficha else ""}</textarea>
+</div>
+
+<div class="card">
+    <b>Recomendações</b>
+
+    <div id="recs">
+        {"".join([f'''
+        <div class="rec-item">
+            <input name="recomendacoes[]" value="{r["descricao"]}">
+            <select name="rec_status[]">
+                <option value="0" {"selected" if not r["corrigido"] else ""}>Pendente</option>
+                <option value="1" {"selected" if r["corrigido"] else ""}>Corrigido</option>
+            </select>
+        </div>
+        ''' for r in recomendacoes])}
+    </div>
+
+    <button type="button" onclick="addRec()">+ Adicionar</button>
+</div>
+
+<div class="card">
+    <b>Monitoramento</b><br><br>
+
+    <label>
+        <input type="checkbox" name="monitoramento"
+        {"checked" if ficha and ficha["requer_monitoramento"] else ""}>
+        Requer monitoramento
+    </label>
 
     <br><br>
-    <button>Salvar</button>
-    </form>
 
-    <script>
-    function addRec(){{
-        const div = document.createElement("div")
-        div.innerHTML = `
-            <input name="recomendacoes[]">
-            <select name="rec_status[]">
-                <option value="0">Pendente</option>
-                <option value="1">Corrigido</option>
-            </select>
-        `
-        document.getElementById("recs").appendChild(div)
-    }}
-    </script>
-    """
+    <label>Data</label>
+    <input type="date" name="data_monitoramento"
+    value="{ficha["data_monitoramento"] if ficha else ""}">
+
+    <label>Observações</label>
+    <textarea name="obs_monitoramento">
+{ficha["observacao_monitoramento"] if ficha else ""}
+    </textarea>
+</div>
+
+<button class="btn">Salvar Ficha</button>
+
+</form>
+
+<script>
+function addRec(){{
+    const div = document.createElement("div")
+    div.className = "rec-item"
+    div.innerHTML = `
+        <input name="recomendacoes[]">
+        <select name="rec_status[]">
+            <option value="0">Pendente</option>
+            <option value="1">Corrigido</option>
+        </select>
+    `
+    document.getElementById("recs").appendChild(div)
+}}
+</script>
+"""
 
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),

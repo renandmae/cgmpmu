@@ -2684,6 +2684,194 @@ def os_rh():
         perfil=session['perfil']
     )
 
+import os
+
+def encontrar_pasta_os(codigo):
+    ano = codigo.split("/")[-1]
+    num = codigo.split("/")[0]
+
+    base = f"\\\\SERVER2\\users\\Controle e Gestao\\AUDITORIA INTERNA\\1. Auditorias - {ano}"
+
+    if not os.path.exists(base):
+        return None
+
+    for pasta in os.listdir(base):
+        if num in pasta:
+            return os.path.join(base, pasta)
+
+    return None
+
+@app.route('/os/docs/<int:os_id>')
+def abrir_docs(os_id):
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("SELECT codigo FROM os WHERE id = %s", (os_id,))
+    os_data = cur.fetchone()
+    con.close()
+
+    pasta = encontrar_pasta_os(os_data["codigo"])
+
+    if pasta:
+        os.startfile(pasta)  # Windows
+        return "Abrindo pasta..."
+    else:
+        return "Pasta não encontrada"
+
+@app.route('/os/ficha/<int:os_id>', methods=['GET','POST'])
+def ficha_os(os_id):
+    if 'user' not in session:
+        return redirect('/')
+
+    con = get_db()
+    cur = con.cursor()
+
+    # -------------------------
+    # BUSCAR OS
+    # -------------------------
+    cur.execute("SELECT * FROM os WHERE id = %s", (os_id,))
+    os_data = cur.fetchone()
+
+    if not os_data:
+        return "OS não encontrada"
+
+    # -------------------------
+    # SALVAR
+    # -------------------------
+    if request.method == 'POST':
+
+        cur.execute("""
+            INSERT INTO ficha_auditoria (
+                os_id, nivel_risco, criterio, condicao,
+                causa, impacto, acao,
+                requer_monitoramento, data_monitoramento, observacao_monitoramento
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (os_id) DO UPDATE SET
+                nivel_risco = EXCLUDED.nivel_risco,
+                criterio = EXCLUDED.criterio,
+                condicao = EXCLUDED.condicao,
+                causa = EXCLUDED.causa,
+                impacto = EXCLUDED.impacto,
+                acao = EXCLUDED.acao,
+                requer_monitoramento = EXCLUDED.requer_monitoramento,
+                data_monitoramento = EXCLUDED.data_monitoramento,
+                observacao_monitoramento = EXCLUDED.observacao_monitoramento,
+                atualizado_em = NOW()
+            RETURNING id
+        """, (
+            os_id,
+            request.form.get("nivel_risco"),
+            request.form.get("criterio"),
+            request.form.get("condicao"),
+            request.form.get("causa"),
+            request.form.get("impacto"),
+            request.form.get("acao"),
+            True if request.form.get("monitoramento") == "on" else False,
+            request.form.get("data_monitoramento"),
+            request.form.get("obs_monitoramento")
+        ))
+
+        ficha_id = cur.fetchone()["id"]
+
+        # limpa e reinsere recomendações
+        cur.execute("DELETE FROM ficha_recomendacoes WHERE ficha_id = %s", (ficha_id,))
+
+        recs = request.form.getlist("recomendacoes[]")
+        status = request.form.getlist("rec_status[]")
+
+        for desc, st in zip(recs, status):
+            cur.execute("""
+                INSERT INTO ficha_recomendacoes (ficha_id, descricao, corrigido)
+                VALUES (%s,%s,%s)
+            """, (ficha_id, desc, st == "1"))
+
+        con.commit()
+        return redirect(f"/os/ficha/{os_id}")
+
+    # -------------------------
+    # CARREGAR FICHA
+    # -------------------------
+    cur.execute("SELECT * FROM ficha_auditoria WHERE os_id = %s", (os_id,))
+    ficha = cur.fetchone()
+
+    recomendacoes = []
+    if ficha:
+        cur.execute("SELECT * FROM ficha_recomendacoes WHERE ficha_id = %s", (ficha["id"],))
+        recomendacoes = cur.fetchall()
+
+    con.close()
+
+    # -------------------------
+    # HTML
+    # -------------------------
+    html = f"""
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h2>Ficha de Auditoria - {os_data['codigo']}</h2>
+    
+        <a href="/os/docs/{os_id}" target="_blank"
+           style="
+                background:#2563eb;
+                color:white;
+                padding:8px 12px;
+                border-radius:8px;
+                text-decoration:none;
+                font-size:14px;
+           ">
+           📁 Documentação da OS
+        </a>
+    </div>
+
+    <form method="post">
+
+    <h3>Nível de Risco</h3>
+    <label><input type="radio" name="nivel_risco" value="baixo"> Baixo</label>
+    <label><input type="radio" name="nivel_risco" value="medio"> Médio</label>
+    <label><input type="radio" name="nivel_risco" value="alto"> Alto</label>
+    <label><input type="radio" name="nivel_risco" value="extremo"> Extremo</label>
+
+    <h3>5 Cs</h3>
+    <textarea name="criterio" placeholder="Critério"></textarea>
+    <textarea name="condicao" placeholder="Condição"></textarea>
+    <textarea name="causa" placeholder="Causa"></textarea>
+    <textarea name="impacto" placeholder="Impacto"></textarea>
+    <textarea name="acao" placeholder="Ação"></textarea>
+
+    <h3>Recomendações</h3>
+    <div id="recs">
+    </div>
+    <button type="button" onclick="addRec()">+ Adicionar</button>
+
+    <h3>Monitoramento</h3>
+    <input type="checkbox" name="monitoramento"> Requer monitoramento<br>
+    <input type="date" name="data_monitoramento"><br>
+    <textarea name="obs_monitoramento"></textarea>
+
+    <br><br>
+    <button>Salvar</button>
+    </form>
+
+    <script>
+    function addRec(){
+        const div = document.createElement("div")
+        div.innerHTML = `
+            <input name="recomendacoes[]">
+            <select name="rec_status[]">
+                <option value="0">Pendente</option>
+                <option value="1">Corrigido</option>
+            </select>
+        `
+        document.getElementById("recs").appendChild(div)
+    }
+    </script>
+    """
+
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        user=session['user'],
+        perfil=session['perfil']
+    )
+
 @app.route('/os/delete/<int:id>')
 def os_delete(id):
     if 'user' not in session:

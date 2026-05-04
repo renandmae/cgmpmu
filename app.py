@@ -2689,8 +2689,10 @@ def os_rh():
 import os
 
 def encontrar_pasta_os(codigo):
-    ano = codigo.split("/")[-1]
-    num = codigo.split("/")[0]
+    try:
+        num, ano = codigo.split("/")
+    except:
+        return None
 
     base = f"\\\\SERVER2\\users\\Controle e Gestao\\AUDITORIA INTERNA\\1. Auditorias - {ano}"
 
@@ -2698,7 +2700,10 @@ def encontrar_pasta_os(codigo):
         return None
 
     for pasta in os.listdir(base):
-        if num in pasta:
+        pasta_lower = pasta.lower()
+
+        # match mais preciso: "4.1"
+        if num.lower() in pasta_lower:
             return os.path.join(base, pasta)
 
     return None
@@ -2715,10 +2720,8 @@ def abrir_docs(os_id):
     pasta = encontrar_pasta_os(os_data["codigo"])
 
     if pasta:
-        os.startfile(pasta)  # Windows
-        return redirect(f"file:///{pasta.replace('\\', '/')}")
-    else:
-        return "Pasta não encontrada"
+        return pasta  # retorna texto
+    return "Pasta não encontrada"
 
 @app.route('/os/ficha/<int:os_id>', methods=['GET','POST'])
 def ficha_os(os_id):
@@ -2800,6 +2803,9 @@ def ficha_os(os_id):
 
     con.close()
 
+    pasta = encontrar_pasta_os(os_data["codigo"])
+    pasta_link = f"file:///{pasta.replace('\\','/')}" if pasta else "#"
+
     # -------------------------
     # HTML BONITO
     # -------------------------
@@ -2867,9 +2873,9 @@ textarea, input[type="date"] {{
             <div class="sub">{os_data['resumo'] or ''}</div>
         </div>
 
-        <a href="/os/docs/{os_id}" target="_blank" class="btn">
-            📁 Documentação
-        </a>
+    <a href="{pasta_link}" class="btn" target="_blank">
+        📁 Documentação
+    </a>
     </div>
 </div>
 
@@ -2970,6 +2976,19 @@ function addRec(){{
     `
     document.getElementById("recs").appendChild(div)
 }}
+
+function abrirDocs(){
+    fetch("/os/docs/%s")
+    .then(r => r.text())
+    .then(pasta => {
+        if(pasta.includes("não encontrada")){
+            alert(pasta)
+        } else {
+            window.location.href = "file:///" + pasta.replaceAll("\\\\","/")
+        }
+    })
+}
+
 </script>
 """
 

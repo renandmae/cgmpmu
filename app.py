@@ -2833,11 +2833,11 @@ def ficha_os(os_id):
     <label><input type="radio" name="nivel_risco" value="extremo"> Extremo</label>
 
     <h3>5 Cs</h3>
-    <textarea name="criterio" placeholder="Critério"></textarea>
-    <textarea name="condicao" placeholder="Condição"></textarea>
-    <textarea name="causa" placeholder="Causa"></textarea>
-    <textarea name="impacto" placeholder="Impacto"></textarea>
-    <textarea name="acao" placeholder="Ação"></textarea>
+    <textarea name="criterio">{ficha["criterio"] if ficha else ""}</textarea>
+    <textarea name="condicao">{ficha["condicao"] if ficha else ""}</textarea>
+    <textarea name="causa">{ficha["causa"] if ficha else ""}</textarea>
+    <textarea name="impacto">{ficha["impacto"] if ficha else ""}</textarea>
+    <textarea name="acao">{ficha["acao"] if ficha else ""}</textarea>
 
     <h3>Recomendações</h3>
     <div id="recs">
@@ -2845,16 +2845,16 @@ def ficha_os(os_id):
     <button type="button" onclick="addRec()">+ Adicionar</button>
 
     <h3>Monitoramento</h3>
-    <input type="checkbox" name="monitoramento"> Requer monitoramento<br>
-    <input type="date" name="data_monitoramento"><br>
-    <textarea name="obs_monitoramento"></textarea>
+    <input type="checkbox" name="monitoramento" {"checked" if ficha and ficha["requer_monitoramento"] else ""}>
+    <input type="date" name="data_monitoramento" value="{ficha["data_monitoramento"] if ficha else ""}">
+    <textarea name="obs_monitoramento">{ficha["observacao_monitoramento"] if ficha else ""}</textarea>
 
     <br><br>
     <button>Salvar</button>
     </form>
 
     <script>
-    function addRec(){
+    function addRec(){{
         const div = document.createElement("div")
         div.innerHTML = `
             <input name="recomendacoes[]">
@@ -2864,7 +2864,7 @@ def ficha_os(os_id):
             </select>
         `
         document.getElementById("recs").appendChild(div)
-    }
+    }}
     </script>
     """
 

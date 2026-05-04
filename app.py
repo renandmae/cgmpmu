@@ -3075,11 +3075,11 @@ function addRec(){{
 }}
 </script>
 """
-return render_template_string(
-    BASE.replace("{% block content %}{% endblock %}", html),
-    user=session['user'],
-    perfil=session['perfil']
-)
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        user=session['user'],
+        perfil=session['perfil']
+    )
 
 @app.route('/os/delete/<int:id>')
 def os_delete(id):

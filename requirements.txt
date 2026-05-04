@@ -3,4 +3,3 @@ gunicorn
 psycopg2-binary
 openpyxl
 requests
-python-docx

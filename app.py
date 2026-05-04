@@ -2686,42 +2686,208 @@ def os_rh():
         perfil=session['perfil']
     )
 
-import os
+from openpyxl import Workbook
+from flask import send_file
+import io
 
-def encontrar_pasta_os(codigo):
-    try:
-        num, ano = codigo.split("/")
-    except:
-        return None
+@app.route('/os/export/excel/<int:os_id>')
+def export_excel(os_id):
 
-    base = f"\\\\SERVER2\\users\\Controle e Gestao\\AUDITORIA INTERNA\\1. Auditorias - {ano}"
-
-    if not os.path.exists(base):
-        return None
-
-    for pasta in os.listdir(base):
-        pasta_lower = pasta.lower()
-
-        # match mais preciso: "4.1"
-        if num.lower() in pasta_lower:
-            return os.path.join(base, pasta)
-
-    return None
-
-@app.route('/os/docs/<int:os_id>')
-def abrir_docs(os_id):
     con = get_db()
     cur = con.cursor()
 
-    cur.execute("SELECT codigo FROM os WHERE id = %s", (os_id,))
+    # OS
+    cur.execute("SELECT * FROM os WHERE id = %s", (os_id,))
     os_data = cur.fetchone()
+
+    # FICHA
+    cur.execute("SELECT * FROM ficha_auditoria WHERE os_id = %s", (os_id,))
+    ficha = cur.fetchone()
+
+    if not ficha:
+        return "Ficha não preenchida ainda"
+
+    # RECOMENDAÇÕES
+    cur.execute("""
+        SELECT * FROM ficha_recomendacoes
+        WHERE ficha_id = %s
+    """, (ficha["id"],))
+    recs = cur.fetchall()
+
     con.close()
 
-    pasta = encontrar_pasta_os(os_data["codigo"])
+    wb = Workbook()
 
-    if pasta:
-        return pasta  # retorna texto
-    return "Pasta não encontrada"
+    # ========================
+    # ABA 1 - FICHA
+    # ========================
+    ws = wb.active
+    ws.title = "Ficha"
+
+    ws["A1"] = "Controladoria-Geral"
+    ws["A3"] = "OS"
+    ws["B3"] = os_data["codigo"]
+
+    ws["A5"] = "Nível de Risco"
+    ws["B5"] = ficha["nivel_risco"]
+
+    # 5Cs
+    linha = 7
+    campos = [
+        ("Critério", "criterio"),
+        ("Condição", "condicao"),
+        ("Causa", "causa"),
+        ("Impacto", "impacto"),
+        ("Ação", "acao"),
+    ]
+
+    for titulo, campo in campos:
+        ws[f"A{linha}"] = titulo
+        ws[f"B{linha}"] = ficha[campo]
+        linha += 1
+
+    # Benefícios
+    ws[f"A{linha+1}"] = "Benefícios"
+    beneficios = ficha.get("beneficios") or ""
+    ws[f"B{linha+1}"] = beneficios
+
+    # Monitoramento
+    linha += 3
+    ws[f"A{linha}"] = "Requer Monitoramento"
+    ws[f"B{linha}"] = "Sim" if ficha["requer_monitoramento"] else "Não"
+
+    linha += 1
+    ws[f"A{linha}"] = "Data"
+    ws[f"B{linha}"] = str(ficha["data_monitoramento"] or "")
+
+    linha += 1
+    ws[f"A{linha}"] = "Observações"
+    ws[f"B{linha}"] = ficha["observacao_monitoramento"] or ""
+
+    # ========================
+    # ABA 2 - RECOMENDAÇÕES
+    # ========================
+    ws2 = wb.create_sheet(title="Recomendações")
+
+    ws2["A1"] = "Descrição"
+    ws2["B1"] = "Status"
+
+    linha = 2
+    for r in recs:
+        ws2[f"A{linha}"] = r["descricao"]
+        ws2[f"B{linha}"] = "Corrigido" if r["corrigido"] else "Pendente"
+        linha += 1
+
+    # ========================
+    # GERAR ARQUIVO
+    # ========================
+    file_stream = io.BytesIO()
+    wb.save(file_stream)
+    file_stream.seek(0)
+
+    return send_file(
+        file_stream,
+        as_attachment=True,
+        download_name=f"Ficha_OS_{os_data['codigo']}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+from docx import Document
+from flask import send_file
+import io
+
+@app.route('/os/export/word/<int:os_id>')
+def export_word(os_id):
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("SELECT * FROM os WHERE id = %s", (os_id,))
+    os_data = cur.fetchone()
+
+    cur.execute("SELECT * FROM ficha_auditoria WHERE os_id = %s", (os_id,))
+    ficha = cur.fetchone()
+
+    cur.execute("""
+        SELECT * FROM ficha_recomendacoes
+        WHERE ficha_id = %s
+    """, (ficha["id"],))
+    recs = cur.fetchall()
+
+    con.close()
+
+    doc = Document()
+
+    # -------------------------
+    # CABEÇALHO
+    # -------------------------
+    doc.add_heading('Controladoria-Geral', 0)
+    doc.add_paragraph(f'Ficha de Auditoria - {os_data["codigo"]}')
+
+    # -------------------------
+    # RISCO
+    # -------------------------
+    doc.add_heading('Nível de Risco', level=1)
+    doc.add_paragraph(ficha["nivel_risco"] if ficha else "")
+
+    # -------------------------
+    # 5 Cs
+    # -------------------------
+    doc.add_heading('5 Cs da Auditoria', level=1)
+
+    campos = [
+        ("Critério", "criterio"),
+        ("Condição", "condicao"),
+        ("Causa", "causa"),
+        ("Impacto", "impacto"),
+        ("Ação", "acao"),
+    ]
+
+    for titulo, campo in campos:
+        doc.add_paragraph(f"{titulo}:")
+        doc.add_paragraph(ficha[campo] if ficha else "")
+
+    # -------------------------
+    # BENEFÍCIOS
+    # -------------------------
+    doc.add_heading('Benefícios', level=1)
+
+    if ficha and ficha.get("beneficios"):
+        for b in ficha["beneficios"].split(","):
+            doc.add_paragraph(f"• {b}")
+
+    # -------------------------
+    # RECOMENDAÇÕES
+    # -------------------------
+    doc.add_heading('Recomendações', level=1)
+
+    for r in recs:
+        status = "✔ Corrigido" if r["corrigido"] else "Pendente"
+        doc.add_paragraph(f"- {r['descricao']} ({status})")
+
+    # -------------------------
+    # MONITORAMENTO
+    # -------------------------
+    doc.add_heading('Monitoramento', level=1)
+
+    if ficha:
+        doc.add_paragraph(f"Requer: {'Sim' if ficha['requer_monitoramento'] else 'Não'}")
+        doc.add_paragraph(f"Data: {ficha['data_monitoramento'] or ''}")
+        doc.add_paragraph(f"Obs: {ficha['observacao_monitoramento'] or ''}")
+
+    # -------------------------
+    # GERAR ARQUIVO
+    # -------------------------
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+
+    return send_file(
+        file_stream,
+        as_attachment=True,
+        download_name=f"Ficha_OS_{os_data['codigo']}.docx",
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 @app.route('/os/ficha/<int:os_id>', methods=['GET','POST'])
 def ficha_os(os_id):
@@ -2742,13 +2908,16 @@ def ficha_os(os_id):
     # -------------------------
     if request.method == 'POST':
 
+        beneficios = ",".join(request.form.getlist("beneficios[]"))
+
         cur.execute("""
             INSERT INTO ficha_auditoria (
                 os_id, nivel_risco, criterio, condicao,
                 causa, impacto, acao,
-                requer_monitoramento, data_monitoramento, observacao_monitoramento
+                requer_monitoramento, data_monitoramento,
+                observacao_monitoramento, beneficios
             )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (os_id) DO UPDATE SET
                 nivel_risco = EXCLUDED.nivel_risco,
                 criterio = EXCLUDED.criterio,
@@ -2759,6 +2928,7 @@ def ficha_os(os_id):
                 requer_monitoramento = EXCLUDED.requer_monitoramento,
                 data_monitoramento = EXCLUDED.data_monitoramento,
                 observacao_monitoramento = EXCLUDED.observacao_monitoramento,
+                beneficios = EXCLUDED.beneficios,
                 atualizado_em = NOW()
             RETURNING id
         """, (
@@ -2771,7 +2941,8 @@ def ficha_os(os_id):
             request.form.get("acao"),
             True if request.form.get("monitoramento") == "on" else False,
             request.form.get("data_monitoramento"),
-            request.form.get("obs_monitoramento")
+            request.form.get("obs_monitoramento"),
+            beneficios
         ))
 
         ficha_id = cur.fetchone()["id"]
@@ -2796,6 +2967,10 @@ def ficha_os(os_id):
     cur.execute("SELECT * FROM ficha_auditoria WHERE os_id = %s", (os_id,))
     ficha = cur.fetchone()
 
+    beneficios_sel = []
+    if ficha and ficha.get("beneficios"):
+        beneficios_sel = ficha["beneficios"].split(",")
+
     recomendacoes = []
     if ficha:
         cur.execute("SELECT * FROM ficha_recomendacoes WHERE ficha_id = %s", (ficha["id"],))
@@ -2803,170 +2978,189 @@ def ficha_os(os_id):
 
     con.close()
 
-    pasta = encontrar_pasta_os(os_data["codigo"])
-    pasta_link = f"file:///{pasta.replace('\\','/')}" if pasta else "#"
-
     # -------------------------
-    # HTML BONITO
+    # HTML
     # -------------------------
     html = f"""
 <style>
 .card {{
     background:white;
-    border-radius:12px;
+    border-radius:14px;
     padding:20px;
     margin-bottom:20px;
-    box-shadow:0 2px 6px rgba(0,0,0,0.05);
+    box-shadow:0 2px 8px rgba(0,0,0,0.05);
 }}
 
 .titulo {{
     font-size:22px;
-    font-weight:bold;
+    font-weight:600;
 }}
 
-.sub {{
-    color:#666;
-    font-size:13px;
+.btn {{
+    background:#2563eb;
+    color:white;
+    padding:10px 14px;
+    border-radius:8px;
+    text-decoration:none;
 }}
 
 .grid-risco {{
     display:flex;
     gap:10px;
-    margin-top:10px;
 }}
 
 .risco {{
     flex:1;
-    border:1px solid #ddd;
-    padding:10px;
+    padding:12px;
     border-radius:10px;
+    cursor:pointer;
+    border:2px solid transparent;
+}}
+
+.baixo {{ background:#dcfce7; }}
+.medio {{ background:#fef9c3; }}
+.alto {{ background:#fee2e2; }}
+.extremo {{ background:#000; color:white; }}
+
+.beneficios {{
+    display:grid;
+    grid-template-columns: repeat(3,1fr);
+    gap:10px;
+}}
+
+.badge {{
+    background:#4f6fb5;
+    color:white;
+    padding:10px;
+    border-radius:8px;
+    text-align:center;
     cursor:pointer;
 }}
 
-textarea, input[type="date"] {{
+.badge input {{
+    display:none;
+}}
+
+textarea, input {{
     width:100%;
     padding:10px;
     border-radius:8px;
     border:1px solid #ccc;
     margin-top:5px;
 }}
-
-.btn {{
-    background:#2563eb;
-    color:white;
-    padding:10px 16px;
-    border:none;
-    border-radius:8px;
-}}
-
-.rec-item {{
-    display:flex;
-    gap:10px;
-    margin-top:10px;
-}}
 </style>
 
 <div class="card">
     <div style="display:flex; justify-content:space-between;">
         <div>
-            <div class="titulo">Ficha de Auditoria - {os_data['codigo']}</div>
-            <div class="sub">{os_data['resumo'] or ''}</div>
+            <div class="titulo">Ficha - {os_data['codigo']}</div>
+            <small>{os_data['resumo'] or ''}</small>
         </div>
 
-    <a href="{pasta_link}" class="btn" target="_blank">
-        📁 Documentação
-    </a>
+        <div>
+            <a href="/os/export/word/{os_id}" class="btn">📄 Word</a>
+            <a href="/os/export/excel/{os_id}" class="btn">📊 Excel</a>
+        </div>
     </div>
 </div>
 
 <form method="post">
 
 <div class="card">
-    <b>Nível de Risco</b>
-
-    <div class="grid-risco">
-        {"".join([f'''
-        <label class="risco">
-            <input type="radio" name="nivel_risco" value="{v}"
-            {"checked" if ficha and ficha["nivel_risco"]==v else ""}>
-            <b>{t}</b><br>
-            <small>{d}</small>
-        </label>
-        ''' for v,t,d in [
-            ("baixo","Baixo","Impacto mínimo"),
-            ("medio","Médio","Requer atenção"),
-            ("alto","Alto","Ação urgente"),
-            ("extremo","Extremo","Crítico")
-        ]])}
-    </div>
+<b>Nível de Risco</b>
+<div class="grid-risco">
+{"".join([f'''
+<label class="risco {v}">
+<input type="radio" name="nivel_risco" value="{v}" {"checked" if ficha and ficha["nivel_risco"]==v else ""}>
+<b>{t}</b>
+</label>
+''' for v,t in [
+("baixo","Baixo"),
+("medio","Médio"),
+("alto","Alto"),
+("extremo","Extremo")
+]])}
+</div>
 </div>
 
 <div class="card">
-    <b>5 Cs da Auditoria</b>
+<b>5 Cs</b>
 
-    <label>Critério</label>
-    <textarea name="criterio">{ficha["criterio"] if ficha else ""}</textarea>
+<label>Critério</label>
+<textarea name="criterio">{ficha["criterio"] if ficha else ""}</textarea>
 
-    <label>Condição</label>
-    <textarea name="condicao">{ficha["condicao"] if ficha else ""}</textarea>
+<label>Condição</label>
+<textarea name="condicao">{ficha["condicao"] if ficha else ""}</textarea>
 
-    <label>Causa</label>
-    <textarea name="causa">{ficha["causa"] if ficha else ""}</textarea>
+<label>Causa</label>
+<textarea name="causa">{ficha["causa"] if ficha else ""}</textarea>
 
-    <label>Impacto</label>
-    <textarea name="impacto">{ficha["impacto"] if ficha else ""}</textarea>
+<label>Impacto</label>
+<textarea name="impacto">{ficha["impacto"] if ficha else ""}</textarea>
 
-    <label>Ação</label>
-    <textarea name="acao">{ficha["acao"] if ficha else ""}</textarea>
+<label>Ação</label>
+<textarea name="acao">{ficha["acao"] if ficha else ""}</textarea>
 </div>
 
 <div class="card">
-    <b>Recomendações</b>
+<b>Benefício / Resultado</b>
 
-    <div id="recs">
-        {"".join([f'''
-        <div class="rec-item">
-            <input name="recomendacoes[]" value="{r["descricao"]}">
-            <select name="rec_status[]">
-                <option value="0" {"selected" if not r["corrigido"] else ""}>Pendente</option>
-                <option value="1" {"selected" if r["corrigido"] else ""}>Corrigido</option>
-            </select>
-        </div>
-        ''' for r in recomendacoes])}
-    </div>
-
-    <button type="button" onclick="addRec()">+ Adicionar</button>
+<div class="beneficios">
+{"".join([f'''
+<label class="badge">
+<input type="checkbox" name="beneficios[]" value="{b}" {"checked" if b in beneficios_sel else ""}>
+{b}
+</label>
+''' for b in [
+"Financeiro","Operacional","Eficiência","Controle","Compliance",
+"Transparência","Redução de Risco","Qualidade","Outros"
+]])}
+</div>
 </div>
 
 <div class="card">
-    <b>Monitoramento</b><br><br>
+<b>Recomendações</b>
 
-    <label>
-        <input type="checkbox" name="monitoramento"
-        {"checked" if ficha and ficha["requer_monitoramento"] else ""}>
-        Requer monitoramento
-    </label>
-
-    <br><br>
-
-    <label>Data</label>
-    <input type="date" name="data_monitoramento"
-    value="{ficha["data_monitoramento"] if ficha else ""}">
-
-    <label>Observações</label>
-    <textarea name="obs_monitoramento">
-{ficha["observacao_monitoramento"] if ficha else ""}
-    </textarea>
+<div id="recs">
+{"".join([f'''
+<div style="display:flex; gap:10px; margin-top:10px;">
+<input name="recomendacoes[]" value="{r["descricao"]}">
+<select name="rec_status[]">
+<option value="0" {"selected" if not r["corrigido"] else ""}>Pendente</option>
+<option value="1" {"selected" if r["corrigido"] else ""}>Corrigido</option>
+</select>
+</div>
+''' for r in recomendacoes])}
 </div>
 
-<button class="btn">Salvar Ficha</button>
+<button type="button" onclick="addRec()">+ Adicionar</button>
+</div>
 
+<div class="card">
+<b>Monitoramento</b>
+
+<label style="display:flex; align-items:center; gap:10px;">
+<input type="checkbox" name="monitoramento"
+{"checked" if ficha and ficha["requer_monitoramento"] else ""}>
+Requer monitoramento
+</label>
+
+<label>Data</label>
+<input type="date" name="data_monitoramento"
+value="{ficha["data_monitoramento"] if ficha else ""}">
+
+<label>Observações</label>
+<textarea name="obs_monitoramento">{ficha["observacao_monitoramento"] if ficha else ""}</textarea>
+</div>
+
+<button class="btn">Salvar</button>
 </form>
 
 <script>
 function addRec(){{
     const div = document.createElement("div")
-    div.className = "rec-item"
+    div.style.display = "flex"
+    div.style.gap = "10px"
     div.innerHTML = `
         <input name="recomendacoes[]">
         <select name="rec_status[]">
@@ -2976,15 +3170,8 @@ function addRec(){{
     `
     document.getElementById("recs").appendChild(div)
 }}
-
 </script>
 """
-
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
-        user=session['user'],
-        perfil=session['perfil']
-    )
 
 @app.route('/os/delete/<int:id>')
 def os_delete(id):

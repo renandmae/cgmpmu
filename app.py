@@ -10275,8 +10275,11 @@ def notas():
         try:
             nota_id = request.form.get("id")
 
-            expedido = [int(x) for x in request.form.getlist("expedido_por[]")]
+            # 🔥 converter para int (RESOLVE SEU ERRO)
+            expedido = [int(x) for x in request.form.getlist("expedido_por[]") if x]
             orgaos = request.form.getlist("orgaos[]")
+
+            numero_manual = request.form.get("numero_na")
 
             tipo = request.form.get("tipo")
             os_id = request.form.get("os_id")
@@ -10287,9 +10290,13 @@ def notas():
             prazo = request.form.get("prazo_final") or None
             obs = request.form.get("observacoes")
 
+            # =========================
+            # UPDATE
+            # =========================
             if nota_id:
                 cur.execute("""
                     UPDATE notas SET
+                        numero_na=%s,
                         expedido_por=%s,
                         orgaos=%s,
                         tipo=%s,
@@ -10302,6 +10309,7 @@ def notas():
                         observacoes=%s
                     WHERE id=%s
                 """, (
+                    numero_manual or None,
                     expedido, orgaos, tipo, os_id,
                     assunto, num_oficio,
                     monitoramento, resposta,
@@ -10309,17 +10317,21 @@ def notas():
                     nota_id
                 ))
 
+            # =========================
+            # INSERT
+            # =========================
             else:
                 cur.execute("""
                     INSERT INTO notas (
-                        expedido_por, orgaos, tipo, os_id,
+                        numero_na, expedido_por, orgaos, tipo, os_id,
                         assunto, num_oficio,
                         monitoramento, resposta,
                         prazo_final, observacoes
                     )
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     RETURNING id
                 """, (
+                    numero_manual or None,
                     expedido, orgaos, tipo, os_id,
                     assunto, num_oficio,
                     monitoramento, resposta,
@@ -10328,31 +10340,32 @@ def notas():
 
                 new_id = cur.fetchone()["id"]
 
-                # GERAR NUMERO
-                from datetime import datetime
-                ano = datetime.now().year
+                # 🔥 gera automático só se não informou
+                if not numero_manual:
+                    from datetime import datetime
+                    ano = datetime.now().year
 
-                cur.execute("""
-                    SELECT numero_na
-                    FROM notas
-                    WHERE numero_na LIKE %s
-                    ORDER BY numero_na DESC
-                    LIMIT 1
-                """, (f"%/{ano}",))
+                    cur.execute("""
+                        SELECT numero_na
+                        FROM notas
+                        WHERE numero_na LIKE %s
+                        ORDER BY numero_na DESC
+                        LIMIT 1
+                    """, (f"%/{ano}",))
 
-                last = cur.fetchone()
+                    last = cur.fetchone()
 
-                if last and last["numero_na"]:
-                    num = int(last["numero_na"].split("/")[0]) + 1
-                else:
-                    num = 1
+                    if last and last["numero_na"]:
+                        num = int(last["numero_na"].split("/")[0]) + 1
+                    else:
+                        num = 1
 
-                numero = f"{num:03d}/{ano}"
+                    numero = f"{num:03d}/{ano}"
 
-                cur.execute(
-                    "UPDATE notas SET numero_na=%s WHERE id=%s",
-                    (numero, new_id)
-                )
+                    cur.execute(
+                        "UPDATE notas SET numero_na=%s WHERE id=%s",
+                        (numero, new_id)
+                    )
 
             con.commit()
             return "OK"
@@ -10369,14 +10382,16 @@ def notas():
         SELECT *,
         array_to_string(orgaos, ', ') as orgaos_txt
         FROM notas
-        ORDER BY id DESC
+        ORDER BY
+            split_part(numero_na,'/',2)::int NULLS LAST,
+            split_part(numero_na,'/',1)::int NULLS LAST
     """)
     notas = cur.fetchall()
 
+    # colaboradores
     cur.execute("SELECT id,nome FROM colaboradores ORDER BY nome")
     cols = cur.fetchall()
 
-    # traduz expedido
     mapa = {str(c["id"]): c["nome"] for c in cols}
 
     for n in notas:
@@ -10391,23 +10406,30 @@ def notas():
     # HTML
     # =========================
     html = """
-<h2>Notas</h2>
+<h2>Notas de Auditoria</h2>
 
-<button onclick="nova()">Nova</button>
+<button onclick="nova()">+ Nova</button>
 
 <table border="1" width="100%">
 <tr>
-<th>Nº</th><th>Tipo</th><th>Assunto</th>
-<th>Órgãos</th><th>Expedido</th><th>Ações</th>
+<th>Nº</th><th>Tipo</th><th>OS</th><th>Assunto</th>
+<th>Ofício</th><th>Órgãos</th><th>Expedido</th>
+<th>Monitoramento</th><th>Resposta</th><th>Prazo</th><th>Obs</th><th>Ações</th>
 </tr>
 
 {% for n in notas %}
 <tr onclick="editar({{n.id}})">
 <td>{{n.numero_na}}</td>
 <td>{{n.tipo}}</td>
+<td>{{n.os_id}}</td>
 <td>{{n.assunto}}</td>
+<td>{{n.num_oficio}}</td>
 <td>{{n.orgaos_txt}}</td>
 <td>{{n.expedido_txt}}</td>
+<td>{{ 'Sim' if n.monitoramento else 'Não' }}</td>
+<td>{{ 'Sim' if n.resposta else 'Não' }}</td>
+<td>{{n.prazo_final or ''}}</td>
+<td>{{n.observacoes}}</td>
 <td>
 <button onclick="event.stopPropagation(); excluir({{n.id}})">🗑</button>
 </td>
@@ -10419,7 +10441,7 @@ def notas():
 
 <input type="hidden" id="id">
 
-Nº <input id="numero_na" disabled><br>
+Nº <input id="numero_na"><br>
 
 Tipo
 <select id="tipo">
@@ -10459,11 +10481,8 @@ Expedido:
 
 Órgãos:
 <select id="orgaos" multiple>
-<option>CGM</option>
-<option>SMF</option>
-<option>SMS</option>
-<option>SEINFRA</option>
-<option>DMAE</option>
+<option>CGM</option><option>SMF</option><option>SMS</option>
+<option>SEINFRA</option><option>DMAE</option>
 </select>
 
 <br><br>
@@ -10473,7 +10492,7 @@ Expedido:
 
 function nova(){
     document.getElementById("id").value=""
-    document.getElementById("numero_na").value="Automático"
+    document.getElementById("numero_na").value=""
     document.querySelectorAll("input,textarea").forEach(i=>i.value="")
 }
 
@@ -10481,23 +10500,39 @@ function editar(id){
     fetch("/nota/"+id)
     .then(r=>r.json())
     .then(n=>{
-        document.getElementById("id").value=n.id
-        document.getElementById("numero_na").value=n.numero_na
-        document.getElementById("tipo").value=n.tipo
-        document.getElementById("os_id").value=n.os_id||""
-        document.getElementById("assunto").value=n.assunto
-        document.getElementById("num_oficio").value=n.num_oficio
-        document.getElementById("monitoramento").value=n.monitoramento?"SIM":"NAO"
-        document.getElementById("resposta").value=n.resposta?"SIM":"NAO"
-        document.getElementById("prazo").value=n.prazo_final||""
-        document.getElementById("obs").value=n.observacoes||""
+        nova()
+        idField.value=n.id
+        numero_na.value=n.numero_na
+        tipo.value=n.tipo
+        os_id.value=n.os_id||""
+        assunto.value=n.assunto
+        num_oficio.value=n.num_oficio
+        monitoramento.value=n.monitoramento?"SIM":"NAO"
+        resposta.value=n.resposta?"SIM":"NAO"
+        prazo.value=n.prazo_final||""
+        obs.value=n.observacoes||""
+
+        if(n.expedido_por){
+            n.expedido_por.forEach(v=>{
+                let opt=document.querySelector(`#expedido option[value="${v}"]`)
+                if(opt) opt.selected=true
+            })
+        }
+
+        if(n.orgaos){
+            n.orgaos.forEach(v=>{
+                let opt=document.querySelector(`#orgaos option[value="${v}"]`)
+                if(opt) opt.selected=true
+            })
+        }
     })
 }
 
 function salvar(){
     let fd=new FormData()
 
-    fd.append("id",id.value)
+    fd.append("id",document.getElementById("id").value)
+    fd.append("numero_na",numero_na.value)
     fd.append("tipo",tipo.value)
     fd.append("os_id",os_id.value)
     fd.append("assunto",assunto.value)
@@ -10515,29 +10550,25 @@ function salvar(){
 
     fetch("/notas",{method:"POST",body:fd})
     .then(r=>r.text())
-    .then(r=>{
-        console.log(r)
-        location.reload()
-    })
-    .catch(e=>alert("Erro: "+e))
+    .then(()=>location.reload())
 }
 
 function excluir(id){
     if(!confirm("Excluir?"))return
-
-    fetch("/nota/delete/"+id)
-    .then(()=>location.reload())
+    fetch("/nota/delete/"+id).then(()=>location.reload())
 }
 
 </script>
 """
 
-    return render_template_string(BASE.replace("{% block content %}{% endblock %}", html),
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
         notas=notas,
         cols=cols,
         user=session["user"],
         perfil=session["perfil"]
     )
+
 
 @app.route("/nota/<int:id>")
 def get_nota(id):
@@ -10547,6 +10578,7 @@ def get_nota(id):
     n=cur.fetchone()
     con.close()
     return jsonify(n)
+
 
 @app.route("/nota/delete/<int:id>")
 def delete_nota(id):

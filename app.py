@@ -10275,7 +10275,7 @@ def notas():
         try:
             nota_id = request.form.get("id")
 
-            expedido = request.form.getlist("expedido_por[]")
+            expedido = [int(x) for x in request.form.getlist("expedido_por[]")]
             orgaos = request.form.getlist("orgaos[]")
 
             tipo = request.form.get("tipo")

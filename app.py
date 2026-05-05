@@ -10275,7 +10275,7 @@ def notas():
         try:
             nota_id = request.form.get("id")
 
-            expedido = request.form.getlist("expedido_por[]")
+            expedido = [int(x) for x in request.form.getlist("expedido_por[]") if x]
             orgaos = request.form.getlist("orgaos[]")
 
             tipo = request.form.get("tipo")
@@ -10330,29 +10330,30 @@ def notas():
 
                 new_id = cur.fetchone()["id"]
 
-                # GERA Nº AUTOMÁTICO
+                # =========================
+                # NÚMERO AUTOMÁTICO
+                # =========================
                 from datetime import datetime
                 ano = datetime.now().year
-                
-                # pega último número do ano
+
                 cur.execute("""
                     SELECT numero_na
-                    FROM notas_auditoria
+                    FROM notas
                     WHERE numero_na LIKE %s
-                    ORDER BY numero_na DESC
+                    ORDER BY CAST(split_part(numero_na,'/',1) AS INT) DESC
                     LIMIT 1
                 """, (f"%/{ano}",))
-                
+
                 last = cur.fetchone()
-                
+
                 if last and last["numero_na"]:
-                    ultimo_num = int(last["numero_na"].split("/")[0])
-                    novo_num = ultimo_num + 1
+                    ultimo = int(last["numero_na"].split("/")[0])
+                    novo = ultimo + 1
                 else:
-                    novo_num = 1
-                
-                numero = f"{novo_num:03d}/{ano}"
-                
+                    novo = 1
+
+                numero = f"{novo:03d}/{ano}"
+
                 cur.execute(
                     "UPDATE notas SET numero_na=%s WHERE id=%s",
                     (numero, new_id)
@@ -10362,16 +10363,23 @@ def notas():
             return "OK"
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             con.rollback()
-            print(e)
-            return "Erro", 500
+            return str(e), 500
 
     # =========================
     # LISTAGEM
     # =========================
     cur.execute("""
-        SELECT n.*, 
-               array_to_string(n.orgaos, ', ') AS orgaos_txt
+        SELECT 
+            n.*,
+            array_to_string(n.orgaos, ', ') AS orgaos_txt,
+            (
+                SELECT string_agg(c.nome, ', ')
+                FROM colaboradores c
+                WHERE c.id = ANY(n.expedido_por)
+            ) AS expedido_txt
         FROM notas n
         ORDER BY n.id DESC
     """)
@@ -10389,13 +10397,12 @@ def notas():
     html = """
     <h3>Notas de Auditoria</h3>
 
-    <div style="display:flex; gap:10px;">
-        <button onclick="nova()">+ Nova Nota</button>
-    </div>
+    <button onclick="nova()">+ Nova Nota</button>
 
     <table border="1" style="margin-top:10px;width:100%;">
         <tr>
             <th>Nº</th>
+            <th>Expedido por</th>
             <th>Tipo</th>
             <th>Assunto</th>
             <th>Órgãos</th>
@@ -10405,6 +10412,7 @@ def notas():
         {% for n in notas %}
         <tr onclick="editar({{n.id}})" style="cursor:pointer;">
             <td>{{ n.numero_na }}</td>
+            <td>{{ n.expedido_txt or '' }}</td>
             <td>{{ n.tipo }}</td>
             <td>{{ n.assunto }}</td>
             <td>{{ n.orgaos_txt }}</td>
@@ -10415,45 +10423,50 @@ def notas():
 
     <hr>
 
-    <div id="form">
-        <input type="hidden" id="id">
+    <input type="hidden" id="id">
 
-        Nº NA <input id="numero_na" disabled><br><br>
+    Nº NA <input id="numero_na" disabled><br><br>
 
-        Tipo:
-        <select id="tipo">
-            <option></option>
-            <option>Preventiva</option>
-            <option>OS</option>
-            <option>Acompanhamento</option>
-            <option>Avaliação</option>
-        </select>
+    Expedidos por:<br>
+    <select id="expedido" multiple style="width:300px;height:100px;">
+        {% for c in cols %}
+            <option value="{{c.id}}">{{c.nome}}</option>
+        {% endfor %}
+    </select><br><br>
 
-        Nº OS <input id="os_id"><br><br>
+    Tipo:
+    <select id="tipo">
+        <option></option>
+        <option>Preventiva</option>
+        <option>OS</option>
+        <option>Acompanhamento</option>
+        <option>Avaliação</option>
+    </select>
 
-        Assunto <input id="assunto"><br>
-        Nº Ofício <input id="num_oficio"><br>
+    Nº OS <input id="os_id"><br><br>
 
-        Monitoramento
-        <select id="monitoramento">
-            <option value="NAO">Não</option>
-            <option value="SIM">Sim</option>
-        </select>
+    Assunto <input id="assunto"><br>
+    Nº Ofício <input id="num_oficio"><br>
 
-        Resposta
-        <select id="resposta">
-            <option value="NAO">Não</option>
-            <option value="SIM">Sim</option>
-        </select>
+    Monitoramento
+    <select id="monitoramento">
+        <option value="NAO">Não</option>
+        <option value="SIM">Sim</option>
+    </select>
 
-        Prazo <input type="date" id="prazo"><br>
+    Resposta
+    <select id="resposta">
+        <option value="NAO">Não</option>
+        <option value="SIM">Sim</option>
+    </select>
 
-        Observações
-        <textarea id="obs"></textarea>
+    Prazo <input type="date" id="prazo"><br>
 
-        <br><br>
-        <button onclick="salvar()">Salvar</button>
-    </div>
+    Observações
+    <textarea id="obs"></textarea>
+
+    <br><br>
+    <button onclick="salvar()">Salvar</button>
 
 <script>
 function nova(){
@@ -10475,6 +10488,11 @@ function editar(id){
         document.getElementById("resposta").value = n.resposta ? "SIM":"NAO"
         document.getElementById("prazo").value = n.prazo_final || ""
         document.getElementById("obs").value = n.observacoes
+
+        let select = document.getElementById("expedido")
+        for (let opt of select.options){
+            opt.selected = (n.expedido_por || []).includes(parseInt(opt.value))
+        }
     })
 }
 
@@ -10491,6 +10509,11 @@ function salvar(){
     fd.append("prazo_final", document.getElementById("prazo").value)
     fd.append("observacoes", document.getElementById("obs").value)
 
+    let expedido = document.getElementById("expedido")
+    for (let opt of expedido.selectedOptions){
+        fd.append("expedido_por[]", opt.value)
+    }
+
     fetch("/notas",{method:"POST", body:fd})
     .then(()=>location.reload())
 }
@@ -10500,6 +10523,7 @@ function salvar(){
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
         notas=notas,
+        cols=cols,
         user=session["user"],
         perfil=session["perfil"]
     )
@@ -10509,10 +10533,17 @@ def get_nota(id):
     con = get_db()
     cur = con.cursor()
 
-    cur.execute("SELECT * FROM notas_auditoria WHERE id=%s",(id,))
+    cur.execute("SELECT * FROM notas WHERE id=%s",(id,))
     n = cur.fetchone()
 
     con.close()
+
+    if not n:
+        return jsonify({})
+
+    # garantir lista (evita erro no JS)
+    n["expedido_por"] = n["expedido_por"] or []
+
     return jsonify(n)
 
 @app.route("/seed")

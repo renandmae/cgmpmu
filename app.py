@@ -10284,11 +10284,10 @@ def notas():
             num_oficio = request.form.get("num_oficio")
             monitoramento = request.form.get("monitoramento") == "SIM"
             resposta = request.form.get("resposta") == "SIM"
-            prazo = request.form.get("prazo_final")
+            prazo = request.form.get("prazo_final") or None
             obs = request.form.get("observacoes")
 
             if nota_id:
-                # UPDATE
                 cur.execute("""
                     UPDATE notas SET
                         expedido_por=%s,
@@ -10306,12 +10305,11 @@ def notas():
                     expedido, orgaos, tipo, os_id or None,
                     assunto, num_oficio,
                     monitoramento, resposta,
-                    prazo or None, obs,
+                    prazo, obs,
                     nota_id
                 ))
 
             else:
-                # INSERT
                 cur.execute("""
                     INSERT INTO notas (
                         expedido_por, orgaos, tipo, os_id,
@@ -10325,14 +10323,12 @@ def notas():
                     expedido, orgaos, tipo, os_id or None,
                     assunto, num_oficio,
                     monitoramento, resposta,
-                    prazo or None, obs
+                    prazo, obs
                 ))
 
                 new_id = cur.fetchone()["id"]
 
-                # =========================
-                # GERAR Nº AUTOMÁTICO
-                # =========================
+                # gerar número automático
                 from datetime import datetime
                 ano = datetime.now().year
 
@@ -10364,8 +10360,8 @@ def notas():
 
         except Exception as e:
             con.rollback()
-            print(e)
-            return "Erro", 500
+            print("ERRO:", e)
+            return str(e), 500
 
     # =========================
     # LISTAGEM
@@ -10380,14 +10376,11 @@ def notas():
     """)
     notas = cur.fetchall()
 
-    # colaboradores
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
     cols = cur.fetchall()
 
-    # mapa id -> nome
     col_map = {str(c["id"]): c["nome"] for c in cols}
 
-    # traduz expedido_por
     for n in notas:
         if n["expedido_por"]:
             nomes = [col_map.get(str(i), "") for i in n["expedido_por"]]
@@ -10398,7 +10391,7 @@ def notas():
     con.close()
 
     # =========================
-    # HTML
+    # HTML COMPLETO
     # =========================
     html = """
     <h3>Notas de Auditoria</h3>
@@ -10488,21 +10481,22 @@ def notas():
         </select>
 
         <br><br>
+
         <button onclick="salvar()">Salvar</button>
+        <button onclick="excluir()" style="background:red;color:white;">Excluir</button>
     </div>
 
 <script>
 function nova(){
     document.getElementById("id").value = ""
     document.getElementById("numero_na").value = "Automático"
-    document.getElementById("tipo").value = ""
-    document.getElementById("os_id").value = ""
-    document.getElementById("assunto").value = ""
-    document.getElementById("num_oficio").value = ""
+
+    document.querySelectorAll("#form input, #form textarea").forEach(i=>{
+        if(i.type != "hidden") i.value = ""
+    })
+
     document.getElementById("monitoramento").value = "NAO"
     document.getElementById("resposta").value = "NAO"
-    document.getElementById("prazo").value = ""
-    document.getElementById("obs").value = ""
 
     [...document.getElementById("expedido").options].forEach(o=>o.selected=false)
     [...document.getElementById("orgaos").options].forEach(o=>o.selected=false)
@@ -10561,6 +10555,26 @@ function salvar(){
         .forEach(o=>fd.append("orgaos[]", o.value))
 
     fetch("/notas",{method:"POST", body:fd})
+    .then(r=>{
+        if(!r.ok) return r.text().then(t=>{throw t})
+        return r.text()
+    })
+    .then(()=>{
+        alert("Salvo com sucesso")
+        location.reload()
+    })
+    .catch(err=>{
+        alert("Erro: " + err)
+    })
+}
+
+function excluir(){
+    let id = document.getElementById("id").value
+    if(!id) return alert("Selecione uma nota")
+
+    if(!confirm("Deseja excluir?")) return
+
+    fetch("/nota/delete/"+id,{method:"POST"})
     .then(()=>location.reload())
 }
 </script>
@@ -10579,12 +10593,20 @@ function salvar(){
 def get_nota(id):
     con = get_db()
     cur = con.cursor()
-
     cur.execute("SELECT * FROM notas WHERE id=%s",(id,))
     n = cur.fetchone()
-
     con.close()
     return jsonify(n)
+
+
+@app.route("/nota/delete/<int:id>", methods=["POST"])
+def delete_nota(id):
+    con = get_db()
+    cur = con.cursor()
+    cur.execute("DELETE FROM notas WHERE id=%s", (id,))
+    con.commit()
+    con.close()
+    return "OK"
 
 @app.route("/seed")
 def seed():

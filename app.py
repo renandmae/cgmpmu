@@ -10260,6 +10260,240 @@ def exportar_notas_auditoria():
         }
     )
 
+@app.route("/notas", methods=["GET","POST"])
+def notas():
+    if "user" not in session:
+        return redirect("/")
+
+    con = get_db()
+    cur = con.cursor()
+
+    # =========================
+    # SALVAR / ATUALIZAR
+    # =========================
+    if request.method == "POST":
+        try:
+            nota_id = request.form.get("id")
+
+            expedido = request.form.getlist("expedido_por[]")
+            orgaos = request.form.getlist("orgaos[]")
+
+            tipo = request.form.get("tipo")
+            os_id = request.form.get("os_id")
+            assunto = request.form.get("assunto")
+            num_oficio = request.form.get("num_oficio")
+            monitoramento = request.form.get("monitoramento") == "SIM"
+            resposta = request.form.get("resposta") == "SIM"
+            prazo = request.form.get("prazo_final")
+            obs = request.form.get("observacoes")
+
+            if nota_id:
+                # UPDATE
+                cur.execute("""
+                    UPDATE notas SET
+                        expedido_por=%s,
+                        orgaos=%s,
+                        tipo=%s,
+                        os_id=%s,
+                        assunto=%s,
+                        num_oficio=%s,
+                        monitoramento=%s,
+                        resposta=%s,
+                        prazo_final=%s,
+                        observacoes=%s
+                    WHERE id=%s
+                """, (
+                    expedido, orgaos, tipo, os_id or None,
+                    assunto, num_oficio,
+                    monitoramento, resposta,
+                    prazo or None, obs,
+                    nota_id
+                ))
+
+            else:
+                # INSERT
+                cur.execute("""
+                    INSERT INTO notas (
+                        expedido_por, orgaos, tipo, os_id,
+                        assunto, num_oficio,
+                        monitoramento, resposta,
+                        prazo_final, observacoes
+                    )
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    RETURNING id
+                """, (
+                    expedido, orgaos, tipo, os_id or None,
+                    assunto, num_oficio,
+                    monitoramento, resposta,
+                    prazo or None, obs
+                ))
+
+                new_id = cur.fetchone()["id"]
+
+                # GERA Nº AUTOMÁTICO
+                numero = f"NA-{new_id:04d}"
+                cur.execute(
+                    "UPDATE notas SET numero_na=%s WHERE id=%s",
+                    (numero, new_id)
+                )
+
+            con.commit()
+            return "OK"
+
+        except Exception as e:
+            con.rollback()
+            print(e)
+            return "Erro", 500
+
+    # =========================
+    # LISTAGEM
+    # =========================
+    cur.execute("""
+        SELECT n.*, 
+               array_to_string(n.orgaos, ', ') AS orgaos_txt
+        FROM notas n
+        ORDER BY n.id DESC
+    """)
+    notas = cur.fetchall()
+
+    # colaboradores
+    cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
+    cols = cur.fetchall()
+
+    con.close()
+
+    # =========================
+    # HTML
+    # =========================
+    html = """
+    <h3>Notas de Auditoria</h3>
+
+    <div style="display:flex; gap:10px;">
+        <button onclick="nova()">+ Nova Nota</button>
+    </div>
+
+    <table border="1" style="margin-top:10px;width:100%;">
+        <tr>
+            <th>Nº</th>
+            <th>Tipo</th>
+            <th>Assunto</th>
+            <th>Órgãos</th>
+            <th>Prazo</th>
+        </tr>
+
+        {% for n in notas %}
+        <tr onclick="editar({{n.id}})" style="cursor:pointer;">
+            <td>{{ n.numero_na }}</td>
+            <td>{{ n.tipo }}</td>
+            <td>{{ n.assunto }}</td>
+            <td>{{ n.orgaos_txt }}</td>
+            <td>{{ n.prazo_final or '' }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <hr>
+
+    <div id="form">
+        <input type="hidden" id="id">
+
+        Nº NA <input id="numero_na" disabled><br><br>
+
+        Tipo:
+        <select id="tipo">
+            <option></option>
+            <option>Preventiva</option>
+            <option>OS</option>
+            <option>Acompanhamento</option>
+            <option>Avaliação</option>
+        </select>
+
+        Nº OS <input id="os_id"><br><br>
+
+        Assunto <input id="assunto"><br>
+        Nº Ofício <input id="num_oficio"><br>
+
+        Monitoramento
+        <select id="monitoramento">
+            <option value="NAO">Não</option>
+            <option value="SIM">Sim</option>
+        </select>
+
+        Resposta
+        <select id="resposta">
+            <option value="NAO">Não</option>
+            <option value="SIM">Sim</option>
+        </select>
+
+        Prazo <input type="date" id="prazo"><br>
+
+        Observações
+        <textarea id="obs"></textarea>
+
+        <br><br>
+        <button onclick="salvar()">Salvar</button>
+    </div>
+
+<script>
+function nova(){
+    document.getElementById("id").value = ""
+    document.getElementById("numero_na").value = "Automático"
+}
+
+function editar(id){
+    fetch("/nota/"+id)
+    .then(r=>r.json())
+    .then(n=>{
+        document.getElementById("id").value = n.id
+        document.getElementById("numero_na").value = n.numero_na
+        document.getElementById("tipo").value = n.tipo
+        document.getElementById("os_id").value = n.os_id || ""
+        document.getElementById("assunto").value = n.assunto
+        document.getElementById("num_oficio").value = n.num_oficio
+        document.getElementById("monitoramento").value = n.monitoramento ? "SIM":"NAO"
+        document.getElementById("resposta").value = n.resposta ? "SIM":"NAO"
+        document.getElementById("prazo").value = n.prazo_final || ""
+        document.getElementById("obs").value = n.observacoes
+    })
+}
+
+function salvar(){
+    let fd = new FormData()
+
+    fd.append("id", document.getElementById("id").value)
+    fd.append("tipo", document.getElementById("tipo").value)
+    fd.append("os_id", document.getElementById("os_id").value)
+    fd.append("assunto", document.getElementById("assunto").value)
+    fd.append("num_oficio", document.getElementById("num_oficio").value)
+    fd.append("monitoramento", document.getElementById("monitoramento").value)
+    fd.append("resposta", document.getElementById("resposta").value)
+    fd.append("prazo_final", document.getElementById("prazo").value)
+    fd.append("observacoes", document.getElementById("obs").value)
+
+    fetch("/notas",{method:"POST", body:fd})
+    .then(()=>location.reload())
+}
+</script>
+    """
+
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        notas=notas,
+        user=session["user"],
+        perfil=session["perfil"]
+    )
+
+@app.route("/nota/<int:id>")
+def get_nota(id):
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("SELECT * FROM notas_auditoria WHERE id=%s",(id,))
+    n = cur.fetchone()
+
+    con.close()
+    return jsonify(n)
+
 @app.route("/seed")
 def seed():
     executar_seed()

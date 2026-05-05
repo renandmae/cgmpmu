@@ -10269,7 +10269,7 @@ def notas():
     cur = con.cursor()
 
     # =========================
-    # SALVAR / ATUALIZAR
+    # SALVAR
     # =========================
     if request.method == "POST":
         try:
@@ -10302,7 +10302,7 @@ def notas():
                         observacoes=%s
                     WHERE id=%s
                 """, (
-                    expedido, orgaos, tipo, os_id or None,
+                    expedido, orgaos, tipo, os_id,
                     assunto, num_oficio,
                     monitoramento, resposta,
                     prazo, obs,
@@ -10320,7 +10320,7 @@ def notas():
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     RETURNING id
                 """, (
-                    expedido, orgaos, tipo, os_id or None,
+                    expedido, orgaos, tipo, os_id,
                     assunto, num_oficio,
                     monitoramento, resposta,
                     prazo, obs
@@ -10328,7 +10328,7 @@ def notas():
 
                 new_id = cur.fetchone()["id"]
 
-                # gerar número automático
+                # GERAR NUMERO
                 from datetime import datetime
                 ano = datetime.now().year
 
@@ -10343,12 +10343,11 @@ def notas():
                 last = cur.fetchone()
 
                 if last and last["numero_na"]:
-                    ultimo = int(last["numero_na"].split("/")[0])
-                    novo = ultimo + 1
+                    num = int(last["numero_na"].split("/")[0]) + 1
                 else:
-                    novo = 1
+                    num = 1
 
-                numero = f"{novo:03d}/{ano}"
+                numero = f"{num:03d}/{ano}"
 
                 cur.execute(
                     "UPDATE notas SET numero_na=%s WHERE id=%s",
@@ -10367,243 +10366,193 @@ def notas():
     # LISTAGEM
     # =========================
     cur.execute("""
-        SELECT n.*,
-               array_to_string(n.orgaos, ', ') AS orgaos_txt
-        FROM notas n
-        ORDER BY
-            split_part(numero_na, '/', 2)::int,
-            split_part(numero_na, '/', 1)::int
+        SELECT *,
+        array_to_string(orgaos, ', ') as orgaos_txt
+        FROM notas
+        ORDER BY id DESC
     """)
     notas = cur.fetchall()
 
-    cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
+    cur.execute("SELECT id,nome FROM colaboradores ORDER BY nome")
     cols = cur.fetchall()
 
-    col_map = {str(c["id"]): c["nome"] for c in cols}
+    # traduz expedido
+    mapa = {str(c["id"]): c["nome"] for c in cols}
 
     for n in notas:
         if n["expedido_por"]:
-            nomes = [col_map.get(str(i), "") for i in n["expedido_por"]]
-            n["expedido_txt"] = ", ".join(nomes)
+            n["expedido_txt"] = ", ".join([mapa.get(str(i),"") for i in n["expedido_por"]])
         else:
             n["expedido_txt"] = ""
 
     con.close()
 
     # =========================
-    # HTML COMPLETO
+    # HTML
     # =========================
     html = """
-    <h3>Notas de Auditoria</h3>
+<h2>Notas</h2>
 
-    <button onclick="nova()">+ Nova Nota</button>
+<button onclick="nova()">Nova</button>
 
-    <table border="1" style="margin-top:10px;width:100%;">
-        <tr>
-            <th>Nº</th>
-            <th>Tipo</th>
-            <th>Assunto</th>
-            <th>Órgãos</th>
-            <th>Expedido por</th>
-            <th>Prazo</th>
-        </tr>
+<table border="1" width="100%">
+<tr>
+<th>Nº</th><th>Tipo</th><th>Assunto</th>
+<th>Órgãos</th><th>Expedido</th><th>Ações</th>
+</tr>
 
-        {% for n in notas %}
-        <tr onclick="editar({{n.id}})" style="cursor:pointer;">
-            <td>{{ n.numero_na }}</td>
-            <td>{{ n.tipo }}</td>
-            <td>{{ n.assunto }}</td>
-            <td>{{ n.orgaos_txt }}</td>
-            <td>{{ n.expedido_txt }}</td>
-            <td>{{ n.prazo_final or '' }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+{% for n in notas %}
+<tr onclick="editar({{n.id}})">
+<td>{{n.numero_na}}</td>
+<td>{{n.tipo}}</td>
+<td>{{n.assunto}}</td>
+<td>{{n.orgaos_txt}}</td>
+<td>{{n.expedido_txt}}</td>
+<td>
+<button onclick="event.stopPropagation(); excluir({{n.id}})">🗑</button>
+</td>
+</tr>
+{% endfor %}
+</table>
 
-    <hr>
+<hr>
 
-    <div id="form">
-        <input type="hidden" id="id">
+<input type="hidden" id="id">
 
-        Nº NA <input id="numero_na" disabled><br><br>
+Nº <input id="numero_na" disabled><br>
 
-        Tipo:
-        <select id="tipo">
-            <option></option>
-            <option>Preventiva</option>
-            <option>OS</option>
-            <option>Acompanhamento</option>
-            <option>Avaliação</option>
-        </select>
+Tipo
+<select id="tipo">
+<option></option>
+<option>Preventiva</option>
+<option>OS</option>
+<option>Acompanhamento</option>
+<option>Avaliação</option>
+</select><br>
 
-        Nº OS <input id="os_id"><br><br>
+OS <input id="os_id"><br>
+Assunto <input id="assunto"><br>
+Ofício <input id="num_oficio"><br>
 
-        Assunto <input id="assunto"><br>
-        Nº Ofício <input id="num_oficio"><br>
+Monitoramento
+<select id="monitoramento">
+<option value="NAO">Não</option>
+<option value="SIM">Sim</option>
+</select>
 
-        Monitoramento
-        <select id="monitoramento">
-            <option value="NAO">Não</option>
-            <option value="SIM">Sim</option>
-        </select>
+Resposta
+<select id="resposta">
+<option value="NAO">Não</option>
+<option value="SIM">Sim</option>
+</select>
 
-        Resposta
-        <select id="resposta">
-            <option value="NAO">Não</option>
-            <option value="SIM">Sim</option>
-        </select>
+Prazo <input type="date" id="prazo"><br>
 
-        Prazo <input type="date" id="prazo"><br>
+Obs <textarea id="obs"></textarea><br>
 
-        Observações
-        <textarea id="obs"></textarea>
+Expedido:
+<select id="expedido" multiple>
+{% for c in cols %}
+<option value="{{c.id}}">{{c.nome}}</option>
+{% endfor %}
+</select>
 
-        <br><br>
+Órgãos:
+<select id="orgaos" multiple>
+<option>CGM</option>
+<option>SMF</option>
+<option>SMS</option>
+<option>SEINFRA</option>
+<option>DMAE</option>
+</select>
 
-        Expedidos por:<br>
-        <select id="expedido" multiple>
-            {% for c in cols %}
-            <option value="{{c.id}}">{{c.nome}}</option>
-            {% endfor %}
-        </select>
-
-        <br><br>
-
-        Órgãos:<br>
-        <select id="orgaos" multiple>
-            {% for o in [
-            "CM","SEGOV","SMGAS","PGM","SMA","SMF","SME","SMCT","SMS",
-            "SMDES","SMAGRO","SEINFRA","SETTRAN","DMAE","IPREMU","FUTEL",
-            "FERUB","EMAM","CGM","SESURB","SMH","SEJUV","SECOM","SEDEI",
-            "SMGE","SEPLAN","SSEG","ARESAN","EXTERNO"] %}
-            <option value="{{o}}">{{o}}</option>
-            {% endfor %}
-        </select>
-
-        <br><br>
-
-        <button onclick="salvar()">Salvar</button>
-        <button onclick="excluir()" style="background:red;color:white;">Excluir</button>
-    </div>
+<br><br>
+<button onclick="salvar()">Salvar</button>
 
 <script>
+
 function nova(){
-    document.getElementById("id").value = ""
-    document.getElementById("numero_na").value = "Automático"
-
-    document.querySelectorAll("#form input, #form textarea").forEach(i=>{
-        if(i.type != "hidden") i.value = ""
-    })
-
-    document.getElementById("monitoramento").value = "NAO"
-    document.getElementById("resposta").value = "NAO"
-
-    [...document.getElementById("expedido").options].forEach(o=>o.selected=false)
-    [...document.getElementById("orgaos").options].forEach(o=>o.selected=false)
+    document.getElementById("id").value=""
+    document.getElementById("numero_na").value="Automático"
+    document.querySelectorAll("input,textarea").forEach(i=>i.value="")
 }
 
 function editar(id){
     fetch("/nota/"+id)
     .then(r=>r.json())
     .then(n=>{
-        nova()
-
-        document.getElementById("id").value = n.id
-        document.getElementById("numero_na").value = n.numero_na
-        document.getElementById("tipo").value = n.tipo
-        document.getElementById("os_id").value = n.os_id || ""
-        document.getElementById("assunto").value = n.assunto
-        document.getElementById("num_oficio").value = n.num_oficio
-        document.getElementById("monitoramento").value = n.monitoramento ? "SIM":"NAO"
-        document.getElementById("resposta").value = n.resposta ? "SIM":"NAO"
-        document.getElementById("prazo").value = n.prazo_final || ""
-        document.getElementById("obs").value = n.observacoes
-
-        if(n.expedido_por){
-            n.expedido_por.forEach(v=>{
-                let opt = document.querySelector(`#expedido option[value="${v}"]`)
-                if(opt) opt.selected = true
-            })
-        }
-
-        if(n.orgaos){
-            n.orgaos.forEach(v=>{
-                let opt = document.querySelector(`#orgaos option[value="${v}"]`)
-                if(opt) opt.selected = true
-            })
-        }
+        document.getElementById("id").value=n.id
+        document.getElementById("numero_na").value=n.numero_na
+        document.getElementById("tipo").value=n.tipo
+        document.getElementById("os_id").value=n.os_id||""
+        document.getElementById("assunto").value=n.assunto
+        document.getElementById("num_oficio").value=n.num_oficio
+        document.getElementById("monitoramento").value=n.monitoramento?"SIM":"NAO"
+        document.getElementById("resposta").value=n.resposta?"SIM":"NAO"
+        document.getElementById("prazo").value=n.prazo_final||""
+        document.getElementById("obs").value=n.observacoes||""
     })
 }
 
 function salvar(){
-    let fd = new FormData()
+    let fd=new FormData()
 
-    fd.append("id", document.getElementById("id").value)
-    fd.append("tipo", document.getElementById("tipo").value)
-    fd.append("os_id", document.getElementById("os_id").value)
-    fd.append("assunto", document.getElementById("assunto").value)
-    fd.append("num_oficio", document.getElementById("num_oficio").value)
-    fd.append("monitoramento", document.getElementById("monitoramento").value)
-    fd.append("resposta", document.getElementById("resposta").value)
-    fd.append("prazo_final", document.getElementById("prazo").value)
-    fd.append("observacoes", document.getElementById("obs").value)
+    fd.append("id",id.value)
+    fd.append("tipo",tipo.value)
+    fd.append("os_id",os_id.value)
+    fd.append("assunto",assunto.value)
+    fd.append("num_oficio",num_oficio.value)
+    fd.append("monitoramento",monitoramento.value)
+    fd.append("resposta",resposta.value)
+    fd.append("prazo_final",prazo.value)
+    fd.append("observacoes",obs.value)
 
-    [...document.getElementById("expedido").selectedOptions]
-        .forEach(o=>fd.append("expedido_por[]", o.value))
+    document.querySelectorAll("#expedido option:checked")
+    .forEach(o=>fd.append("expedido_por[]",o.value))
 
-    [...document.getElementById("orgaos").selectedOptions]
-        .forEach(o=>fd.append("orgaos[]", o.value))
+    document.querySelectorAll("#orgaos option:checked")
+    .forEach(o=>fd.append("orgaos[]",o.value))
 
-    fetch("/notas",{method:"POST", body:fd})
+    fetch("/notas",{method:"POST",body:fd})
+    .then(r=>r.text())
     .then(r=>{
-        if(!r.ok) return r.text().then(t=>{throw t})
-        return r.text()
-    })
-    .then(()=>{
-        alert("Salvo com sucesso")
+        console.log(r)
         location.reload()
     })
-    .catch(err=>{
-        alert("Erro: " + err)
-    })
+    .catch(e=>alert("Erro: "+e))
 }
 
-function excluir(){
-    let id = document.getElementById("id").value
-    if(!id) return alert("Selecione uma nota")
+function excluir(id){
+    if(!confirm("Excluir?"))return
 
-    if(!confirm("Deseja excluir?")) return
-
-    fetch("/nota/delete/"+id,{method:"POST"})
+    fetch("/nota/delete/"+id)
     .then(()=>location.reload())
 }
-</script>
-    """
 
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
+</script>
+"""
+
+    return render_template_string(BASE.replace("{% block content %}{% endblock %}", html),
         notas=notas,
         cols=cols,
         user=session["user"],
         perfil=session["perfil"]
     )
 
-
 @app.route("/nota/<int:id>")
 def get_nota(id):
-    con = get_db()
-    cur = con.cursor()
+    con=get_db()
+    cur=con.cursor()
     cur.execute("SELECT * FROM notas WHERE id=%s",(id,))
-    n = cur.fetchone()
+    n=cur.fetchone()
     con.close()
     return jsonify(n)
 
-
-@app.route("/nota/delete/<int:id>", methods=["POST"])
+@app.route("/nota/delete/<int:id>")
 def delete_nota(id):
-    con = get_db()
-    cur = con.cursor()
-    cur.execute("DELETE FROM notas WHERE id=%s", (id,))
+    con=get_db()
+    cur=con.cursor()
+    cur.execute("DELETE FROM notas WHERE id=%s",(id,))
     con.commit()
     con.close()
     return "OK"

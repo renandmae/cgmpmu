@@ -10275,7 +10275,7 @@ def notas():
         try:
             nota_id = request.form.get("id")
 
-            expedido = [int(x) for x in request.form.getlist("expedido_por[]") if x]
+            expedido = request.form.getlist("expedido_por[]")
             orgaos = request.form.getlist("orgaos[]")
 
             tipo = request.form.get("tipo")
@@ -10331,7 +10331,7 @@ def notas():
                 new_id = cur.fetchone()["id"]
 
                 # =========================
-                # NÚMERO AUTOMÁTICO
+                # GERAR Nº AUTOMÁTICO
                 # =========================
                 from datetime import datetime
                 ano = datetime.now().year
@@ -10340,7 +10340,7 @@ def notas():
                     SELECT numero_na
                     FROM notas
                     WHERE numero_na LIKE %s
-                    ORDER BY CAST(split_part(numero_na,'/',1) AS INT) DESC
+                    ORDER BY numero_na DESC
                     LIMIT 1
                 """, (f"%/{ano}",))
 
@@ -10363,31 +10363,37 @@ def notas():
             return "OK"
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             con.rollback()
-            return str(e), 500
+            print(e)
+            return "Erro", 500
 
     # =========================
     # LISTAGEM
     # =========================
     cur.execute("""
-        SELECT 
-            n.*,
-            array_to_string(n.orgaos, ', ') AS orgaos_txt,
-            (
-                SELECT string_agg(c.nome, ', ')
-                FROM colaboradores c
-                WHERE c.id = ANY(n.expedido_por)
-            ) AS expedido_txt
+        SELECT n.*,
+               array_to_string(n.orgaos, ', ') AS orgaos_txt
         FROM notas n
-        ORDER BY n.id DESC
+        ORDER BY
+            split_part(numero_na, '/', 2)::int,
+            split_part(numero_na, '/', 1)::int
     """)
     notas = cur.fetchall()
 
     # colaboradores
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
     cols = cur.fetchall()
+
+    # mapa id -> nome
+    col_map = {str(c["id"]): c["nome"] for c in cols}
+
+    # traduz expedido_por
+    for n in notas:
+        if n["expedido_por"]:
+            nomes = [col_map.get(str(i), "") for i in n["expedido_por"]]
+            n["expedido_txt"] = ", ".join(nomes)
+        else:
+            n["expedido_txt"] = ""
 
     con.close()
 
@@ -10402,20 +10408,20 @@ def notas():
     <table border="1" style="margin-top:10px;width:100%;">
         <tr>
             <th>Nº</th>
-            <th>Expedido por</th>
             <th>Tipo</th>
             <th>Assunto</th>
             <th>Órgãos</th>
+            <th>Expedido por</th>
             <th>Prazo</th>
         </tr>
 
         {% for n in notas %}
         <tr onclick="editar({{n.id}})" style="cursor:pointer;">
             <td>{{ n.numero_na }}</td>
-            <td>{{ n.expedido_txt or '' }}</td>
             <td>{{ n.tipo }}</td>
             <td>{{ n.assunto }}</td>
             <td>{{ n.orgaos_txt }}</td>
+            <td>{{ n.expedido_txt }}</td>
             <td>{{ n.prazo_final or '' }}</td>
         </tr>
         {% endfor %}
@@ -10423,61 +10429,91 @@ def notas():
 
     <hr>
 
-    <input type="hidden" id="id">
+    <div id="form">
+        <input type="hidden" id="id">
 
-    Nº NA <input id="numero_na" disabled><br><br>
+        Nº NA <input id="numero_na" disabled><br><br>
 
-    Expedidos por:<br>
-    <select id="expedido" multiple style="width:300px;height:100px;">
-        {% for c in cols %}
+        Tipo:
+        <select id="tipo">
+            <option></option>
+            <option>Preventiva</option>
+            <option>OS</option>
+            <option>Acompanhamento</option>
+            <option>Avaliação</option>
+        </select>
+
+        Nº OS <input id="os_id"><br><br>
+
+        Assunto <input id="assunto"><br>
+        Nº Ofício <input id="num_oficio"><br>
+
+        Monitoramento
+        <select id="monitoramento">
+            <option value="NAO">Não</option>
+            <option value="SIM">Sim</option>
+        </select>
+
+        Resposta
+        <select id="resposta">
+            <option value="NAO">Não</option>
+            <option value="SIM">Sim</option>
+        </select>
+
+        Prazo <input type="date" id="prazo"><br>
+
+        Observações
+        <textarea id="obs"></textarea>
+
+        <br><br>
+
+        Expedidos por:<br>
+        <select id="expedido" multiple>
+            {% for c in cols %}
             <option value="{{c.id}}">{{c.nome}}</option>
-        {% endfor %}
-    </select><br><br>
+            {% endfor %}
+        </select>
 
-    Tipo:
-    <select id="tipo">
-        <option></option>
-        <option>Preventiva</option>
-        <option>OS</option>
-        <option>Acompanhamento</option>
-        <option>Avaliação</option>
-    </select>
+        <br><br>
 
-    Nº OS <input id="os_id"><br><br>
+        Órgãos:<br>
+        <select id="orgaos" multiple>
+            {% for o in [
+            "CM","SEGOV","SMGAS","PGM","SMA","SMF","SME","SMCT","SMS",
+            "SMDES","SMAGRO","SEINFRA","SETTRAN","DMAE","IPREMU","FUTEL",
+            "FERUB","EMAM","CGM","SESURB","SMH","SEJUV","SECOM","SEDEI",
+            "SMGE","SEPLAN","SSEG","ARESAN","EXTERNO"] %}
+            <option value="{{o}}">{{o}}</option>
+            {% endfor %}
+        </select>
 
-    Assunto <input id="assunto"><br>
-    Nº Ofício <input id="num_oficio"><br>
-
-    Monitoramento
-    <select id="monitoramento">
-        <option value="NAO">Não</option>
-        <option value="SIM">Sim</option>
-    </select>
-
-    Resposta
-    <select id="resposta">
-        <option value="NAO">Não</option>
-        <option value="SIM">Sim</option>
-    </select>
-
-    Prazo <input type="date" id="prazo"><br>
-
-    Observações
-    <textarea id="obs"></textarea>
-
-    <br><br>
-    <button onclick="salvar()">Salvar</button>
+        <br><br>
+        <button onclick="salvar()">Salvar</button>
+    </div>
 
 <script>
 function nova(){
     document.getElementById("id").value = ""
     document.getElementById("numero_na").value = "Automático"
+    document.getElementById("tipo").value = ""
+    document.getElementById("os_id").value = ""
+    document.getElementById("assunto").value = ""
+    document.getElementById("num_oficio").value = ""
+    document.getElementById("monitoramento").value = "NAO"
+    document.getElementById("resposta").value = "NAO"
+    document.getElementById("prazo").value = ""
+    document.getElementById("obs").value = ""
+
+    [...document.getElementById("expedido").options].forEach(o=>o.selected=false)
+    [...document.getElementById("orgaos").options].forEach(o=>o.selected=false)
 }
 
 function editar(id){
     fetch("/nota/"+id)
     .then(r=>r.json())
     .then(n=>{
+        nova()
+
         document.getElementById("id").value = n.id
         document.getElementById("numero_na").value = n.numero_na
         document.getElementById("tipo").value = n.tipo
@@ -10489,9 +10525,18 @@ function editar(id){
         document.getElementById("prazo").value = n.prazo_final || ""
         document.getElementById("obs").value = n.observacoes
 
-        let select = document.getElementById("expedido")
-        for (let opt of select.options){
-            opt.selected = (n.expedido_por || []).includes(parseInt(opt.value))
+        if(n.expedido_por){
+            n.expedido_por.forEach(v=>{
+                let opt = document.querySelector(`#expedido option[value="${v}"]`)
+                if(opt) opt.selected = true
+            })
+        }
+
+        if(n.orgaos){
+            n.orgaos.forEach(v=>{
+                let opt = document.querySelector(`#orgaos option[value="${v}"]`)
+                if(opt) opt.selected = true
+            })
         }
     })
 }
@@ -10509,10 +10554,11 @@ function salvar(){
     fd.append("prazo_final", document.getElementById("prazo").value)
     fd.append("observacoes", document.getElementById("obs").value)
 
-    let expedido = document.getElementById("expedido")
-    for (let opt of expedido.selectedOptions){
-        fd.append("expedido_por[]", opt.value)
-    }
+    [...document.getElementById("expedido").selectedOptions]
+        .forEach(o=>fd.append("expedido_por[]", o.value))
+
+    [...document.getElementById("orgaos").selectedOptions]
+        .forEach(o=>fd.append("orgaos[]", o.value))
 
     fetch("/notas",{method:"POST", body:fd})
     .then(()=>location.reload())
@@ -10528,6 +10574,7 @@ function salvar(){
         perfil=session["perfil"]
     )
 
+
 @app.route("/nota/<int:id>")
 def get_nota(id):
     con = get_db()
@@ -10537,13 +10584,6 @@ def get_nota(id):
     n = cur.fetchone()
 
     con.close()
-
-    if not n:
-        return jsonify({})
-
-    # garantir lista (evita erro no JS)
-    n["expedido_por"] = n["expedido_por"] or []
-
     return jsonify(n)
 
 @app.route("/seed")

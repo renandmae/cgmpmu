@@ -2944,18 +2944,18 @@ def ficha_os(os_id):
     display:none;
 }}
 
-.badge span {
+.badge span {{
     display:block;
     background:#4f6fb5;
     padding:10px;
     border-radius:8px;
     transition:0.2s;
-}
+}}
 
-.badge input:checked + span {
+.badge input:checked + span {{
     background:#1d4ed8;
     transform:scale(1.05);
-}
+}}
 
 textarea, input {{
     width:100%;

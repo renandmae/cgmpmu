@@ -2944,6 +2944,19 @@ def ficha_os(os_id):
     display:none;
 }}
 
+.badge span {
+    display:block;
+    background:#4f6fb5;
+    padding:10px;
+    border-radius:8px;
+    transition:0.2s;
+}
+
+.badge input:checked + span {
+    background:#1d4ed8;
+    transform:scale(1.05);
+}
+
 textarea, input {{
     width:100%;
     padding:10px;
@@ -3011,8 +3024,8 @@ textarea, input {{
 <div class="beneficios">
 {"".join([f'''
 <label class="badge">
-<input type="checkbox" name="beneficios[]" value="{b}" {"checked" if b in beneficios_sel else ""}>
-{b}
+    <input type="checkbox" name="beneficios[]" value="{b}" {"checked" if b in beneficios_sel else ""}>
+    <span>{b}</span>
 </label>
 ''' for b in [
 "Financeiro","Operacional","Eficiência","Controle","Compliance",

@@ -2792,6 +2792,104 @@ def export_excel(os_id):
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
+from docx import Document
+from flask import send_file
+import io
+
+@app.route('/os/export/word/<int:os_id>')
+def export_word(os_id):
+
+    con = get_db()
+    cur = con.cursor()
+
+    # OS
+    cur.execute("SELECT * FROM os WHERE id = %s", (os_id,))
+    os_data = cur.fetchone()
+
+    # FICHA
+    cur.execute("SELECT * FROM ficha_auditoria WHERE os_id = %s", (os_id,))
+    ficha = cur.fetchone()
+
+    if not ficha:
+        return "Ficha não preenchida ainda"
+
+    # RECOMENDAÇÕES
+    cur.execute("""
+        SELECT descricao FROM ficha_recomendacoes
+        WHERE ficha_id = %s
+    """, (ficha["id"],))
+    recs = cur.fetchall()
+
+    con.close()
+
+    # ============================
+    # CARREGA TEMPLATE
+    # ============================
+    doc = Document("template.docx")  # 🔥 coloque esse arquivo no projeto
+
+    # Junta recomendações
+    lista_recs = "\n".join([r["descricao"] for r in recs])
+
+    # ============================
+    # MAPA DE VARIÁVEIS
+    # ============================
+    dados = {
+        "{{codigo_os}}": str(os_data["codigo"]),
+        "{{resumo}}": os_data["resumo"] or "",
+        "{{item_paint}}": os_data.get("item_paint", "") or "",
+        "{{nivel_risco}}": ficha["nivel_risco"] or "",
+        "{{criterio}}": ficha["criterio"] or "",
+        "{{condicao}}": ficha["condicao"] or "",
+        "{{causa}}": ficha["causa"] or "",
+        "{{impacto}}": ficha["impacto"] or "",
+        "{{acao}}": ficha["acao"] or "",
+        "{{beneficios}}": ficha.get("beneficios", "") or "",
+        "{{descricao}}": lista_recs,
+        "{{requer_monitoramento}}": "Sim" if ficha["requer_monitoramento"] else "Não",
+        "{{data_monitoramento}}": str(ficha["data_monitoramento"] or ""),
+        "{{observacao_monitoramento}}": ficha["observacao_monitoramento"] or "",
+        "{{uo}}": os_data.get("uo", "") or "",
+        "{{plan0100}}": str(os_data.get("plan0100", "") or ""),
+        "{{exec0100}}": str(os_data.get("exec0100", "") or ""),
+        "{{rp0100}}": str(os_data.get("rp0100", "") or ""),
+        "{{rf0100}}": str(os_data.get("rf0100", "") or ""),
+        "{{supervisão}}": os_data.get("supervisao", "") or "",
+        "{{coordenação}}": os_data.get("coordenacao", "") or "",
+        "{{equipe}}": os_data.get("equipe", "") or "",
+    }
+
+    # ============================
+    # SUBSTITUI TEXTO
+    # ============================
+    def replace_text(paragraph):
+        for key, val in dados.items():
+            if key in paragraph.text:
+                paragraph.text = paragraph.text.replace(key, val)
+
+    for p in doc.paragraphs:
+        replace_text(p)
+
+    # Também pega tabelas (importante!)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    replace_text(p)
+
+    # ============================
+    # GERAR ARQUIVO
+    # ============================
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+
+    return send_file(
+        file_stream,
+        as_attachment=True,
+        download_name=f"Ficha_OS_{os_data['codigo']}.docx",
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
 @app.route('/os/ficha/<int:os_id>', methods=['GET','POST'])
 def ficha_os(os_id):
     if 'user' not in session:

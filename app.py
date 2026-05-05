@@ -10331,7 +10331,28 @@ def notas():
                 new_id = cur.fetchone()["id"]
 
                 # GERA Nº AUTOMÁTICO
-                numero = f"NA-{new_id:04d}"
+                from datetime import datetime
+                ano = datetime.now().year
+                
+                # pega último número do ano
+                cur.execute("""
+                    SELECT numero_na
+                    FROM notas_auditoria
+                    WHERE numero_na LIKE %s
+                    ORDER BY numero_na DESC
+                    LIMIT 1
+                """, (f"%/{ano}",))
+                
+                last = cur.fetchone()
+                
+                if last and last["numero_na"]:
+                    ultimo_num = int(last["numero_na"].split("/")[0])
+                    novo_num = ultimo_num + 1
+                else:
+                    novo_num = 1
+                
+                numero = f"{novo_num:03d}/{ano}"
+                
                 cur.execute(
                     "UPDATE notas SET numero_na=%s WHERE id=%s",
                     (numero, new_id)

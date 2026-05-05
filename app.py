@@ -2825,7 +2825,9 @@ def export_word(os_id):
     # ============================
     # CARREGA TEMPLATE
     # ============================
-    doc = Document("template.docx")  # 🔥 coloque esse arquivo no projeto
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    template_path = os.path.join(BASE_DIR, "template.docx")
+    doc = Document(template_path)
 
     # Junta recomendações
     lista_recs = "\n".join([r["descricao"] for r in recs])

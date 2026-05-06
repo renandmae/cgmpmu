@@ -10537,19 +10537,22 @@ th {
     background:#f3f4f6;
 }
 
-/* 🔥 AJUSTE FINO DAS COLUNAS */
-.col-num { width:70px; }
-.col-tipo { width:90px; }
-.col-os { width:80px; }
-.col-assunto { width:260px; }       /* ↑ maior */
-.col-oficio { width:120px; }
-.col-orgaos { width:180px; }
-.col-expedido { width:180px; }
-.col-monit { width:55px; text-align:center; }  /* ↓ menor */
-.col-resp { width:55px; text-align:center; }   /* ↓ menor */
-.col-prazo { width:100px; }
-.col-obs { width:260px; }           /* ↑ maior */
-.col-acoes { width:70px; text-align:center; } /* ↓ menor */
+.assunto {
+    max-width:200px;
+    white-space: normal;
+}
+
+.orgaos {
+    max-width:160px;
+}
+
+.expedido {
+    max-width:160px;
+}
+
+.obs {
+    max-width:220px;
+}
 
 .btn {
     background:#2563eb;
@@ -10575,34 +10578,34 @@ th {
 
 <table style="margin-top:10px;">
 <tr>
-<th class="col-num">Nº</th>
-<th class="col-tipo">Tipo</th>
-<th class="col-expedido">Expedido</th>
-<th class="col-os">OS</th>
-<th class="col-assunto">Assunto</th>
-<th class="col-oficio">Ofício</th>
-<th class="col-orgaos">Órgãos</th>
-<th class="col-monit">Monit.</th>
-<th class="col-resp">Resp.</th>
-<th class="col-prazo">Prazo</th>
-<th class="col-obs">Observações</th>
-<th class="col-acoes">Ações</th>
+<th>Nº</th>
+<th class="expedido">Expedido</th>
+<th>Tipo</th>
+<th>OS</th>
+<th class="assunto">Assunto</th>
+<th>Ofício</th>
+<th class="orgaos">Órgãos</th>
+<th>Monit.</th>
+<th>Resp.</th>
+<th>Prazo</th>
+<th class="obs">Observações</th>
+<th>Ações</th>
 </tr>
 
 {% for n in notas %}
 <tr>
-<td class="col-num">{{n.numero_na}}</td>
-<td class="col-tipo">{{n.tipo}}</td>
-<td class="col-expedido">{{n.expedido_txt}}</td>
-<td class="col-os">{{n.os_id}}</td>
-<td class="col-assunto">{{n.assunto}}</td>
-<td class="col-oficio">{{n.num_oficio}}</td>
-<td class="col-orgaos">{{n.orgaos_txt}}</td>
-<td class="col-monit">{{ 'Sim' if n.monitoramento else 'Não' }}</td>
-<td class="col-resp">{{ 'Sim' if n.resposta else 'Não' }}</td>
-<td class="col-prazo">{{ fmt(n.prazo_final) if n.prazo_final else "" }}</td>
-<td class="col-obs">{{n.observacoes}}</td>
-<td class="col-acoes">
+<td>{{n.numero_na}}</td>
+<td class="expedido">{{n.expedido_txt}}</td>
+<td>{{n.tipo}}</td>
+<td>{{n.os_id}}</td>
+<td class="assunto">{{n.assunto}}</td>
+<td>{{n.num_oficio}}</td>
+<td class="orgaos">{{n.orgaos_txt}}</td>
+<td>{{ 'Sim' if n.monitoramento else 'Não' }}</td>
+<td>{{ 'Sim' if n.resposta else 'Não' }}</td>
+<td>{{ fmt(n.prazo_final) if n.prazo_final else "" }}</td>
+<td class="obs">{{n.observacoes}}</td>
+<td>
 <a href="/notas/nova?id={{n.id}}">✏️</a>
 <button class="btn-danger" onclick="excluir({{n.id}})">🗑</button>
 </td>

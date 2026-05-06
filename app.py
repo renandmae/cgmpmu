@@ -10271,9 +10271,6 @@ def notas_form():
     nota = None
     nota_id = request.args.get("id")
 
-    # =========================
-    # POST (SALVAR)
-    # =========================
     if request.method == "POST":
         try:
             nota_id = request.form.get("id")
@@ -10291,30 +10288,20 @@ def notas_form():
             obs = request.form.get("observacoes")
 
             if nota_id:
-                # UPDATE
                 cur.execute("""
                     UPDATE notas SET
-                        expedido_por=%s,
-                        orgaos=%s,
-                        tipo=%s,
-                        os_id=%s,
-                        assunto=%s,
-                        num_oficio=%s,
-                        monitoramento=%s,
-                        resposta=%s,
-                        prazo_final=%s,
-                        observacoes=%s
+                        expedido_por=%s, orgaos=%s, tipo=%s, os_id=%s,
+                        assunto=%s, num_oficio=%s,
+                        monitoramento=%s, resposta=%s,
+                        prazo_final=%s, observacoes=%s
                     WHERE id=%s
                 """, (
                     expedido, orgaos, tipo, os_id,
                     assunto, num_oficio,
                     monitoramento, resposta,
-                    prazo, obs,
-                    nota_id
+                    prazo, obs, nota_id
                 ))
-
             else:
-                # INSERT
                 cur.execute("""
                     INSERT INTO notas (
                         expedido_por, orgaos, tipo, os_id,
@@ -10333,7 +10320,6 @@ def notas_form():
 
                 new_id = cur.fetchone()["id"]
 
-                # GERAR NUMERO AUTOMÁTICO
                 from datetime import datetime
                 ano = datetime.now().year
 
@@ -10346,11 +10332,7 @@ def notas_form():
                 """, (f"%/{ano}",))
 
                 last = cur.fetchone()
-
-                if last and last["numero_na"]:
-                    num = int(last["numero_na"].split("/")[0]) + 1
-                else:
-                    num = 1
+                num = int(last["numero_na"].split("/")[0]) + 1 if last and last["numero_na"] else 1
 
                 numero = f"{num:03d}/{ano}"
 
@@ -10366,9 +10348,6 @@ def notas_form():
             con.rollback()
             return str(e)
 
-    # =========================
-    # GET (CARREGAR PARA EDIÇÃO)
-    # =========================
     if nota_id:
         cur.execute("SELECT * FROM notas WHERE id=%s",(nota_id,))
         nota = cur.fetchone()
@@ -10379,6 +10358,39 @@ def notas_form():
     con.close()
 
     html = """
+<style>
+.container {
+    max-width:800px;
+}
+
+input, select, textarea {
+    width:100%;
+    padding:8px;
+    margin-bottom:10px;
+    border:1px solid #ccc;
+    border-radius:6px;
+}
+
+textarea {
+    height:100px;
+}
+
+.multi {
+    height:150px;
+}
+
+.btn {
+    background:#2563eb;
+    color:white;
+    padding:10px;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+    width:100%;
+}
+</style>
+
+<div class="container">
 <h2>Cadastro de Nota</h2>
 
 <a href="/notas">⬅ Voltar</a><br><br>
@@ -10394,13 +10406,13 @@ Tipo:
 <option {{'selected' if nota and nota.tipo=='OS'}}>OS</option>
 <option {{'selected' if nota and nota.tipo=='Acompanhamento'}}>Acompanhamento</option>
 <option {{'selected' if nota and nota.tipo=='Avaliação'}}>Avaliação</option>
-</select><br>
+</select>
 
-OS <input name="os_id" value="{{nota.os_id if nota else ''}}"><br>
+OS <input name="os_id" value="{{nota.os_id if nota else ''}}">
 
-Assunto <input name="assunto" value="{{nota.assunto if nota else ''}}"><br>
+Assunto <input name="assunto" value="{{nota.assunto if nota else ''}}">
 
-Ofício <input name="num_oficio" value="{{nota.num_oficio if nota else ''}}"><br>
+Ofício <input name="num_oficio" value="{{nota.num_oficio if nota else ''}}">
 
 Monitoramento
 <select name="monitoramento">
@@ -10414,13 +10426,13 @@ Resposta
 <option value="SIM" {{'selected' if nota and nota.resposta}}>Sim</option>
 </select>
 
-Prazo <input type="date" name="prazo_final" value="{{nota.prazo_final if nota else ''}}"><br>
+Prazo <input type="date" name="prazo_final" value="{{nota.prazo_final if nota else ''}}">
 
 Observações
-<textarea name="observacoes">{{nota.observacoes if nota else ''}}</textarea><br>
+<textarea name="observacoes">{{nota.observacoes if nota else ''}}</textarea>
 
 Expedido:
-<select name="expedido_por[]" multiple>
+<select name="expedido_por[]" multiple class="multi">
 {% for c in cols %}
 <option value="{{c.id}}"
 {% if nota and nota.expedido_por and c.id in nota.expedido_por %}selected{% endif %}
@@ -10429,18 +10441,42 @@ Expedido:
 </select>
 
 Órgãos:
-<select name="orgaos[]" multiple>
-<option>CGM</option>
+<select name="orgaos[]" multiple class="multi">
+<option>CM</option>
+<option>SEGOV</option>
+<option>SMGAS</option>
+<option>PGM</option>
+<option>SMA</option>
 <option>SMF</option>
+<option>SME</option>
+<option>SMCT</option>
 <option>SMS</option>
+<option>SEDES</option>
+<option>SMAGRO</option>
 <option>SEINFRA</option>
+<option>SETTRAN</option>
 <option>DMAE</option>
+<option>IPREMU</option>
+<option>FUTEL</option>
+<option>FERUB</option>
+<option>EMAM</option>
+<option>CGM</option>
+<option>SESURB</option>
+<option>SMH</option>
+<option>SEJUV</option>
+<option>SECOM</option>
+<option>SEDEI</option>
+<option>SMGE</option>
+<option>SEPLAN</option>
+<option>SSEG</option>
+<option>ARESAN</option>
+<option>EXTERNO</option>
 </select>
 
-<br><br>
-<button type="submit">Salvar</button>
+<button class="btn">Salvar</button>
 
 </form>
+</div>
 """
 
     return render_template_string(
@@ -10464,12 +10500,11 @@ def notas_listagem():
         array_to_string(orgaos, ', ') as orgaos_txt
         FROM notas
         ORDER BY
-            split_part(numero_na,'/',2)::int NULLS LAST,
-            split_part(numero_na,'/',1)::int NULLS LAST
+            split_part(numero_na,'/',2)::int DESC NULLS LAST,
+            split_part(numero_na,'/',1)::int DESC NULLS LAST
     """)
     notas = cur.fetchall()
 
-    # colaboradores
     cur.execute("SELECT id,nome FROM colaboradores")
     cols = cur.fetchall()
     mapa = {str(c["id"]): c["nome"] for c in cols}
@@ -10483,16 +10518,78 @@ def notas_listagem():
     con.close()
 
     html = """
+<style>
+table {
+    width:100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+th, td {
+    border:1px solid #ddd;
+    padding:6px;
+    font-size:13px;
+    vertical-align: top;
+    word-wrap: break-word;
+}
+
+th {
+    background:#f3f4f6;
+}
+
+.assunto {
+    max-width:200px;
+    white-space: normal;
+}
+
+.orgaos {
+    max-width:160px;
+}
+
+.expedido {
+    max-width:160px;
+}
+
+.obs {
+    max-width:220px;
+}
+
+.btn {
+    background:#2563eb;
+    color:white;
+    padding:8px 12px;
+    border-radius:6px;
+    text-decoration:none;
+}
+
+.btn-danger {
+    background:#dc2626;
+    color:white;
+    border:none;
+    padding:5px 8px;
+    border-radius:6px;
+    cursor:pointer;
+}
+</style>
+
 <h2>Notas de Auditoria</h2>
 
-<a href="/notas/nova">➕ Nova Nota</a>
+<a href="/notas/nova" class="btn">➕ Nova Nota</a>
 
-<table border="1" width="100%" style="margin-top:10px;">
+<table style="margin-top:10px;">
 <tr>
-<th>Nº</th><th>Tipo</th><th>OS</th><th>Assunto</th>
-<th>Ofício</th><th>Órgãos</th><th>Expedido</th>
-<th>Monitoramento</th><th>Resposta</th>
-<th>Prazo</th><th>Observações</th><th>Ações</th>
+<th>Nº</th>
+<th>Tipo</th>
+<th>OS</th>
+<th class="assunto">Assunto</th>
+<th>Ofício</th>
+<th class="orgaos">Órgãos</th>
+<th class="expedido">Expedido</th>
+<th>Monit.</th>
+<th>Resp.</th>
+<th>Prazo</th>
+<th class="obs">Observações</th>
+<th>Ações</th>
 </tr>
 
 {% for n in notas %}
@@ -10500,17 +10597,17 @@ def notas_listagem():
 <td>{{n.numero_na}}</td>
 <td>{{n.tipo}}</td>
 <td>{{n.os_id}}</td>
-<td>{{n.assunto}}</td>
+<td class="assunto">{{n.assunto}}</td>
 <td>{{n.num_oficio}}</td>
-<td>{{n.orgaos_txt}}</td>
-<td>{{n.expedido_txt}}</td>
+<td class="orgaos">{{n.orgaos_txt}}</td>
+<td class="expedido">{{n.expedido_txt}}</td>
 <td>{{ 'Sim' if n.monitoramento else 'Não' }}</td>
 <td>{{ 'Sim' if n.resposta else 'Não' }}</td>
 <td>{{n.prazo_final or ''}}</td>
-<td>{{n.observacoes}}</td>
+<td class="obs">{{n.observacoes}}</td>
 <td>
 <a href="/notas/nova?id={{n.id}}">✏️</a>
-<button onclick="excluir({{n.id}})">🗑</button>
+<button class="btn-danger" onclick="excluir({{n.id}})">🗑</button>
 </td>
 </tr>
 {% endfor %}

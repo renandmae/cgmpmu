@@ -10260,26 +10260,26 @@ def exportar_notas_auditoria():
         }
     )
 
-@app.route("/notas", methods=["GET","POST"])
-def notas():
+@app.route("/notas/nova", methods=["GET","POST"])
+def notas_form():
     if "user" not in session:
         return redirect("/")
 
     con = get_db()
     cur = con.cursor()
 
+    nota = None
+    nota_id = request.args.get("id")
+
     # =========================
-    # SALVAR
+    # POST (SALVAR)
     # =========================
     if request.method == "POST":
         try:
             nota_id = request.form.get("id")
 
-            # 🔥 converter para int (RESOLVE SEU ERRO)
             expedido = [int(x) for x in request.form.getlist("expedido_por[]") if x]
             orgaos = request.form.getlist("orgaos[]")
-
-            numero_manual = request.form.get("numero_na")
 
             tipo = request.form.get("tipo")
             os_id = request.form.get("os_id")
@@ -10290,13 +10290,10 @@ def notas():
             prazo = request.form.get("prazo_final") or None
             obs = request.form.get("observacoes")
 
-            # =========================
-            # UPDATE
-            # =========================
             if nota_id:
+                # UPDATE
                 cur.execute("""
                     UPDATE notas SET
-                        numero_na=%s,
                         expedido_por=%s,
                         orgaos=%s,
                         tipo=%s,
@@ -10309,7 +10306,6 @@ def notas():
                         observacoes=%s
                     WHERE id=%s
                 """, (
-                    numero_manual or None,
                     expedido, orgaos, tipo, os_id,
                     assunto, num_oficio,
                     monitoramento, resposta,
@@ -10317,21 +10313,18 @@ def notas():
                     nota_id
                 ))
 
-            # =========================
-            # INSERT
-            # =========================
             else:
+                # INSERT
                 cur.execute("""
                     INSERT INTO notas (
-                        numero_na, expedido_por, orgaos, tipo, os_id,
+                        expedido_por, orgaos, tipo, os_id,
                         assunto, num_oficio,
                         monitoramento, resposta,
                         prazo_final, observacoes
                     )
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     RETURNING id
                 """, (
-                    numero_manual or None,
                     expedido, orgaos, tipo, os_id,
                     assunto, num_oficio,
                     monitoramento, resposta,
@@ -10340,44 +10333,132 @@ def notas():
 
                 new_id = cur.fetchone()["id"]
 
-                # 🔥 gera automático só se não informou
-                if not numero_manual:
-                    from datetime import datetime
-                    ano = datetime.now().year
+                # GERAR NUMERO AUTOMÁTICO
+                from datetime import datetime
+                ano = datetime.now().year
 
-                    cur.execute("""
-                        SELECT numero_na
-                        FROM notas
-                        WHERE numero_na LIKE %s
-                        ORDER BY numero_na DESC
-                        LIMIT 1
-                    """, (f"%/{ano}",))
+                cur.execute("""
+                    SELECT numero_na
+                    FROM notas
+                    WHERE numero_na LIKE %s
+                    ORDER BY numero_na DESC
+                    LIMIT 1
+                """, (f"%/{ano}",))
 
-                    last = cur.fetchone()
+                last = cur.fetchone()
 
-                    if last and last["numero_na"]:
-                        num = int(last["numero_na"].split("/")[0]) + 1
-                    else:
-                        num = 1
+                if last and last["numero_na"]:
+                    num = int(last["numero_na"].split("/")[0]) + 1
+                else:
+                    num = 1
 
-                    numero = f"{num:03d}/{ano}"
+                numero = f"{num:03d}/{ano}"
 
-                    cur.execute(
-                        "UPDATE notas SET numero_na=%s WHERE id=%s",
-                        (numero, new_id)
-                    )
+                cur.execute(
+                    "UPDATE notas SET numero_na=%s WHERE id=%s",
+                    (numero, new_id)
+                )
 
             con.commit()
-            return "OK"
+            return redirect("/notas")
 
         except Exception as e:
             con.rollback()
-            print("ERRO:", e)
-            return str(e), 500
+            return str(e)
 
     # =========================
-    # LISTAGEM
+    # GET (CARREGAR PARA EDIÇÃO)
     # =========================
+    if nota_id:
+        cur.execute("SELECT * FROM notas WHERE id=%s",(nota_id,))
+        nota = cur.fetchone()
+
+    cur.execute("SELECT id,nome FROM colaboradores")
+    cols = cur.fetchall()
+
+    con.close()
+
+    html = """
+<h2>Cadastro de Nota</h2>
+
+<a href="/notas">⬅ Voltar</a><br><br>
+
+<form method="post">
+
+<input type="hidden" name="id" value="{{nota.id if nota else ''}}">
+
+Tipo:
+<select name="tipo">
+<option></option>
+<option {{'selected' if nota and nota.tipo=='Preventiva'}}>Preventiva</option>
+<option {{'selected' if nota and nota.tipo=='OS'}}>OS</option>
+<option {{'selected' if nota and nota.tipo=='Acompanhamento'}}>Acompanhamento</option>
+<option {{'selected' if nota and nota.tipo=='Avaliação'}}>Avaliação</option>
+</select><br>
+
+OS <input name="os_id" value="{{nota.os_id if nota else ''}}"><br>
+
+Assunto <input name="assunto" value="{{nota.assunto if nota else ''}}"><br>
+
+Ofício <input name="num_oficio" value="{{nota.num_oficio if nota else ''}}"><br>
+
+Monitoramento
+<select name="monitoramento">
+<option value="NAO" {{'selected' if nota and not nota.monitoramento}}>Não</option>
+<option value="SIM" {{'selected' if nota and nota.monitoramento}}>Sim</option>
+</select>
+
+Resposta
+<select name="resposta">
+<option value="NAO" {{'selected' if nota and not nota.resposta}}>Não</option>
+<option value="SIM" {{'selected' if nota and nota.resposta}}>Sim</option>
+</select>
+
+Prazo <input type="date" name="prazo_final" value="{{nota.prazo_final if nota else ''}}"><br>
+
+Observações
+<textarea name="observacoes">{{nota.observacoes if nota else ''}}</textarea><br>
+
+Expedido:
+<select name="expedido_por[]" multiple>
+{% for c in cols %}
+<option value="{{c.id}}"
+{% if nota and nota.expedido_por and c.id in nota.expedido_por %}selected{% endif %}
+>{{c.nome}}</option>
+{% endfor %}
+</select>
+
+Órgãos:
+<select name="orgaos[]" multiple>
+<option>CGM</option>
+<option>SMF</option>
+<option>SMS</option>
+<option>SEINFRA</option>
+<option>DMAE</option>
+</select>
+
+<br><br>
+<button type="submit">Salvar</button>
+
+</form>
+"""
+
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        nota=nota,
+        cols=cols,
+        user=session["user"],
+        perfil=session["perfil"]
+    )
+
+@app.route("/notas")
+def notas_listagem():
+    if "user" not in session:
+        return redirect("/")
+
+    con = get_db()
+    cur = con.cursor()
+
     cur.execute("""
         SELECT *,
         array_to_string(orgaos, ', ') as orgaos_txt
@@ -10389,9 +10470,8 @@ def notas():
     notas = cur.fetchall()
 
     # colaboradores
-    cur.execute("SELECT id,nome FROM colaboradores ORDER BY nome")
+    cur.execute("SELECT id,nome FROM colaboradores")
     cols = cur.fetchall()
-
     mapa = {str(c["id"]): c["nome"] for c in cols}
 
     for n in notas:
@@ -10402,23 +10482,21 @@ def notas():
 
     con.close()
 
-    # =========================
-    # HTML
-    # =========================
     html = """
 <h2>Notas de Auditoria</h2>
 
-<button onclick="nova()">+ Nova</button>
+<a href="/notas/nova">➕ Nova Nota</a>
 
-<table border="1" width="100%">
+<table border="1" width="100%" style="margin-top:10px;">
 <tr>
 <th>Nº</th><th>Tipo</th><th>OS</th><th>Assunto</th>
 <th>Ofício</th><th>Órgãos</th><th>Expedido</th>
-<th>Monitoramento</th><th>Resposta</th><th>Prazo</th><th>Obs</th><th>Ações</th>
+<th>Monitoramento</th><th>Resposta</th>
+<th>Prazo</th><th>Observações</th><th>Ações</th>
 </tr>
 
 {% for n in notas %}
-<tr onclick="editar({{n.id}})">
+<tr>
 <td>{{n.numero_na}}</td>
 <td>{{n.tipo}}</td>
 <td>{{n.os_id}}</td>
@@ -10431,144 +10509,27 @@ def notas():
 <td>{{n.prazo_final or ''}}</td>
 <td>{{n.observacoes}}</td>
 <td>
-<button onclick="event.stopPropagation(); excluir({{n.id}})">🗑</button>
+<a href="/notas/nova?id={{n.id}}">✏️</a>
+<button onclick="excluir({{n.id}})">🗑</button>
 </td>
 </tr>
 {% endfor %}
 </table>
 
-<hr>
-
-<input type="hidden" id="id">
-
-Nº <input id="numero_na"><br>
-
-Tipo
-<select id="tipo">
-<option></option>
-<option>Preventiva</option>
-<option>OS</option>
-<option>Acompanhamento</option>
-<option>Avaliação</option>
-</select><br>
-
-OS <input id="os_id"><br>
-Assunto <input id="assunto"><br>
-Ofício <input id="num_oficio"><br>
-
-Monitoramento
-<select id="monitoramento">
-<option value="NAO">Não</option>
-<option value="SIM">Sim</option>
-</select>
-
-Resposta
-<select id="resposta">
-<option value="NAO">Não</option>
-<option value="SIM">Sim</option>
-</select>
-
-Prazo <input type="date" id="prazo"><br>
-
-Obs <textarea id="obs"></textarea><br>
-
-Expedido:
-<select id="expedido" multiple>
-{% for c in cols %}
-<option value="{{c.id}}">{{c.nome}}</option>
-{% endfor %}
-</select>
-
-Órgãos:
-<select id="orgaos" multiple>
-<option>CGM</option><option>SMF</option><option>SMS</option>
-<option>SEINFRA</option><option>DMAE</option>
-</select>
-
-<br><br>
-<button onclick="salvar()">Salvar</button>
-
 <script>
-
-function nova(){
-    document.getElementById("id").value=""
-    document.getElementById("numero_na").value=""
-    document.querySelectorAll("input,textarea").forEach(i=>i.value="")
-}
-
-function editar(id){
-    fetch("/nota/"+id)
-    .then(r=>r.json())
-    .then(n=>{
-        nova()
-        idField.value=n.id
-        numero_na.value=n.numero_na
-        tipo.value=n.tipo
-        os_id.value=n.os_id||""
-        assunto.value=n.assunto
-        num_oficio.value=n.num_oficio
-        monitoramento.value=n.monitoramento?"SIM":"NAO"
-        resposta.value=n.resposta?"SIM":"NAO"
-        prazo.value=n.prazo_final||""
-        obs.value=n.observacoes||""
-
-        if(n.expedido_por){
-            n.expedido_por.forEach(v=>{
-                let opt=document.querySelector(`#expedido option[value="${v}"]`)
-                if(opt) opt.selected=true
-            })
-        }
-
-        if(n.orgaos){
-            n.orgaos.forEach(v=>{
-                let opt=document.querySelector(`#orgaos option[value="${v}"]`)
-                if(opt) opt.selected=true
-            })
-        }
-    })
-}
-
-function salvar(){
-    let fd=new FormData()
-
-    fd.append("id",document.getElementById("id").value)
-    fd.append("numero_na",numero_na.value)
-    fd.append("tipo",tipo.value)
-    fd.append("os_id",os_id.value)
-    fd.append("assunto",assunto.value)
-    fd.append("num_oficio",num_oficio.value)
-    fd.append("monitoramento",monitoramento.value)
-    fd.append("resposta",resposta.value)
-    fd.append("prazo_final",prazo.value)
-    fd.append("observacoes",obs.value)
-
-    document.querySelectorAll("#expedido option:checked")
-    .forEach(o=>fd.append("expedido_por[]",o.value))
-
-    document.querySelectorAll("#orgaos option:checked")
-    .forEach(o=>fd.append("orgaos[]",o.value))
-
-    fetch("/notas",{method:"POST",body:fd})
-    .then(r=>r.text())
-    .then(()=>location.reload())
-}
-
 function excluir(id){
-    if(!confirm("Excluir?"))return
+    if(!confirm("Excluir?")) return
     fetch("/nota/delete/"+id).then(()=>location.reload())
 }
-
 </script>
 """
 
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
         notas=notas,
-        cols=cols,
         user=session["user"],
         perfil=session["perfil"]
     )
-
 
 @app.route("/nota/<int:id>")
 def get_nota(id):
@@ -10578,7 +10539,6 @@ def get_nota(id):
     n=cur.fetchone()
     con.close()
     return jsonify(n)
-
 
 @app.route("/nota/delete/<int:id>")
 def delete_nota(id):

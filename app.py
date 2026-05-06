@@ -10538,7 +10538,7 @@ th {
 }
 
 .assunto {
-    max-width:200px;
+    max-width:250px;
     white-space: normal;
 }
 
@@ -10551,7 +10551,7 @@ th {
 }
 
 .obs {
-    max-width:220px;
+    max-width:280px;
 }
 
 .btn {
@@ -10576,7 +10576,17 @@ th {
 
 <a href="/notas/nova" class="btn">➕ Nova Nota</a>
 
-<table style="margin-top:10px;">
+<div style="margin:10px 0;">
+    <input 
+        type="text" 
+        id="busca" 
+        placeholder="🔎 Pesquisar por nº, assunto, órgão, expedido, OS..." 
+        style="width:350px;padding:6px;border-radius:6px;border:1px solid #ccc;"
+        onkeyup="filtrarTabela()"
+    >
+</div>
+
+<table id="tabelaNotas" style="margin-top:10px;">
 <tr>
 <th>Nº</th>
 <th class="expedido">Expedido</th>
@@ -10617,6 +10627,23 @@ th {
 function excluir(id){
     if(!confirm("Excluir?")) return
     fetch("/nota/delete/"+id).then(()=>location.reload())
+}
+
+function filtrarTabela(){
+    let input = document.getElementById("busca").value.toLowerCase()
+    let linhas = document.querySelectorAll("#tabelaNotas tr")
+
+    linhas.forEach((tr, index) => {
+        if(index === 0) return // pula header
+
+        let texto = tr.innerText.toLowerCase()
+
+        if(texto.includes(input)){
+            tr.style.display = ""
+        } else {
+            tr.style.display = "none"
+        }
+    })
 }
 </script>
 """

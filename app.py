@@ -5433,6 +5433,25 @@ def admin_projetos():
         for row in cur.fetchall()
     }
 
+    # =============================
+    # 5) LISTAR OS
+    # =============================
+    cur.execute("SELECT * FROM os ORDER BY codigo")
+    os_rows = cur.fetchall()
+
+    # =============================
+    # MAPA DE OS POR ITEM_PAINT
+    # =============================
+    os_por_item = {}
+    
+    for osr in os_rows:
+        item = osr["item_paint"]
+    
+        if item not in os_por_item:
+            os_por_item[item] = []
+    
+        os_por_item[item].append(osr["codigo"])
+
     paint_data = []
 
     for r in paint_rows:
@@ -5461,26 +5480,6 @@ def admin_projetos():
         "hh_exec": soma,
         "percentual": percentual_fmt
         })
-
-
-    # =============================
-    # 5) LISTAR OS
-    # =============================
-    cur.execute("SELECT * FROM os ORDER BY codigo")
-    os_rows = cur.fetchall()
-
-    # =============================
-    # MAPA DE OS POR ITEM_PAINT
-    # =============================
-    os_por_item = {}
-    
-    for osr in os_rows:
-        item = osr["item_paint"]
-    
-        if item not in os_por_item:
-            os_por_item[item] = []
-    
-        os_por_item[item].append(osr["codigo"])
     
     os_data = []
     for r in os_rows:

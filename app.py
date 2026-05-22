@@ -5455,7 +5455,15 @@ def admin_projetos():
         if item not in os_por_item:
             os_por_item[item] = []
     
-        os_por_item[item].append(osr["codigo"])
+        codigo = osr["codigo"] or ""
+        unidade = osr["unidade"] or ""
+    
+        texto = codigo
+    
+        if unidade:
+            texto += f" | {unidade}"
+    
+        os_por_item[item].append(texto)
 
     paint_data = []
 

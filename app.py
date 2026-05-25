@@ -5491,7 +5491,8 @@ def admin_projetos():
         "dt_fim": fmt(r["dt_fim"]),
         "hh_atual": r["hh_atual"],
         "hh_exec": soma,
-        "percentual": percentual_fmt
+        "percentual": percentual_fmt,
+        "obs": r["obs"]
         })
     
     os_data = []
@@ -5627,7 +5628,7 @@ def admin_projetos():
             <th>Item</th>
             <th>O.S</th>
             <th>Tipo</th><th>Objeto</th><th>Objetivo Geral</th>
-            <th>Início</th><th>Fim</th><th>HH Atual</th><th>HH Executada</th><th>% Executado</th>
+            <th>Início</th><th>Fim</th><th>HH Atual</th><th>HH Executada</th><th>% Executado</th><th>Obs</th>
         </tr>
     """
     for r in paint_data:
@@ -5638,7 +5639,7 @@ def admin_projetos():
             <td>{r['os_list']}</td>
             <td>{r['tipo_atividade']}</td>
             <td>{r['objeto']}</td><td>{r['objetivo_geral']}</td><td>{r['dt_ini']}</td><td>{r['dt_fim']}</td>
-            <td>{r['hh_atual']}</td><td>{r['hh_exec']}</td><td>{r['percentual']}</td>
+            <td>{r['hh_atual']}</td><td>{r['hh_exec']}</td><td>{r['percentual']}</td><td>{r['obs']}</td>
         </tr>
         """
     html += "</table>"

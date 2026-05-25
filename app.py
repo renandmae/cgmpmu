@@ -3660,7 +3660,7 @@ def os_edit(id):
 
         try:
             # ---- atualiza OS ----
-               cur.execute("""
+            cur.execute("""
                 UPDATE os SET 
                     codigo=%s, item_paint=%s, resumo=%s, unidade=%s, supervisao=%s, 
                     coordenacao=%s, equipe=%s, observacao=%s, status=%s, 

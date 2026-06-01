@@ -7712,6 +7712,7 @@ def importar_requisicoes_background(arquivo_bytes, data_corte):
                     data_liquidacao,
                     empenho,
                     ficha_despesa,
+                    data_corte
                 FROM requisicoes_staging
                 WHERE chave IS NOT NULL
                 ORDER BY

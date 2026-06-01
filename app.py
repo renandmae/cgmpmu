@@ -7674,6 +7674,19 @@ def importar_requisicoes_background(arquivo_bytes, data_corte):
         buffer.close()
 
         cur.execute("""
+            UPDATE requisicoes r
+            SET data_corte = s.data_corte
+            FROM (
+                SELECT chave, MAX(data_corte) AS data_corte
+                FROM requisicoes_staging
+                GROUP BY chave
+            ) s
+            WHERE r.chave = s.chave
+              AND r.servidor_id IS NULL
+              AND s.data_corte > r.data_corte;
+        """)
+        
+        cur.execute("""
             INSERT INTO requisicoes (
                 chave, requisicao_num, sigla,
                 secretaria, tipo_documento, valor_requisicao,

@@ -7724,6 +7724,8 @@ def importar_requisicoes_background(arquivo_bytes, data_corte):
                         THEN requisicoes.data_corte
                     ELSE GREATEST(requisicoes.data_corte, EXCLUDED.data_corte)
                 END
+            -- 👇 NOVA REGRA
+            WHERE requisicoes.servidor_id IS NULL;
         """)
 
         progresso_import["inseridos"] = cur.rowcount

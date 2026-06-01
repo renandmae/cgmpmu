@@ -7691,7 +7691,33 @@ def importar_requisicoes_background(arquivo_bytes, data_corte):
                 nome_fornecedor, edital, contrato,
                 data_medicao, data_liquidacao, empenho,
                 ficha_despesa, data_corte
-            FROM requisicoes_staging
+            FROM (
+                SELECT DISTINCT ON (chave)
+                    chave,
+                    requisicao_num,
+                    sigla,
+                    secretaria,
+                    tipo_documento,
+                    valor_requisicao,
+                    nome_solicitante,
+                    data_criacao,
+                    status_atual,
+                    data_tramitacao,
+                    natureza_despesa,
+                    item_despesa,
+                    nome_fornecedor,
+                    edital,
+                    contrato,
+                    data_medicao,
+                    data_liquidacao,
+                    empenho,
+                    ficha_despesa,
+                FROM requisicoes_staging
+                WHERE chave IS NOT NULL
+                ORDER BY
+                    chave,
+                    data_tramitacao DESC NULLS LAST
+            ) s
             ON CONFLICT (chave) DO UPDATE
             SET
                 -- 💰 VALOR (baseado em data_corte agora)

@@ -9352,8 +9352,8 @@ def dashboard():
     cards_notas = cur.fetchone()
 
     perc_beneficio = (
-    (cards_notas["beneficio"] / cards_notas["base_total"]) * 100
-    if cards_notas["base_total"] else 0
+    (cards_notas["beneficio"] / cards["valor_analisado"]) * 100
+    if cards["valor_analisado"] else 0
 )
 
     # 10 – Gráfico Notas por Sigla

@@ -5393,25 +5393,51 @@ def admin_projetos():
         else:
             return "<span style='color:red; font-weight:bold;'>✖</span>"
 
-    def pct(v):
-        try:
-            v = int(v or 0)
-        except:
-            v = 0
-    
-        if v == 100:
-            return """
-            <span style="
-                color:#15803d;
-                background:#dcfce7;
-                padding:3px 8px;
-                border-radius:8px;
-                font-weight:bold;
-            ">
-                🏁 100%
-            </span>
-            """
-    
+def pct(v):
+    try:
+        v = int(v or 0)
+    except:
+        v = 0
+
+    if v == 100:
+        return """
+        <span style="
+            color:#15803d;
+            background:#dcfce7;
+            padding:3px 8px;
+            border-radius:8px;
+            font-weight:bold;
+        ">
+            🏁 100%
+        </span>
+        """
+
+    elif v >= 50:
+        return f"""
+        <span style="
+            color:#a16207;
+            background:#fef3c7;
+            padding:3px 8px;
+            border-radius:8px;
+            font-weight:bold;
+        ">
+            {v}%
+        </span>
+        """
+
+    else:
+        return f"""
+        <span style="
+            color:#b91c1c;
+            background:#fee2e2;
+            padding:3px 8px;
+            border-radius:8px;
+            font-weight:bold;
+        ">
+            {v}%
+        </span>
+        """
+        
         return f"{v}%"
 
     conn = get_db()
@@ -5611,7 +5637,7 @@ def admin_projetos():
         
 .dashboard-card{
     position:relative;
-    padding:20px;
+    padding:14px 18px;
     border-radius:16px;
     text-align:center;
     flex:1;
@@ -5640,8 +5666,8 @@ def admin_projetos():
 }
 
 .card-icon{
-    font-size:34px;
-    margin-bottom:8px;
+    font-size:28px;
+    margin-bottom:4px;
 }
 
 .card-title{
@@ -5649,11 +5675,11 @@ def admin_projetos():
     font-weight:600;
     text-transform:uppercase;
     letter-spacing:.5px;
-    margin-bottom:8px;
+    margin-bottom:4px;
 }
 
 .card-value{
-    font-size:32px;
+    font-size:28px;
     font-weight:700;
 }
 

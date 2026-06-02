@@ -5424,21 +5424,19 @@ def admin_projetos():
                 {v}%
             </span>
             """
-
-    else:
-        return f"""
-        <span style="
-            color:#b91c1c;
-            background:#fee2e2;
-            padding:3px 8px;
-            border-radius:8px;
-            font-weight:bold;
-        ">
-            {v}%
-        </span>
-        """
-        
-        return f"{v}%"
+    
+        else:
+            return f"""
+            <span style="
+                color:#b91c1c;
+                background:#fee2e2;
+                padding:3px 8px;
+                border-radius:8px;
+                font-weight:bold;
+            ">
+                {v}%
+            </span>
+            """
 
     conn = get_db()
     cur = conn.cursor()

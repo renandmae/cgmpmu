@@ -5394,25 +5394,25 @@ def admin_projetos():
             return "<span style='color:red; font-weight:bold;'>✖</span>"
 
     def pct(v):
-    try:
-        v = int(v or 0)
-    except:
-        v = 0
-
-    if v == 100:
-        return """
-        <span style="
-            color:#15803d;
-            background:#dcfce7;
-            padding:3px 8px;
-            border-radius:8px;
-            font-weight:bold;
-        ">
-            🏁 100%
-        </span>
-        """
-
-    return f"{v}%"
+        try:
+            v = int(v or 0)
+        except:
+            v = 0
+    
+        if v == 100:
+            return """
+            <span style="
+                color:#15803d;
+                background:#dcfce7;
+                padding:3px 8px;
+                border-radius:8px;
+                font-weight:bold;
+            ">
+                🏁 100%
+            </span>
+            """
+    
+        return f"{v}%"
 
     conn = get_db()
     cur = conn.cursor()

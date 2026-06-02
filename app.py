@@ -5393,37 +5393,37 @@ def admin_projetos():
         else:
             return "<span style='color:red; font-weight:bold;'>✖</span>"
 
-def pct(v):
-    try:
-        v = int(v or 0)
-    except:
-        v = 0
-
-    if v == 100:
-        return """
-        <span style="
-            color:#15803d;
-            background:#dcfce7;
-            padding:3px 8px;
-            border-radius:8px;
-            font-weight:bold;
-        ">
-            🏁 100%
-        </span>
-        """
-
-    elif v >= 50:
-        return f"""
-        <span style="
-            color:#a16207;
-            background:#fef3c7;
-            padding:3px 8px;
-            border-radius:8px;
-            font-weight:bold;
-        ">
-            {v}%
-        </span>
-        """
+    def pct(v):
+        try:
+            v = int(v or 0)
+        except:
+            v = 0
+    
+        if v == 100:
+            return """
+            <span style="
+                color:#15803d;
+                background:#dcfce7;
+                padding:3px 8px;
+                border-radius:8px;
+                font-weight:bold;
+            ">
+                🏁 100%
+            </span>
+            """
+    
+        elif v >= 50:
+            return f"""
+            <span style="
+                color:#a16207;
+                background:#fef3c7;
+                padding:3px 8px;
+                border-radius:8px;
+                font-weight:bold;
+            ">
+                {v}%
+            </span>
+            """
 
     else:
         return f"""

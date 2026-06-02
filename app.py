@@ -5716,7 +5716,7 @@ def admin_projetos():
     circumference = 2 * math.pi * 30
     dash = (percent / 100.0) * circumference
 
-   html += f"""
+    html += f"""
     <div style="display:flex; gap:20px; margin-bottom:25px; align-items:stretch; flex-wrap:wrap;">
     
         <div class="dashboard-card paint-card">

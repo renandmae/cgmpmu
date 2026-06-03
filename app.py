@@ -10221,7 +10221,7 @@ def notas_auditoria():
 
 .audit-table{
     width:100%;
-    min-width:2200px;
+    table-layout:auto;
     border-collapse:separate;
     border-spacing:0;
     background:#fff;

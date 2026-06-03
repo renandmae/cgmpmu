@@ -10206,6 +10206,93 @@ def notas_auditoria():
 
     con.close()
 
+    <style>
+
+.table-wrap{
+    overflow-x:auto;
+    border-radius:14px;
+}
+
+.audit-table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    background:white;
+    border-radius:14px;
+    overflow:hidden;
+    box-shadow:0 4px 16px rgba(0,0,0,.08);
+}
+
+.audit-table th{
+    background:linear-gradient(
+        90deg,
+        #2563eb,
+        #3b82f6
+    );
+    color:white;
+    padding:12px;
+    text-align:left;
+    font-weight:600;
+}
+
+.audit-table td{
+    padding:10px;
+    border-bottom:1px solid #e5e7eb;
+    vertical-align:top;
+}
+
+.audit-table tr:hover{
+    background:#eff6ff;
+}
+
+.audit-input{
+    width:100%;
+    min-width:120px;
+    padding:8px 10px;
+    border:1px solid #d1d5db;
+    border-radius:8px;
+}
+
+.audit-textarea{
+    width:100%;
+    min-width:250px;
+    min-height:70px;
+    resize:vertical;
+    padding:8px 10px;
+    border:1px solid #d1d5db;
+    border-radius:8px;
+}
+
+.audit-select{
+    padding:8px;
+    border-radius:8px;
+    border:1px solid #d1d5db;
+}
+
+.btn-save{
+    background:#16a34a;
+    color:white;
+    border:none;
+    border-radius:8px;
+    padding:8px 14px;
+    cursor:pointer;
+    font-weight:600;
+}
+
+.btn-save:hover{
+    background:#15803d;
+}
+
+.badge-monitorada{
+    background:#dcfce7;
+    color:#166534;
+    padding:4px 10px;
+    border-radius:999px;
+    font-weight:600;
+}
+
+</style>
+
     # =========================
     # HTML
     # =========================
@@ -10271,8 +10358,10 @@ def notas_auditoria():
         <td>{{fmt_br(n.valor_nota)}}</td>
 
         <td>
-        <input name="valor_posterior"
-        value="{{fmt_br(n.valor_posterior) if n.valor_posterior else ''}}">
+        <input
+            class="audit-input"
+            name="valor_posterior"
+            value="{{fmt_br(n.valor_posterior) if n.valor_posterior else ''}}">
         </td>
         <td>
             {% if n.diferenca is not none %}
@@ -10290,8 +10379,10 @@ def notas_auditoria():
         </td>
 
         <td>
-        <input name="observacoes"
-        value="{{n.observacoes or ''}}">
+        <textarea
+            name="observacoes"
+            class="audit-textarea"
+        >{{n.observacoes or ''}}</textarea>
         </td>
 
         <td>
@@ -10300,8 +10391,10 @@ def notas_auditoria():
         </a>
         </td>
 
-        <td>
-        <button>Salvar</button>
+        <td style="text-align:center;">
+            <button class="btn-save">
+                💾 Salvar
+            </button>
         </td>
 
     </tr>

@@ -10210,21 +10210,24 @@ def notas_auditoria():
     # HTML
     # =========================
     html = """
-    <style>
-    
+<style>
+
 .table-wrap{
+    width:100%;
     overflow-x:auto;
-    border-radius:14px;
+    margin-top:10px;
+    border-radius:16px;
 }
 
 .audit-table{
     width:100%;
+    min-width:2200px;
     border-collapse:separate;
     border-spacing:0;
-    background:white;
-    border-radius:14px;
+    background:#fff;
+    border-radius:16px;
     overflow:hidden;
-    box-shadow:0 4px 16px rgba(0,0,0,.08);
+    box-shadow:0 6px 18px rgba(0,0,0,.08);
 }
 
 .audit-table th{
@@ -10237,74 +10240,152 @@ def notas_auditoria():
     padding:12px;
     text-align:left;
     font-weight:600;
+    font-size:14px;
+    white-space:nowrap;
+    position:sticky;
+    top:0;
+    z-index:1;
 }
 
 .audit-table td{
     padding:10px;
     border-bottom:1px solid #e5e7eb;
     vertical-align:top;
+    background:white;
 }
 
-.audit-table tr:hover{
+.audit-table tr:nth-child(even) td{
+    background:#fafafa;
+}
+
+.audit-table tr:hover td{
     background:#eff6ff;
 }
 
 .audit-input{
     width:100%;
-    min-width:120px;
-    padding:8px 10px;
+    min-width:140px;
+    padding:9px 12px;
     border:1px solid #d1d5db;
     border-radius:8px;
+    box-sizing:border-box;
+    transition:.2s;
+}
+
+.audit-select{
+    width:100%;
+    min-width:140px;
+    padding:9px 12px;
+    border:1px solid #d1d5db;
+    border-radius:8px;
+    background:white;
+    box-sizing:border-box;
+    transition:.2s;
 }
 
 .audit-textarea{
     width:100%;
-    min-width:250px;
-    min-height:70px;
+    min-width:500px;
+    min-height:90px;
     resize:vertical;
-    padding:8px 10px;
+    padding:10px 12px;
     border:1px solid #d1d5db;
     border-radius:8px;
+    box-sizing:border-box;
+    font-family:inherit;
+    transition:.2s;
 }
 
-.audit-select{
-    padding:8px;
-    border-radius:8px;
-    border:1px solid #d1d5db;
+.audit-input:focus,
+.audit-select:focus,
+.audit-textarea:focus{
+    outline:none;
+    border-color:#3b82f6;
+    box-shadow:0 0 0 3px rgba(59,130,246,.15);
 }
 
 .btn-save{
-    background:#16a34a;
+    background:linear-gradient(
+        135deg,
+        #16a34a,
+        #22c55e
+    );
     color:white;
     border:none;
-    border-radius:8px;
-    padding:8px 14px;
+    border-radius:10px;
+    padding:10px 16px;
     cursor:pointer;
     font-weight:600;
+    transition:.2s;
+    box-shadow:0 2px 8px rgba(0,0,0,.12);
 }
 
 .btn-save:hover{
-    background:#15803d;
+    transform:translateY(-1px);
+    box-shadow:0 6px 16px rgba(0,0,0,.15);
 }
 
 .badge-monitorada{
     background:#dcfce7;
     color:#166534;
-    padding:4px 10px;
+    padding:5px 12px;
     border-radius:999px;
     font-weight:600;
 }
-    </style>
+
+.busca-auditoria{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    flex-wrap:wrap;
+    margin-bottom:15px;
+}
+
+.busca-auditoria input{
+    width:350px;
+    max-width:100%;
+    padding:10px 14px;
+    border:1px solid #d1d5db;
+    border-radius:10px;
+}
+
+.busca-auditoria select{
+    padding:10px;
+    border:1px solid #d1d5db;
+    border-radius:10px;
+}
+
+.btn-exportar{
+    display:inline-block;
+    margin-bottom:15px;
+    padding:10px 16px;
+    border-radius:10px;
+    text-decoration:none;
+    font-weight:600;
+    color:white;
+    background:linear-gradient(
+        135deg,
+        #059669,
+        #10b981
+    );
+    box-shadow:0 4px 12px rgba(0,0,0,.10);
+}
+
+.btn-exportar:hover{
+    opacity:.92;
+}
+
+</style>
 
     <h2>Notas de Auditoria</h2>
 
-    <a href="/exportar-notas-auditoria" class="btn btn-success">
+    <a href="/exportar-notas-auditoria" class="btn-exportar">
     Exportar Notas Auditoria
     </a>
 
     <br><br>
 
-    <form method="get">
+    <form method="get" class="busca-auditoria">
         <input type="text" name="busca"
         placeholder="Buscar por nota ou colaborador"
         value="{{request.args.get('busca','')}}">
@@ -10323,7 +10404,8 @@ def notas_auditoria():
 
     <br>
 
-    <table border="1" cellpadding="6">
+    <div class="table-wrap">
+    <table class="audit-table">
 
     <tr>
         <th>Nota</th>
@@ -10333,7 +10415,7 @@ def notas_auditoria():
         <th>Valor Posterior</th>
         <th>Diferença</th>
         <th>Status</th>
-        <th>Observações</th>
+        <th style="min-width:500px;">Observações</th>
         <th>Ação</th>
         <th>Salvar</th>
     </tr>
@@ -10367,7 +10449,7 @@ def notas_auditoria():
             {% endif %}
         </td>
         <td>
-        <select name="status">
+        <select name="status" class="audit-select">
             <option value=""></option>
             <option value="MONITORADA"
             {% if n.status=="MONITORADA" %}selected{% endif %}>
@@ -10376,7 +10458,7 @@ def notas_auditoria():
         </select>
         </td>
 
-        <td>
+        <td style="min-width:500px;">
         <textarea
             name="observacoes"
             class="audit-textarea"
@@ -10400,9 +10482,9 @@ def notas_auditoria():
     </form>
 
     {% endfor %}
-
+    
     </table>
-
+    </div>
     <div style="margin-top:10px;">
         {% if page > 1 %}
             <a href="?page={{page-1}}&per_page={{per_page}}&busca={{request.args.get('busca','')}}">Anterior</a>

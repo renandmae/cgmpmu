@@ -5885,7 +5885,7 @@ def admin_projetos():
         <tr>
             <th>Código</th><th>Item PAINT</th><th>Resumo</th><th>Unidade</th><th>Coordenação</th>
             <th>Equipe</th><th>Observação</th><th>Status</th><th>PLAN</th><th>EXEC</th>
-            <th>RP</th><th>RF</th><th>Início</th><th>Fim</th><th>Restante</th><th style="min-width:110px;">Conclusão</th>
+            <th>RP</th><th>RF</th><th>Início</th><th>Fim</th><th>Restante</th><th style="min-width:90px;">Conclusão</th>
         </tr>
     """
     for r in os_data:
@@ -5894,7 +5894,7 @@ def admin_projetos():
             <td>{r['codigo']}</td><td>{r['item_paint']}</td><td>{r['resumo']}</td><td>{r['unidade']}</td>
             <td>{r['coordenacao']}</td><td>{r['equipe']}</td><td>{r['observacao']}</td><td>{r['status']}</td>
             <td>{pct(r['plan0100'])}</td><td>{pct(r['exec0100'])}</td><td>{pct(r['rp0100'])}</td><td>{pct(r['rf0100'])}</td>
-            <td>{r['dt_inicio']}</td><td>{r['dt_fim']}</td><td>{r['restante']}</td><td style="min-width:110px;">{r['dt_conclusao']}</td>
+            <td>{r['dt_inicio']}</td><td>{r['dt_fim']}</td><td>{r['restante']}</td><td style="min-width:90px;">{r['dt_conclusao']}</td>
         </tr>
         """
     html += "</table>"

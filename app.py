@@ -10206,8 +10206,12 @@ def notas_auditoria():
 
     con.close()
 
+    # =========================
+    # HTML
+    # =========================
+    html = """
     <style>
-
+    
 .table-wrap{
     overflow-x:auto;
     border-radius:14px;
@@ -10290,13 +10294,7 @@ def notas_auditoria():
     border-radius:999px;
     font-weight:600;
 }
-
-</style>
-
-    # =========================
-    # HTML
-    # =========================
-    html = """
+    </style>
 
     <h2>Notas de Auditoria</h2>
 

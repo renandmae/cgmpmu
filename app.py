@@ -9763,27 +9763,25 @@ tfoot td { font-weight:bold; background:#eef2ff; }
 canvas { background:white; border-radius:12px;
          box-shadow:0 6px 14px rgba(0,0,0,.08); }
 .grid { display:grid; grid-template-columns:1fr 1fr; gap:25px; margin-top:25px; }
-.gauge{
+progress{
     width:100%;
-    height:12px;
-    background:rgba(255,255,255,.25);
-    border-radius:20px;
+    height:16px;
+    border:none;
+    border-radius:10px;
     overflow:hidden;
-    margin-top:12px;
 }
 
-.gauge-fill{
-    height:100%;
-    border-radius:20px;
-    transition:.5s;
+progress::-webkit-progress-bar{
+    background:#dbeafe;
+    border-radius:10px;
 }
 
-.gauge-ok{
-    background:#22c55e;
+progress.vermelho::-webkit-progress-value{
+    background:#dc2626;
 }
 
-.gauge-bad{
-    background:#ef4444;
+progress.verde::-webkit-progress-value{
+    background:#16a34a;
 }
 </style>
 </head>
@@ -9819,32 +9817,22 @@ canvas { background:white; border-radius:12px;
             R$ {{ fmt_br(cards.valor_universo) }}
         </div>
     </div>
-    
+
     <div class="card card-ciano">
-        <div class="icone">🎯</div>
-    
-        <h4>Meta Financeira</h4>
-    
+        <div class="icone">📊</div>
+        <h4>Valor Analisado</h4>
         <div class="valor">
-            {{ perc_beneficio|round(2) }}%
+            R$ {{ fmt_br(cards.valor_analisado) }}
         </div>
-    
         <div class="sub">
-            Meta mínima: 5%
-        </div>
-    
-        <div class="gauge">
-            <div
-                class="gauge-fill {% if perc_beneficio >= 5 %}gauge-ok{% else %}gauge-bad{% endif %}"
-                style="width: {{ [perc_beneficio,100]|min }}%;">
-            </div>
+            {{ total.perc_valor }}% do valor total
         </div>
     </div>
 
 </div>
 <div class="cards">
 
-    <div class="card card-laranja">
+    <div class="card card-roxo">
         <div class="icone">📝</div>
 
         <h4>Notas Emitidas</h4>
@@ -9899,22 +9887,21 @@ canvas { background:white; border-radius:12px;
 
         <h4>Meta Financeira</h4>
 
-        <div class="valor">
-            {{ perc_beneficio|round(2) }}%
-        </div>
+    <div class="valor"
+         style="color:{% if perc_beneficio >= 5 %}#dcfce7{% else %}#fecaca{% endif %};">
+        {{ perc_beneficio|round(2) }}%
+    </div>
 
         <div class="sub">
             Meta: 5%
         </div>
 
         <div style="margin-top:10px;">
-            <progress
-                value="{{ perc_beneficio }}"
-                max="5"
-                style="
-                    width:100%;
-                    height:16px;
-                ">
+    <progress
+        class="{{ 'verde' if perc_beneficio >= 5 else 'vermelho' }}"
+        value="{{ perc_beneficio }}"
+        max="5">
+    </progress>
             </progress>
         </div>
     </div>

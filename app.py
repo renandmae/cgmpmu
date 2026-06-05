@@ -9792,7 +9792,7 @@ progress.verde::-webkit-progress-value{
 
 <div class="cards">
 
-    <div class="card card-azul">
+    <div class="card card-verde">
         <div class="icone">🌎</div>
         <h4>Universo</h4>
         <div class="valor">{{ cards.qtd_universo }}</div>
@@ -9801,7 +9801,7 @@ progress.verde::-webkit-progress-value{
         </div>
     </div>
 
-    <div class="card card-verde">
+    <div class="card card-azul">
         <div class="icone">✅</div>
         <h4>Analisadas</h4>
         <div class="valor">{{ cards.qtd_analisadas }}</div>
@@ -9810,7 +9810,7 @@ progress.verde::-webkit-progress-value{
         </div>
     </div>
 
-    <div class="card card-roxo">
+    <div class="card card-verde">
         <div class="icone">💰</div>
         <h4>Valor Universo</h4>
         <div class="valor">
@@ -9818,7 +9818,7 @@ progress.verde::-webkit-progress-value{
         </div>
     </div>
 
-    <div class="card card-ciano">
+    <div class="card card-azul">
         <div class="icone">📊</div>
         <h4>Valor Analisado</h4>
         <div class="valor">
@@ -9832,7 +9832,7 @@ progress.verde::-webkit-progress-value{
 </div>
 <div class="cards">
 
-    <div class="card card-roxo">
+    <div class="card card-laranja">
         <div class="icone">📝</div>
 
         <h4>Notas Emitidas</h4>
@@ -9847,7 +9847,7 @@ progress.verde::-webkit-progress-value{
     </div>
 
 
-    <div class="card card-roxo">
+    <div class="card card-laranja">
         <div class="icone">📂</div>
 
         <h4>Requisições com Nota</h4>
@@ -9867,7 +9867,7 @@ progress.verde::-webkit-progress-value{
     </div>
 
 
-    <div class="card card-verde">
+    <div class="card card-ciano">
         <div class="icone">💵</div>
 
         <h4>Benefício Financeiro</h4>

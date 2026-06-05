@@ -10036,13 +10036,6 @@ if (pizzaData.length) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                title: {
-                    display: true,
-                    text: 'Distribuição por Critério Analisado',
-                    font: {
-                        size: 16,
-                        weight: 'bold'
-                    },
                 datalabels: {
                     color: '#fff',
                     font: { weight: 'bold' },
@@ -10077,10 +10070,6 @@ if (tipoData.length) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                 title: {
-                    display: true,
-                    text: 'Quantidade Analisado por Tipo',
-                    },
                 datalabels: {
                     color: '#fff',
                     font: { weight: 'bold' }
@@ -10113,10 +10102,6 @@ if (siglas.length && criterios.length) {
             }))
         },
         options: {
-                    title: {
-                    display: true,
-                    text: 'Quantidade Analisado por Secretaria e Critério',
-                    },
             responsive: true,
             maintainAspectRatio: false,
             scales: {
@@ -10142,10 +10127,6 @@ if (valorData.length) {
             }]
         },
         options: {
-                    title: {
-                    display: true,
-                    text: 'Valor Analisado por Critério',
-                    },
             responsive: true,
             maintainAspectRatio: false,
             indexAxis: 'y',
@@ -10182,10 +10163,6 @@ if (notasData.length) {
             ]
         },
         options: {
-                    title: {
-                    display: true,
-                    text: 'Quantidade de Notas e Requisições presente nas notas por Secretaria',
-                    },
             indexAxis: 'y',  // 👈 horizontal
             responsive: true,
             maintainAspectRatio: false,

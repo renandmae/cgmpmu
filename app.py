@@ -9763,6 +9763,28 @@ tfoot td { font-weight:bold; background:#eef2ff; }
 canvas { background:white; border-radius:12px;
          box-shadow:0 6px 14px rgba(0,0,0,.08); }
 .grid { display:grid; grid-template-columns:1fr 1fr; gap:25px; margin-top:25px; }
+.gauge{
+    width:100%;
+    height:12px;
+    background:rgba(255,255,255,.25);
+    border-radius:20px;
+    overflow:hidden;
+    margin-top:12px;
+}
+
+.gauge-fill{
+    height:100%;
+    border-radius:20px;
+    transition:.5s;
+}
+
+.gauge-ok{
+    background:#22c55e;
+}
+
+.gauge-bad{
+    background:#ef4444;
+}
 </style>
 </head>
 
@@ -9797,15 +9819,25 @@ canvas { background:white; border-radius:12px;
             R$ {{ fmt_br(cards.valor_universo) }}
         </div>
     </div>
-
+    
     <div class="card card-ciano">
-        <div class="icone">📊</div>
-        <h4>Valor Analisado</h4>
+        <div class="icone">🎯</div>
+    
+        <h4>Meta Financeira</h4>
+    
         <div class="valor">
-            R$ {{ fmt_br(cards.valor_analisado) }}
+            {{ perc_beneficio|round(2) }}%
         </div>
+    
         <div class="sub">
-            {{ total.perc_valor }}% do valor total
+            Meta mínima: 5%
+        </div>
+    
+        <div class="gauge">
+            <div
+                class="gauge-fill {% if perc_beneficio >= 5 %}gauge-ok{% else %}gauge-bad{% endif %}"
+                style="width: {{ [perc_beneficio,100]|min }}%;">
+            </div>
         </div>
     </div>
 
@@ -9862,7 +9894,7 @@ canvas { background:white; border-radius:12px;
     </div>
 
 
-    <div class="card card-vermelho">
+    <div class="card card-ciano">
         <div class="icone">🎯</div>
 
         <h4>Meta Financeira</h4>

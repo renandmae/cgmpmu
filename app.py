@@ -12498,44 +12498,49 @@ function filterTable(inputId,tableId){
             "{% block content %}{% endblock %}",
             html
         ),
-
+    
+        # usuário
         user=session["user"],
         perfil=session["perfil"],
-
+    
+        # visão geral
         total_paint=total_paint,
         total_os=total_os,
-
         total_hh=total_hh,
         total_exec_hhmm=total_exec_hhmm,
         percentual_global=percentual_global,
-
+    
+        # consultorias / atendimentos
         total_consultorias=total_consultorias,
         total_atendimentos=total_atendimentos,
-
         hhmm_consultorias=hhmm_consultorias,
         hhmm_atendimentos=hhmm_atendimentos,
-
+    
+        # pipeline OS
         os_plan=os_plan,
         os_exec=os_exec,
         os_rp=os_rp,
         os_rf=os_rf,
-
+    
+        # requisições
         cards_req=cards_req,
         cards_notas=cards_notas,
         card_req_nota=card_req_nota,
-
         perc_beneficio=perc_beneficio,
         perc_qtd_req_nota=perc_qtd_req_nota,
         perc_valor_req_nota=perc_valor_req_nota,
-
-        graf_horas_atividade=graf_horas_atividade,
-        graf_horas_projeto=graf_horas_projeto,
-        graf_secretarias=graf_secretarias,
-
-        pizza_criterio=pizza_criterio,
-        valor_criterio=valor_criterio,
-
+    
+        # gráficos
+        graf_horas_atividade=graf_horas_atividade or [],
+        graf_horas_projeto=graf_horas_projeto or [],
+        graf_secretarias=graf_secretarias or [],
+        pizza_criterio=pizza_criterio or [],
+        valor_criterio=valor_criterio or [],
+    
+        # tabelas
         projetos=projetos,
+    
+        # utilidades
         fmt_br=fmt_br
     )
 

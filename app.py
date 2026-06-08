@@ -11364,16 +11364,10 @@ def dashboard_gerencial():
         SELECT
             p.*,
     
-            COALESCE(
-                SUM(h.duracao_minutos),
-                0
-            ) AS minutos_exec,
+            COALESCE(h.minutos_exec,0) AS minutos_exec,
     
             ROUND(
-                COALESCE(
-                    SUM(h.duracao_minutos),
-                    0
-                ) / 60.0,
+                COALESCE(h.minutos_exec,0) / 60.0,
                 2
             ) AS hh_exec,
     
@@ -11381,10 +11375,7 @@ def dashboard_gerencial():
                 WHEN COALESCE(p.hh_atual,0) > 0
                 THEN ROUND(
                     (
-                        COALESCE(
-                            SUM(h.duracao_minutos),
-                            0
-                        ) / 60.0
+                        COALESCE(h.minutos_exec,0) / 60.0
                     ) / p.hh_atual * 100,
                     2
                 )
@@ -11393,16 +11384,26 @@ def dashboard_gerencial():
     
         FROM projeto_paint p
     
-        LEFT JOIN horas h
-            ON h.item_paint = p.item_paint
+        LEFT JOIN (
     
-        GROUP BY p.item_paint
+            SELECT
+                item_paint,
+                SUM(duracao_minutos) AS minutos_exec
+    
+            FROM horas
+    
+            WHERE item_paint IS NOT NULL
+    
+            GROUP BY item_paint
+    
+        ) h
+            ON h.item_paint = p.item_paint
     
         ORDER BY p.item_paint
     """)
     
     projetos = cur.fetchall()
-
+    
     # =====================================================
     # HORAS EXECUTADAS
     # =====================================================
@@ -11865,6 +11866,7 @@ def dashboard_gerencial():
         margin-bottom:25px;
         font-size:32px;
         font-weight:700;
+        color: white;
     }
     
     body{

@@ -12945,14 +12945,14 @@ def api_tabela(tabela):
         mimetype="application/json"
     )
 
-from flask import Response
-import csv
+from flask import send_file
+from openpyxl import Workbook
 import io
 import psycopg2.extras
 from psycopg2 import sql
 
-@app.route("/api/csv/<tabela>")
-def api_csv(tabela):
+@app.route("/api/excel/<tabela>")
+def api_excel(tabela):
 
     permitidas = {
         "atendimentos",
@@ -12981,28 +12981,26 @@ def api_csv(tabela):
     cur.close()
     conn.close()
 
-    output = io.StringIO()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = tabela
 
     if dados:
-        writer = csv.DictWriter(
-            output,
-            fieldnames=dados[0].keys(),
-            delimiter=";"
-        )
 
-        writer.writeheader()
-        writer.writerows(dados)
+        ws.append(list(dados[0].keys()))
 
-    csv_content = output.getvalue()
-    output.close()
+        for linha in dados:
+            ws.append(list(linha.values()))
 
-    return Response(
-        csv_content,
-        mimetype="text/csv",
-        headers={
-            "Content-Disposition":
-            f"attachment; filename={tabela}.csv"
-        }
+    arquivo = io.BytesIO()
+    wb.save(arquivo)
+    arquivo.seek(0)
+
+    return send_file(
+        arquivo,
+        as_attachment=True,
+        download_name=f"{tabela}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
 @app.route("/seed")

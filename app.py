@@ -12492,6 +12492,17 @@ document.getElementById("grafAtividade"),
                 }
             },
 
+            tooltip:{
+                callbacks:{
+                    label:function(context){
+    
+                        let valor = context.raw;
+    
+                        return minutosParaHHMM(valor);
+                    }
+                }
+            },
+
             datalabels:{
 
                 color:"#fff",
@@ -12601,6 +12612,14 @@ document.getElementById("grafSecretarias"),
 
         plugins:{
 
+            tooltip:{
+                callbacks:{
+                    label:function(context){
+                        return minutosParaHHMM(context.raw);
+                    }
+                }
+            },
+            
             datalabels:{
                 color:"#fff",
 

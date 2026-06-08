@@ -11320,6 +11320,901 @@ def delete_nota(id):
     con.close()
     return "OK"
 
+@app.route("/dashboard_gerencial")
+def dashboard_gerencial():
+
+    if "user" not in session:
+        return redirect("/")
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # =====================================================
+    # PROJETOS PAINT
+    # =====================================================
+
+    cur.execute("""
+        SELECT COUNT(*) AS total
+        FROM projeto_paint
+    """)
+    total_paint = cur.fetchone()["total"] or 0
+
+    cur.execute("""
+        SELECT SUM(COALESCE(hh_atual,0)) AS total_hh
+        FROM projeto_paint
+    """)
+    total_hh = cur.fetchone()["total_hh"] or 0
+
+    cur.execute("""
+        SELECT *
+        FROM projeto_paint
+        ORDER BY item_paint
+    """)
+    projetos = cur.fetchall()
+
+    # =====================================================
+    # HORAS EXECUTADAS
+    # =====================================================
+
+    cur.execute("""
+        SELECT SUM(COALESCE(duracao_minutos,0)) AS minutos
+        FROM horas
+    """)
+    total_exec_min = cur.fetchone()["minutos"] or 0
+
+    exec_hh = total_exec_min // 60
+    exec_mm = total_exec_min % 60
+
+    total_exec_hhmm = f"{int(exec_hh):02d}:{int(exec_mm):02d}"
+
+    total_hh_min = int(total_hh) * 60
+
+    percentual_global = (
+        (total_exec_min / total_hh_min) * 100
+        if total_hh_min > 0 else 0
+    )
+
+    # =====================================================
+    # HORAS POR PROJETO
+    # =====================================================
+
+    cur.execute("""
+        SELECT
+            item_paint,
+            SUM(duracao_minutos) AS minutos
+        FROM horas
+        WHERE item_paint IS NOT NULL
+        GROUP BY item_paint
+        ORDER BY minutos DESC
+    """)
+    graf_horas_projeto = cur.fetchall()
+
+    # =====================================================
+    # HORAS POR ATIVIDADE
+    # =====================================================
+
+    cur.execute("""
+        SELECT
+            atividade,
+            SUM(duracao_minutos) AS minutos
+        FROM horas
+        WHERE atividade IS NOT NULL
+        GROUP BY atividade
+        ORDER BY minutos DESC
+    """)
+    graf_horas_atividade = cur.fetchall()
+
+    # =====================================================
+    # TOTAL OS
+    # =====================================================
+
+    cur.execute("""
+        SELECT COUNT(*) AS total
+        FROM os
+    """)
+    total_os = cur.fetchone()["total"] or 0
+
+    # =====================================================
+    # PIPELINE OS
+    # =====================================================
+
+    cur.execute("""
+        SELECT COUNT(*) AS qtd
+        FROM os
+        WHERE COALESCE(plan0100,0)=100
+    """)
+    os_plan = cur.fetchone()["qtd"] or 0
+
+    cur.execute("""
+        SELECT COUNT(*) AS qtd
+        FROM os
+        WHERE COALESCE(exec0100,0)=100
+    """)
+    os_exec = cur.fetchone()["qtd"] or 0
+
+    cur.execute("""
+        SELECT COUNT(*) AS qtd
+        FROM os
+        WHERE COALESCE(rp0100,0)=100
+    """)
+    os_rp = cur.fetchone()["qtd"] or 0
+
+    cur.execute("""
+        SELECT COUNT(*) AS qtd
+        FROM os
+        WHERE COALESCE(rf0100,0)=100
+    """)
+    os_rf = cur.fetchone()["qtd"] or 0
+
+    # =====================================================
+    # CONSULTORIAS
+    # =====================================================
+
+    cur.execute("""
+        SELECT COUNT(*) AS total
+        FROM consultorias
+    """)
+    total_consultorias = cur.fetchone()["total"] or 0
+
+    cur.execute("""
+        SELECT
+            SUM(COALESCE(duracao_minutos,0)) AS minutos
+        FROM consultorias
+    """)
+    min_consultorias = cur.fetchone()["minutos"] or 0
+
+    hh_cons = min_consultorias // 60
+    mm_cons = min_consultorias % 60
+
+    hhmm_consultorias = f"{hh_cons:02d}:{mm_cons:02d}"
+
+    # =====================================================
+    # ATENDIMENTOS
+    # =====================================================
+
+    cur.execute("""
+        SELECT COUNT(*) AS total
+        FROM atendimentos
+    """)
+    total_atendimentos = cur.fetchone()["total"] or 0
+
+    cur.execute("""
+        SELECT
+            SUM(COALESCE(duracao_minutos,0)) AS minutos
+        FROM atendimentos
+    """)
+    min_atendimentos = cur.fetchone()["minutos"] or 0
+
+    hh_at = min_atendimentos // 60
+    mm_at = min_atendimentos % 60
+
+    hhmm_atendimentos = f"{hh_at:02d}:{mm_at:02d}"
+
+    # =====================================================
+    # SECRETARIAS ATENDIDAS
+    # =====================================================
+
+    cur.execute("""
+        WITH dados AS (
+
+            SELECT
+                trim(
+                    regexp_split_to_table(
+                        COALESCE(secretarias,''),
+                        ','
+                    )
+                ) AS secretaria
+            FROM consultorias
+
+            UNION ALL
+
+            SELECT
+                trim(
+                    regexp_split_to_table(
+                        COALESCE(entidades,''),
+                        ','
+                    )
+                ) AS secretaria
+            FROM atendimentos
+        )
+
+        SELECT
+            secretaria,
+            COUNT(*)::int AS qtd
+        FROM dados
+        WHERE secretaria IS NOT NULL
+          AND secretaria <> ''
+        GROUP BY secretaria
+        ORDER BY qtd DESC
+    """)
+    graf_secretarias = cur.fetchall()
+
+    # =====================================================
+    # REQUISIÇÕES - UNIVERSO
+    # =====================================================
+
+    cur.execute("""
+        WITH universo AS (
+            SELECT DISTINCT ON (chave)
+                chave,
+                valor_requisicao,
+                status_analise
+            FROM requisicoes
+            ORDER BY chave, created_at DESC
+        )
+        SELECT
+            COUNT(*) AS qtd_universo,
+            SUM(valor_requisicao) AS valor_universo,
+            COUNT(*) FILTER (
+                WHERE status_analise='ANALISADO'
+            ) AS qtd_analisadas,
+            SUM(valor_requisicao)
+            FILTER (
+                WHERE status_analise='ANALISADO'
+            ) AS valor_analisado
+        FROM universo
+    """)
+    cards_req = cur.fetchone()
+
+    # =====================================================
+    # NOTAS
+    # =====================================================
+
+    cur.execute("""
+        WITH notas AS (
+
+            SELECT
+                r.num_nota,
+                SUM(r.valor_requisicao) AS valor_nota
+            FROM requisicoes r
+            WHERE r.num_nota IS NOT NULL
+              AND r.num_nota <> ''
+            GROUP BY r.num_nota
+
+        ),
+
+        auditoria AS (
+
+            SELECT
+                n.num_nota,
+                n.valor_nota,
+                na.valor_posterior
+            FROM notas n
+            LEFT JOIN notas_auditoria na
+                ON na.num_nota = n.num_nota
+
+        )
+
+        SELECT
+
+            COUNT(*) AS qtd_notas,
+
+            SUM(valor_nota) AS valor_notas,
+
+            SUM(
+                CASE
+                    WHEN valor_posterior IS NOT NULL
+                     AND valor_nota > valor_posterior
+                    THEN valor_nota - valor_posterior
+                    ELSE 0
+                END
+            ) AS beneficio,
+
+            SUM(valor_nota) AS base_total
+
+        FROM auditoria
+    """)
+    cards_notas = cur.fetchone()
+
+    # =====================================================
+    # REQ COM NOTA
+    # =====================================================
+
+    cur.execute("""
+        SELECT
+
+            COUNT(*) FILTER (
+                WHERE num_nota IS NOT NULL
+                  AND num_nota <> ''
+            ) AS qtd_req_nota,
+
+            COUNT(*) FILTER (
+                WHERE status_analise='ANALISADO'
+            ) AS total_analisadas,
+
+            SUM(valor_requisicao)
+            FILTER (
+                WHERE num_nota IS NOT NULL
+                  AND num_nota <> ''
+            ) AS valor_req_nota,
+
+            SUM(valor_requisicao)
+            FILTER (
+                WHERE status_analise='ANALISADO'
+            ) AS valor_total_analisado
+
+        FROM requisicoes
+    """)
+    card_req_nota = cur.fetchone()
+
+    # =====================================================
+    # BENEFÍCIO %
+    # =====================================================
+
+    perc_beneficio = (
+        (
+            (cards_notas["beneficio"] or 0)
+            /
+            (cards_req["valor_analisado"] or 1)
+        ) * 100
+        if cards_req["valor_analisado"]
+        else 0
+    )
+
+    perc_qtd_req_nota = (
+        (
+            card_req_nota["qtd_req_nota"]
+            /
+            card_req_nota["total_analisadas"]
+        ) * 100
+        if card_req_nota["total_analisadas"]
+        else 0
+    )
+
+    perc_valor_req_nota = (
+        (
+            card_req_nota["valor_req_nota"]
+            /
+            card_req_nota["valor_total_analisado"]
+        ) * 100
+        if card_req_nota["valor_total_analisado"]
+        else 0
+    )
+
+    # =====================================================
+    # CRITÉRIOS
+    # =====================================================
+
+    cur.execute("""
+        WITH universo AS (
+            SELECT DISTINCT ON (chave)
+                chave,
+                criterio
+            FROM requisicoes
+            WHERE status_analise='ANALISADO'
+              AND criterio IS NOT NULL
+            ORDER BY chave, created_at DESC
+        )
+
+        SELECT
+            criterio,
+            COUNT(*)::int AS qtd
+        FROM universo
+        GROUP BY criterio
+        ORDER BY criterio
+    """)
+    pizza_criterio = cur.fetchall()
+
+    # =====================================================
+    # VALOR POR CRITÉRIO
+    # =====================================================
+
+    cur.execute("""
+        WITH universo AS (
+            SELECT DISTINCT ON (chave)
+                chave,
+                criterio,
+                valor_requisicao
+            FROM requisicoes
+            WHERE status_analise='ANALISADO'
+              AND criterio IS NOT NULL
+            ORDER BY chave, created_at DESC
+        )
+
+        SELECT
+            criterio,
+            SUM(valor_requisicao) AS valor
+        FROM universo
+        GROUP BY criterio
+        ORDER BY criterio
+    """)
+    valor_criterio = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    # =====================================================
+    # HTML VIRÁ NA PARTE 2
+    # =====================================================
+
+    html = """
+    <style>
+    
+    .dashboard{
+        padding:20px;
+        color:white;
+    }
+    
+    .dashboard h1{
+        margin-bottom:25px;
+        font-size:32px;
+        font-weight:700;
+    }
+    
+    body{
+        background:#08172b;
+    }
+    
+    .cards{
+        display:grid;
+        grid-template-columns:repeat(4,1fr);
+        gap:20px;
+        margin-bottom:25px;
+    }
+    
+    .cards-5{
+        display:grid;
+        grid-template-columns:repeat(5,1fr);
+        gap:20px;
+        margin-bottom:25px;
+    }
+    
+    .cards-3{
+        display:grid;
+        grid-template-columns:repeat(3,1fr);
+        gap:20px;
+        margin-bottom:25px;
+    }
+    
+    .card{
+        position:relative;
+        overflow:hidden;
+    
+        border-radius:18px;
+        padding:20px;
+    
+        color:white;
+    
+        box-shadow:
+            0 12px 30px rgba(0,0,0,.25);
+    
+        transition:.25s;
+    }
+    
+    .card:hover{
+        transform:translateY(-4px);
+    }
+    
+    .card h4{
+        margin:0;
+        font-size:14px;
+        opacity:.9;
+    }
+    
+    .card .valor{
+        margin-top:10px;
+        font-size:30px;
+        font-weight:700;
+    }
+    
+    .card .sub{
+        margin-top:8px;
+        font-size:13px;
+        opacity:.95;
+    }
+    
+    .card .icone{
+        position:absolute;
+        right:18px;
+        top:15px;
+        font-size:36px;
+        opacity:.25;
+    }
+    
+    .card-azul{
+        background:
+        linear-gradient(
+            135deg,
+            #2563eb,
+            #1d4ed8
+        );
+    }
+    
+    .card-verde{
+        background:
+        linear-gradient(
+            135deg,
+            #16a34a,
+            #15803d
+        );
+    }
+    
+    .card-roxo{
+        background:
+        linear-gradient(
+            135deg,
+            #7c3aed,
+            #6d28d9
+        );
+    }
+    
+    .card-laranja{
+        background:
+        linear-gradient(
+            135deg,
+            #ea580c,
+            #c2410c
+        );
+    }
+    
+    .card-ciano{
+        background:
+        linear-gradient(
+            135deg,
+            #0891b2,
+            #0e7490
+        );
+    }
+    
+    .chart-box{
+        background:#10233f;
+    
+        border-radius:18px;
+    
+        padding:20px;
+    
+        box-shadow:
+            0 10px 25px rgba(0,0,0,.25);
+    }
+    
+    .chart-title{
+        margin-bottom:10px;
+        font-size:18px;
+        font-weight:600;
+    }
+    
+    .grid-2{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:20px;
+        margin-bottom:25px;
+    }
+    
+    .pipeline{
+        display:grid;
+        grid-template-columns:repeat(5,1fr);
+        gap:20px;
+        margin-bottom:25px;
+    }
+    
+    .pipeline .card{
+        text-align:center;
+    }
+    
+    .progress-box{
+        background:#10233f;
+        border-radius:18px;
+        padding:20px;
+        margin-bottom:25px;
+    }
+    
+    .progress{
+        width:100%;
+        height:20px;
+        border-radius:10px;
+        overflow:hidden;
+        background:#1b3358;
+    }
+    
+    .progress-bar{
+        height:100%;
+        background:
+        linear-gradient(
+            90deg,
+            #16a34a,
+            #22c55e
+        );
+    }
+    
+    .section-title{
+        margin-top:35px;
+        margin-bottom:15px;
+        font-size:22px;
+        font-weight:700;
+    }
+    
+    canvas{
+        width:100% !important;
+        height:380px !important;
+    }
+    
+    @media(max-width:1200px){
+    
+        .cards,
+        .cards-5,
+        .cards-3,
+        .pipeline{
+            grid-template-columns:repeat(2,1fr);
+        }
+    
+        .grid-2{
+            grid-template-columns:1fr;
+        }
+    }
+    
+    </style>
+    
+    <div class="dashboard">
+    
+    <h1>📊 Dashboard Gerencial</h1>
+    
+    <div class="section-title">
+    Visão Geral
+    </div>
+    
+    <div class="cards">
+    
+        <div class="card card-azul">
+            <div class="icone">📁</div>
+            <h4>Projetos Paint</h4>
+            <div class="valor">{{ total_paint }}</div>
+        </div>
+    
+        <div class="card card-roxo">
+            <div class="icone">🗂️</div>
+            <h4>OS</h4>
+            <div class="valor">{{ total_os }}</div>
+        </div>
+    
+        <div class="card card-ciano">
+            <div class="icone">⏱️</div>
+            <h4>HH Planejadas</h4>
+            <div class="valor">{{ total_hh }}</div>
+        </div>
+    
+        <div class="card card-verde">
+            <div class="icone">🚀</div>
+            <h4>HH Executadas</h4>
+            <div class="valor">{{ total_exec_hhmm }}</div>
+        </div>
+    
+    </div>
+    
+    <div class="progress-box">
+    
+        <h3>Execução Global do Planejamento</h3>
+    
+        <div style="margin-bottom:10px;">
+            {{ percentual_global|round(2) }}%
+        </div>
+    
+        <div class="progress">
+            <div
+                class="progress-bar"
+                style="width:{{ percentual_global }}%">
+            </div>
+        </div>
+    
+    </div>
+    
+    <div class="section-title">
+    Pipeline das OS
+    </div>
+    
+    <div class="pipeline">
+    
+        <div class="card card-roxo">
+            <h4>Total OS</h4>
+            <div class="valor">{{ total_os }}</div>
+        </div>
+    
+        <div class="card card-ciano">
+            <h4>PLAN 100%</h4>
+            <div class="valor">{{ os_plan }}</div>
+        </div>
+    
+        <div class="card card-verde">
+            <h4>EXEC 100%</h4>
+            <div class="valor">{{ os_exec }}</div>
+        </div>
+    
+        <div class="card card-laranja">
+            <h4>RP 100%</h4>
+            <div class="valor">{{ os_rp }}</div>
+        </div>
+    
+        <div class="card card-azul">
+            <h4>RF 100%</h4>
+            <div class="valor">{{ os_rf }}</div>
+        </div>
+    
+    </div>
+    
+    <div class="section-title">
+    Consultorias e Atendimentos
+    </div>
+    
+    <div class="cards">
+    
+        <div class="card card-ciano">
+            <div class="icone">📞</div>
+            <h4>Consultorias</h4>
+            <div class="valor">
+                {{ total_consultorias }}
+            </div>
+            <div class="sub">
+                {{ hhmm_consultorias }} horas
+            </div>
+        </div>
+    
+        <div class="card card-verde">
+            <div class="icone">🤝</div>
+            <h4>Atendimentos</h4>
+            <div class="valor">
+                {{ total_atendimentos }}
+            </div>
+            <div class="sub">
+                {{ hhmm_atendimentos }} horas
+            </div>
+        </div>
+    
+    </div>
+    
+    <div class="section-title">
+    Requisições
+    </div>
+    
+    <div class="cards">
+    
+        <div class="card card-roxo">
+            <div class="icone">📝</div>
+            <h4>Notas Emitidas</h4>
+            <div class="valor">
+                {{ cards_notas.qtd_notas }}
+            </div>
+        </div>
+    
+        <div class="card card-ciano">
+            <div class="icone">📂</div>
+            <h4>Req. com Nota</h4>
+            <div class="valor">
+                {{ card_req_nota.qtd_req_nota }}
+            </div>
+            <div class="sub">
+                {{ perc_qtd_req_nota|round(2) }}%
+            </div>
+        </div>
+    
+        <div class="card card-verde">
+            <div class="icone">💰</div>
+            <h4>Benefício Financeiro</h4>
+    
+            <div class="valor">
+                R$ {{ fmt_br(cards_notas.beneficio) }}
+            </div>
+    
+            <div class="sub">
+                {{ perc_beneficio|round(2) }}%
+            </div>
+        </div>
+    
+        <div class="card card-laranja">
+    
+            <div class="icone">🎯</div>
+    
+            <h4>Meta Financeira</h4>
+    
+            <div class="valor">
+                {{ perc_beneficio|round(2) }}%
+            </div>
+    
+            <div class="sub">
+                Meta 5%
+            </div>
+    
+            <progress
+                value="{{ perc_beneficio }}"
+                max="5"
+                style="
+                    width:100%;
+                    margin-top:10px;
+                    height:16px;
+                ">
+            </progress>
+    
+        </div>
+    
+    </div>
+    
+    <div class="section-title">
+    Gráficos
+    </div>
+    
+    <div class="grid-2">
+    
+        <div class="chart-box">
+            <div class="chart-title">
+                Horas por Atividade
+            </div>
+            <canvas id="grafAtividade"></canvas>
+        </div>
+    
+        <div class="chart-box">
+            <div class="chart-title">
+                Horas por Projeto Paint
+            </div>
+            <canvas id="grafProjeto"></canvas>
+        </div>
+    
+    </div>
+    
+    <div class="grid-2">
+    
+        <div class="chart-box">
+            <div class="chart-title">
+                Secretarias Atendidas
+            </div>
+            <canvas id="grafSecretarias"></canvas>
+        </div>
+    
+        <div class="chart-box">
+            <div class="chart-title">
+                Critérios das Requisições
+            </div>
+            <canvas id="grafCriterio"></canvas>
+        </div>
+    
+    </div>
+    
+    </div>
+    """
+
+    return render_template_string(
+        BASE.replace(
+            "{% block content %}{% endblock %}",
+            html
+        ),
+
+        user=session["user"],
+        perfil=session["perfil"],
+
+        total_paint=total_paint,
+        total_os=total_os,
+
+        total_hh=total_hh,
+        total_exec_hhmm=total_exec_hhmm,
+        percentual_global=percentual_global,
+
+        total_consultorias=total_consultorias,
+        total_atendimentos=total_atendimentos,
+
+        hhmm_consultorias=hhmm_consultorias,
+        hhmm_atendimentos=hhmm_atendimentos,
+
+        os_plan=os_plan,
+        os_exec=os_exec,
+        os_rp=os_rp,
+        os_rf=os_rf,
+
+        cards_req=cards_req,
+        cards_notas=cards_notas,
+        card_req_nota=card_req_nota,
+
+        perc_beneficio=perc_beneficio,
+        perc_qtd_req_nota=perc_qtd_req_nota,
+        perc_valor_req_nota=perc_valor_req_nota,
+
+        graf_horas_atividade=graf_horas_atividade,
+        graf_horas_projeto=graf_horas_projeto,
+        graf_secretarias=graf_secretarias,
+
+        pizza_criterio=pizza_criterio,
+        valor_criterio=valor_criterio,
+
+        projetos=projetos,
+        fmt_br=fmt_br
+    )
+
 @app.route("/api/<tabela>")
 def api_tabela(tabela):
 

@@ -12536,7 +12536,6 @@ function filterTable(inputId,tableId){
         valor_criterio=valor_criterio,
 
         projetos=projetos,
-        os_rows=os_rows,
         fmt_br=fmt_br
     )
 

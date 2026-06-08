@@ -12945,6 +12945,66 @@ def api_tabela(tabela):
         mimetype="application/json"
     )
 
+from flask import Response
+import csv
+import io
+import psycopg2.extras
+from psycopg2 import sql
+
+@app.route("/api/csv/<tabela>")
+def api_csv(tabela):
+
+    permitidas = {
+        "atendimentos",
+        "consultorias",
+        "notas_auditoria",
+        "os",
+        "os_status_user",
+        "projeto_paint",
+        "requisicoes",
+        "horas"
+    }
+
+    if tabela not in permitidas:
+        return {"erro": "Tabela não permitida"}, 403
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute(
+        sql.SQL("SELECT * FROM {}")
+        .format(sql.Identifier(tabela))
+    )
+
+    dados = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    output = io.StringIO()
+
+    if dados:
+        writer = csv.DictWriter(
+            output,
+            fieldnames=dados[0].keys(),
+            delimiter=";"
+        )
+
+        writer.writeheader()
+        writer.writerows(dados)
+
+    csv_content = output.getvalue()
+    output.close()
+
+    return Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition":
+            f"attachment; filename={tabela}.csv"
+        }
+    )
+
 @app.route("/seed")
 def seed():
     executar_seed()

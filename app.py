@@ -11320,6 +11320,43 @@ def delete_nota(id):
     con.close()
     return "OK"
 
+@app.route("/api/<tabela>")
+def api_tabela(tabela):
+
+    permitidas = {
+        "atendimentos",
+        "consultorias",
+        "notas_auditoria",
+        "os",
+        "os_status_user",
+        "projeto_paint",
+        "requisicoes",
+        "horas"
+    }
+
+    if tabela not in permitidas:
+        return {"erro": "Tabela não permitida"}, 403
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    from psycopg2 import sql
+
+    cur.execute(
+        sql.SQL("SELECT * FROM {}")
+        .format(sql.Identifier(tabela))
+    )
+
+    dados = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return Response(
+        json.dumps(dados, default=str),
+        mimetype="application/json"
+    )
+
 @app.route("/seed")
 def seed():
     executar_seed()

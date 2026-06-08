@@ -12506,12 +12506,7 @@ document.getElementById("grafAtividade"),
                         ((value/total)*100)
                         .toFixed(1);
 
-                    return (
-                        minutosParaHHMM(value)
-                        + "\n"
-                        + perc
-                        + "%"
-                    );
+                    return minutosParaHHMM(value) + " - " + perc + "%";
                 }
             }
         }

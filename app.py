@@ -12542,24 +12542,36 @@ document.getElementById("grafProjeto"),
         }]
     },
 
-    plugins:[ChartDataLabels],
-
     options:{
 
         responsive:true,
         maintainAspectRatio:false,
 
+        indexAxis:"y",
+
         scales:{
+
+            x:{
+                ticks:{
+                    color:"white",
+
+                    callback:function(value){
+                        return minutosParaHHMM(value);
+                    }
+                },
+
+                grid:{
+                    color:"rgba(255,255,255,.08)"
+                }
+            },
 
             y:{
                 ticks:{
                     color:"white"
-                }
-            },
+                },
 
-            x:{
-                ticks:{
-                    color:"white"
+                grid:{
+                    display:false
                 }
             }
         },
@@ -12567,20 +12579,18 @@ document.getElementById("grafProjeto"),
         plugins:{
 
             legend:{
-                labels:{
-                    color:"white"
-                }
+                display:false
             },
 
-            datalabels:{
+            tooltip:{
+                callbacks:{
+                    label:function(context){
 
-                anchor:"end",
-                align:"top",
-                color:"#fff",
-
-                formatter:function(value){
-
-                    return minutosParaHHMM(value);
+                        return (
+                            "Horas: "
+                            + minutosParaHHMM(context.raw)
+                        );
+                    }
                 }
             }
         }
@@ -12599,7 +12609,7 @@ document.getElementById("grafSecretarias"),
     data:{
         labels:secretaria_labels,
         datasets:[{
-            label:"Minutos",
+            label:"Horas:Minutos Gastos",
             data:secretaria_data
         }]
     },

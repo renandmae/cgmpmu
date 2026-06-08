@@ -11803,9 +11803,6 @@ def dashboard_gerencial():
     """)
     valor_criterio = cur.fetchall()
 
-    cur.close()
-    conn.close()
-
     # =====================================================
     # CALCULOS PERCENTUAIS E INDICADORES EXEUCAO OS E PAINT
     # =====================================================
@@ -11849,7 +11846,9 @@ def dashboard_gerencial():
         if paint_planejados else 0
     )
 
-    
+    cur.close()
+    conn.close()
+
     # =====================================================
     # HTML VIRÁ NA PARTE 2
     # =====================================================

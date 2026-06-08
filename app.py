@@ -11361,10 +11361,46 @@ def dashboard_gerencial():
     total_hh = cur.fetchone()["total_hh"] or 0
 
     cur.execute("""
-        SELECT *
-        FROM projeto_paint
-        ORDER BY item_paint
+        SELECT
+            p.*,
+    
+            COALESCE(
+                SUM(h.duracao_minutos),
+                0
+            ) AS minutos_exec,
+    
+            ROUND(
+                COALESCE(
+                    SUM(h.duracao_minutos),
+                    0
+                ) / 60.0,
+                2
+            ) AS hh_exec,
+    
+            CASE
+                WHEN COALESCE(p.hh_atual,0) > 0
+                THEN ROUND(
+                    (
+                        COALESCE(
+                            SUM(h.duracao_minutos),
+                            0
+                        ) / 60.0
+                    ) / p.hh_atual * 100,
+                    2
+                )
+                ELSE 0
+            END AS percentual
+    
+        FROM projeto_paint p
+    
+        LEFT JOIN horas h
+            ON h.item_paint = p.item_paint
+    
+        GROUP BY p.item_paint
+    
+        ORDER BY p.item_paint
     """)
+    
     projetos = cur.fetchall()
 
     # =====================================================
@@ -11770,6 +11806,50 @@ def dashboard_gerencial():
     conn.close()
 
     # =====================================================
+    # CALCULOS PERCENTUAIS E INDICADORES EXEUCAO OS E PAINT
+    # =====================================================
+
+    cur.execute("""
+        SELECT COUNT(*) AS qtd
+        FROM os
+        WHERE
+            COALESCE(plan0100,0) > 0
+            OR COALESCE(exec0100,0) > 0
+            OR COALESCE(rp0100,0) > 0
+            OR COALESCE(rf0100,0) > 0
+    """)
+    
+    os_iniciadas = cur.fetchone()["qtd"] or 0
+
+    perc_os_exec = (
+        (os_iniciadas / total_os) * 100
+        if total_os else 0
+    )
+
+    cur.execute("""
+        SELECT COUNT(*) AS total
+        FROM projeto_paint
+        WHERE COALESCE(hh_atual,0) > 0
+    """)
+    
+    paint_planejados = cur.fetchone()["total"] or 0
+
+    cur.execute("""
+        SELECT COUNT(DISTINCT item_paint) AS total
+        FROM horas
+        WHERE item_paint IS NOT NULL
+          AND item_paint <> ''
+    """)
+    
+    paint_executados = cur.fetchone()["total"] or 0
+
+    perc_paint_exec = (
+        (paint_executados / paint_planejados) * 100
+        if paint_planejados else 0
+    )
+
+    
+    # =====================================================
     # HTML VIRÁ NA PARTE 2
     # =====================================================
 
@@ -12105,7 +12185,7 @@ def dashboard_gerencial():
     
     <div class="progress-box">
     
-        <h3>Execução Global do Planejamento</h3>
+        <h3>Execução Global do PAINT por HORAS EXECUTADAS / PREVISTAS</h3>
     
         <div style="margin-bottom:10px;">
             {{ percentual_global|round(2) }}%
@@ -12119,6 +12199,26 @@ def dashboard_gerencial():
         </div>
     
     </div>
+
+    <div class="progress-box">
+
+    <h3>% de Execução do PAINT 2026 - Projetos Em Execução</h3>
+
+    <div style="margin-bottom:10px;">
+        {{ paint_executados }}
+        de
+        {{ paint_planejados }}
+        ({{ perc_paint_exec|round(2) }}%)
+    </div>
+
+    <div class="progress">
+        <div
+            class="progress-bar"
+            style="width:{{ perc_paint_exec }}%">
+        </div>
+    </div>
+
+</div>
     
     <div class="section-title">
     Pipeline das OS
@@ -12132,24 +12232,43 @@ def dashboard_gerencial():
         </div>
     
         <div class="card card-ciano">
-            <h4>PLAN 100%</h4>
+            <h4>PLANEJADAS</h4>
             <div class="valor">{{ os_plan }}</div>
         </div>
     
         <div class="card card-verde">
-            <h4>EXEC 100%</h4>
+            <h4>EXECUTADAS</h4>
             <div class="valor">{{ os_exec }}</div>
         </div>
     
         <div class="card card-laranja">
-            <h4>RP 100%</h4>
+            <h4>RP</h4>
             <div class="valor">{{ os_rp }}</div>
         </div>
     
         <div class="card card-azul">
-            <h4>RF 100%</h4>
+            <h4>RF</h4>
             <div class="valor">{{ os_rf }}</div>
         </div>
+
+    <div class="progress-box">
+
+    <h3>Indicador de Execução das O.S</h3>
+
+    <div style="margin-bottom:10px;">
+        {{ os_iniciadas }}
+        de
+        {{ total_os }}
+        ({{ perc_os_exec|round(2) }}%)
+    </div>
+
+    <div class="progress">
+        <div
+            class="progress-bar"
+            style="width:{{ perc_os_exec }}%">
+        </div>
+    </div>
+    </div>
     
     </div>
     
@@ -12776,7 +12895,14 @@ function filterTable(inputId,tableId){
         paint_data=projetos,
 
         os_rows=os_rows,
-    
+
+        os_iniciadas=os_iniciadas,
+        perc_os_exec=perc_os_exec,
+        
+        paint_planejados=paint_planejados,
+        paint_executados=paint_executados,
+        perc_paint_exec=perc_paint_exec,
+        
         # utilidades
         fmt_br=fmt_br
     )

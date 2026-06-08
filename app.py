@@ -11941,6 +11941,71 @@ def dashboard_gerencial():
             grid-template-columns:1fr;
         }
     }
+
+    .modal{
+    display:none;
+    position:fixed;
+    z-index:99999;
+    inset:0;
+    background:rgba(0,0,0,.75);
+}
+
+.modal-content{
+    width:95%;
+    height:90%;
+    margin:2% auto;
+
+    background:#08172b;
+
+    border-radius:18px;
+
+    padding:20px;
+
+    overflow:auto;
+
+    color:white;
+}
+
+.close-modal{
+    float:right;
+    cursor:pointer;
+    font-size:28px;
+    font-weight:bold;
+}
+
+.busca input{
+    width:100%;
+    padding:10px;
+    border-radius:10px;
+    border:none;
+    margin-bottom:15px;
+}
+
+.table-modal{
+    width:100%;
+    border-collapse:collapse;
+}
+
+.table-modal th{
+    background:#1e3a8a;
+    color:white;
+    padding:10px;
+    position:sticky;
+    top:0;
+}
+
+.table-modal td{
+    padding:8px;
+    border-bottom:1px solid rgba(255,255,255,.1);
+}
+
+.table-modal tr:hover{
+    background:rgba(255,255,255,.05);
+}
+
+.card-click{
+    cursor:pointer;
+}
     
     </style>
     
@@ -11954,13 +12019,17 @@ def dashboard_gerencial():
     
     <div class="cards">
     
-        <div class="card card-azul">
+        <div
+            class="card card-azul card-click"
+            onclick="abrirPaint()">
             <div class="icone">📁</div>
             <h4>Projetos Paint</h4>
             <div class="valor">{{ total_paint }}</div>
         </div>
     
-        <div class="card card-roxo">
+        <div
+            class="card card-roxo card-click"
+            onclick="abrirOS()">
             <div class="icone">🗂️</div>
             <h4>OS</h4>
             <div class="valor">{{ total_os }}</div>
@@ -12165,8 +12234,263 @@ def dashboard_gerencial():
         </div>
     
     </div>
+    <div id="modalPaint" class="modal">
+    
+        <div class="modal-content">
+    
+            <span
+                class="close-modal"
+                onclick="fecharPaint()">
+                ×
+            </span>
+    
+            <h2>Projetos PAINT</h2>
+    
+            <div class="busca">
+                <input
+                    type="text"
+                    id="searchPaint"
+                    placeholder="Pesquisar..."
+                    onkeyup="filterTable('searchPaint','paintTable')">
+            </div>
+    
+            <table
+                id="paintTable"
+                class="table-modal">
+    
+                <tr>
+                    <th>Classificação</th>
+                    <th>Item</th>
+                    <th>Tipo</th>
+                    <th>HH Atual</th>
+                </tr>
+    
+                {% for p in projetos %}
+                <tr>
+                    <td>{{ p.classificacao }}</td>
+                    <td>{{ p.item_paint }}</td>
+                    <td>{{ p.tipo_atividade }}</td>
+                    <td>{{ p.hh_atual }}</td>
+                </tr>
+                {% endfor %}
+    
+            </table>
+    
+        </div>
     
     </div>
+    
+    <div id="modalOS" class="modal">
+    
+        <div class="modal-content">
+    
+            <span
+                class="close-modal"
+                onclick="fecharOS()">
+                ×
+            </span>
+    
+            <h2>Ordens de Serviço</h2>
+    
+            <div class="busca">
+                <input
+                    type="text"
+                    id="searchOS"
+                    placeholder="Pesquisar..."
+                    onkeyup="filterTable('searchOS','osTable')">
+            </div>
+    
+            <table
+                id="osTable"
+                class="table-modal">
+    
+                <tr>
+                    <th>Código</th>
+                    <th>Item Paint</th>
+                    <th>Status</th>
+                </tr>
+    
+                {% for o in os_rows %}
+                <tr>
+                    <td>{{ o.codigo }}</td>
+                    <td>{{ o.item_paint }}</td>
+                    <td>{{ o.status }}</td>
+                </tr>
+                {% endfor %}
+    
+            </table>
+    
+        </div>
+    
+    </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+
+const atividade_labels =
+{{ graf_horas_atividade|map(attribute='atividade')|list|tojson }};
+
+const atividade_data =
+{{ graf_horas_atividade|map(attribute='horas')|list|tojson }};
+
+const projeto_labels =
+{{ graf_horas_projeto|map(attribute='item_paint')|list|tojson }};
+
+const projeto_data =
+{{ graf_horas_projeto|map(attribute='horas')|list|tojson }};
+
+const secretaria_labels =
+{{ graf_secretarias|map(attribute='nome')|list|tojson }};
+
+const secretaria_data =
+{{ graf_secretarias|map(attribute='qtd')|list|tojson }};
+
+const criterio_labels =
+{{ pizza_criterio|map(attribute='criterio')|list|tojson }};
+
+const criterio_data =
+{{ pizza_criterio|map(attribute='qtd')|list|tojson }};
+
+</script>
+
+<script>
+
+if(document.getElementById("grafAtividade")){
+
+new Chart(
+document.getElementById("grafAtividade"),
+{
+    type:"pie",
+    data:{
+        labels:atividade_labels,
+        datasets:[{
+            data:atividade_data
+        }]
+    },
+    options:{
+        responsive:true,
+        maintainAspectRatio:false
+    }
+});
+
+}
+
+if(document.getElementById("grafProjeto")){
+
+new Chart(
+document.getElementById("grafProjeto"),
+{
+    type:"bar",
+    data:{
+        labels:projeto_labels,
+        datasets:[{
+            label:"Horas",
+            data:projeto_data
+        }]
+    },
+    options:{
+        responsive:true,
+        maintainAspectRatio:false
+    }
+});
+
+}
+
+if(document.getElementById("grafSecretarias")){
+
+new Chart(
+document.getElementById("grafSecretarias"),
+{
+    type:"bar",
+    data:{
+        labels:secretaria_labels,
+        datasets:[{
+            label:"Atendimentos",
+            data:secretaria_data
+        }]
+    },
+    options:{
+        indexAxis:"y",
+        responsive:true,
+        maintainAspectRatio:false
+    }
+});
+
+}
+
+if(document.getElementById("grafCriterio")){
+
+new Chart(
+document.getElementById("grafCriterio"),
+{
+    type:"doughnut",
+    data:{
+        labels:criterio_labels,
+        datasets:[{
+            data:criterio_data
+        }]
+    },
+    options:{
+        responsive:true,
+        maintainAspectRatio:false
+    }
+});
+
+}
+
+function abrirPaint(){
+    document.getElementById("modalPaint").style.display="block";
+}
+
+function fecharPaint(){
+    document.getElementById("modalPaint").style.display="none";
+}
+
+function abrirOS(){
+    document.getElementById("modalOS").style.display="block";
+}
+
+function fecharOS(){
+    document.getElementById("modalOS").style.display="none";
+}
+
+window.onclick=function(e){
+
+    if(e.target===document.getElementById("modalPaint"))
+        fecharPaint();
+
+    if(e.target===document.getElementById("modalOS"))
+        fecharOS();
+}
+
+function filterTable(inputId,tableId){
+
+    let input =
+        document.getElementById(inputId);
+
+    let filter =
+        input.value.toUpperCase();
+
+    let table =
+        document.getElementById(tableId);
+
+    let tr =
+        table.getElementsByTagName("tr");
+
+    for(let i=1;i<tr.length;i++){
+
+        let txt =
+            tr[i].innerText.toUpperCase();
+
+        tr[i].style.display =
+            txt.indexOf(filter)>-1
+            ? ""
+            : "none";
+    }
+}
+
+</script>
     """
 
     return render_template_string(
@@ -12212,6 +12536,7 @@ def dashboard_gerencial():
         valor_criterio=valor_criterio,
 
         projetos=projetos,
+        os_rows=os_rows,
         fmt_br=fmt_br
     )
 

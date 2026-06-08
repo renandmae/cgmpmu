@@ -11695,6 +11695,13 @@ def dashboard_gerencial():
     """)
     pizza_criterio = cur.fetchall()
 
+    cur.execute("""
+        SELECT *
+        FROM os
+        ORDER BY codigo
+        """)
+    os_rows = cur.fetchall()
+
     # =====================================================
     # VALOR POR CRITÉRIO
     # =====================================================
@@ -12332,16 +12339,16 @@ const atividade_labels =
 {{ graf_horas_atividade|map(attribute='atividade')|list|tojson }};
 
 const atividade_data =
-{{ graf_horas_atividade|map(attribute='horas')|list|tojson }};
+{{ graf_horas_atividade|map(attribute='minutos')|list|tojson }};
 
 const projeto_labels =
 {{ graf_horas_projeto|map(attribute='item_paint')|list|tojson }};
 
 const projeto_data =
-{{ graf_horas_projeto|map(attribute='horas')|list|tojson }};
+{{ graf_horas_projeto|map(attribute='minutos')|list|tojson }};
 
 const secretaria_labels =
-{{ graf_secretarias|map(attribute='nome')|list|tojson }};
+{{ graf_secretarias|map(attribute='secretaria')|list|tojson }};
 
 const secretaria_data =
 {{ graf_secretarias|map(attribute='qtd')|list|tojson }};
@@ -12539,6 +12546,8 @@ function filterTable(inputId,tableId){
     
         # tabelas
         projetos=projetos,
+
+        os_rows=os_rows,
     
         # utilidades
         fmt_br=fmt_br

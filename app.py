@@ -9784,6 +9784,21 @@ progress.verde::-webkit-progress-value{
     background:#16a34a;
 }
 </style>
+<script>
+
+function minutosParaHHMM(minutos){
+
+    minutos = parseInt(minutos || 0);
+
+    let hh = Math.floor(minutos / 60);
+    let mm = minutos % 60;
+
+    return String(hh).padStart(2,'0')
+        + ':'
+        + String(mm).padStart(2,'0');
+}
+
+</script>
 </head>
 
 <body>
@@ -11381,7 +11396,17 @@ def dashboard_gerencial():
     cur.execute("""
         SELECT
             item_paint,
-            SUM(duracao_minutos) AS minutos
+            SUM(duracao_minutos) AS minutos,
+        
+            FLOOR(
+                SUM(duracao_minutos)/60
+            )::int AS horas,
+        
+            MOD(
+                SUM(duracao_minutos),
+                60
+            )::int AS minutos_restantes
+        
         FROM horas
         WHERE item_paint IS NOT NULL
         GROUP BY item_paint
@@ -11495,38 +11520,52 @@ def dashboard_gerencial():
     # =====================================================
 
     cur.execute("""
-        WITH dados AS (
-
-            SELECT
-                trim(
-                    regexp_split_to_table(
-                        COALESCE(secretarias,''),
-                        ','
-                    )
-                ) AS secretaria
-            FROM consultorias
-
-            UNION ALL
-
-            SELECT
-                trim(
-                    regexp_split_to_table(
-                        COALESCE(entidades,''),
-                        ','
-                    )
-                ) AS secretaria
-            FROM atendimentos
-        )
-
+    WITH dados AS (
+    
         SELECT
-            secretaria,
-            COUNT(*)::int AS qtd
-        FROM dados
-        WHERE secretaria IS NOT NULL
-          AND secretaria <> ''
-        GROUP BY secretaria
-        ORDER BY qtd DESC
+            trim(
+                regexp_split_to_table(
+                    COALESCE(secretarias,''),
+                    ','
+                )
+            ) AS secretaria,
+    
+            COALESCE(duracao_minutos,0) AS minutos
+    
+        FROM consultorias
+    
+        UNION ALL
+    
+        SELECT
+            trim(
+                regexp_split_to_table(
+                    COALESCE(entidades,''),
+                    ','
+                )
+            ) AS secretaria,
+    
+            COALESCE(duracao_minutos,0) AS minutos
+    
+        FROM atendimentos
+    )
+    
+    SELECT
+        secretaria,
+    
+        SUM(minutos)::int AS minutos,
+    
+        COUNT(*)::int AS qtd
+    
+    FROM dados
+    
+    WHERE secretaria IS NOT NULL
+      AND secretaria <> ''
+    
+    GROUP BY secretaria
+    
+    ORDER BY minutos DESC
     """)
+    
     graf_secretarias = cur.fetchall()
 
     # =====================================================
@@ -12013,6 +12052,14 @@ def dashboard_gerencial():
 .card-click{
     cursor:pointer;
 }
+
+.table-modal{
+    min-width:2200px;
+}
+
+.modal-content{
+    overflow:auto;
+}
     
     </style>
     
@@ -12261,26 +12308,40 @@ def dashboard_gerencial():
                     onkeyup="filterTable('searchPaint','paintTable')">
             </div>
     
-            <table
-                id="paintTable"
-                class="table-modal">
-    
-                <tr>
-                    <th>Classificação</th>
-                    <th>Item</th>
-                    <th>Tipo</th>
-                    <th>HH Atual</th>
-                </tr>
-    
-                {% for p in projetos %}
-                <tr>
-                    <td>{{ p.classificacao }}</td>
-                    <td>{{ p.item_paint }}</td>
-                    <td>{{ p.tipo_atividade }}</td>
-                    <td>{{ p.hh_atual }}</td>
-                </tr>
-                {% endfor %}
-    
+            <table id="paintTable" class="table-modal">
+            
+            <tr>
+                <th>Classificação</th>
+                <th>Item</th>
+                <th>O.S</th>
+                <th>Tipo</th>
+                <th>Objeto</th>
+                <th>Objetivo Geral</th>
+                <th>Início</th>
+                <th>Fim</th>
+                <th>HH Atual</th>
+                <th>HH Executada</th>
+                <th>% Executado</th>
+                <th>Obs</th>
+            </tr>
+            
+            {% for r in paint_data %}
+            <tr>
+                <td>{{ r.classificacao }}</td>
+                <td>{{ r.item_paint }}</td>
+                <td>{{ r.os_list }}</td>
+                <td>{{ r.tipo_atividade }}</td>
+                <td>{{ r.objeto }}</td>
+                <td>{{ r.objetivo_geral }}</td>
+                <td>{{ r.dt_ini }}</td>
+                <td>{{ r.dt_fim }}</td>
+                <td>{{ r.hh_atual }}</td>
+                <td>{{ r.hh_exec }}</td>
+                <td>{{ r.percentual }}%</td>
+                <td>{{ r.obs }}</td>
+            </tr>
+            {% endfor %}
+            
             </table>
     
         </div>
@@ -12307,24 +12368,50 @@ def dashboard_gerencial():
                     onkeyup="filterTable('searchOS','osTable')">
             </div>
     
-            <table
-                id="osTable"
-                class="table-modal">
-    
-                <tr>
-                    <th>Código</th>
-                    <th>Item Paint</th>
-                    <th>Status</th>
-                </tr>
-    
-                {% for o in os_rows %}
-                <tr>
-                    <td>{{ o.codigo }}</td>
-                    <td>{{ o.item_paint }}</td>
-                    <td>{{ o.status }}</td>
-                </tr>
-                {% endfor %}
-    
+            <table id="osTable" class="table-modal">
+
+            <tr>
+                <th>Código</th>
+                <th>Item PAINT</th>
+                <th>Resumo</th>
+                <th>Unidade</th>
+                <th>Coordenação</th>
+                <th>Equipe</th>
+                <th>Observação</th>
+                <th>Status</th>
+                <th>PLAN</th>
+                <th>EXEC</th>
+                <th>RP</th>
+                <th>RF</th>
+                <th>Início</th>
+                <th>Fim</th>
+                <th>Conclusão</th>
+            </tr>
+            
+            {% for r in os_rows %}
+            <tr>
+            
+            <td>{{ r.codigo }}</td>
+            <td>{{ r.item_paint }}</td>
+            <td>{{ r.resumo }}</td>
+            <td>{{ r.unidade }}</td>
+            <td>{{ r.coordenacao }}</td>
+            <td>{{ r.equipe }}</td>
+            <td>{{ r.observacao }}</td>
+            <td>{{ r.status }}</td>
+            
+            <td>{{ r.plan0100 }}%</td>
+            <td>{{ r.exec0100 }}%</td>
+            <td>{{ r.rp0100 }}%</td>
+            <td>{{ r.rf0100 }}%</td>
+            
+            <td>{{ r.dt_inicio }}</td>
+            <td>{{ r.dt_fim }}</td>
+            <td>{{ r.dt_conclusao }}</td>
+            
+            </tr>
+            {% endfor %}
+            
             </table>
     
         </div>
@@ -12351,7 +12438,7 @@ const secretaria_labels =
 {{ graf_secretarias|map(attribute='secretaria')|list|tojson }};
 
 const secretaria_data =
-{{ graf_secretarias|map(attribute='qtd')|list|tojson }};
+{{ graf_secretarias|map(attribute='minutos')|list|tojson }};
 
 const criterio_labels =
 {{ pizza_criterio|map(attribute='criterio')|list|tojson }};
@@ -12369,15 +12456,53 @@ new Chart(
 document.getElementById("grafAtividade"),
 {
     type:"pie",
+
     data:{
         labels:atividade_labels,
+
         datasets:[{
             data:atividade_data
         }]
     },
+
+    plugins:[ChartDataLabels],
+
     options:{
+
         responsive:true,
-        maintainAspectRatio:false
+        maintainAspectRatio:false,
+
+        plugins:{
+
+            legend:{
+                labels:{
+                    color:"white"
+                }
+            },
+
+            datalabels:{
+
+                color:"#fff",
+
+                formatter:function(value, ctx){
+
+                    let total =
+                        ctx.chart.data.datasets[0].data
+                        .reduce((a,b)=>a+b,0);
+
+                    let perc =
+                        ((value/total)*100)
+                        .toFixed(1);
+
+                    return (
+                        minutosParaHHMM(value)
+                        + "\n"
+                        + perc
+                        + "%"
+                    );
+                }
+            }
+        }
     }
 });
 
@@ -12389,16 +12514,58 @@ new Chart(
 document.getElementById("grafProjeto"),
 {
     type:"bar",
+
     data:{
         labels:projeto_labels,
+
         datasets:[{
             label:"Horas",
             data:projeto_data
         }]
     },
+
+    plugins:[ChartDataLabels],
+
     options:{
+
         responsive:true,
-        maintainAspectRatio:false
+        maintainAspectRatio:false,
+
+        scales:{
+
+            y:{
+                ticks:{
+                    color:"white"
+                }
+            },
+
+            x:{
+                ticks:{
+                    color:"white"
+                }
+            }
+        },
+
+        plugins:{
+
+            legend:{
+                labels:{
+                    color:"white"
+                }
+            },
+
+            datalabels:{
+
+                anchor:"end",
+                align:"top",
+                color:"#fff",
+
+                formatter:function(value){
+
+                    return minutosParaHHMM(value);
+                }
+            }
+        }
     }
 });
 
@@ -12410,17 +12577,42 @@ new Chart(
 document.getElementById("grafSecretarias"),
 {
     type:"bar",
+
     data:{
         labels:secretaria_labels,
         datasets:[{
-            label:"Atendimentos",
+            label:"Minutos",
             data:secretaria_data
         }]
     },
+
+    plugins:[ChartDataLabels],
+
     options:{
+
         indexAxis:"y",
-        responsive:true,
-        maintainAspectRatio:false
+
+        plugins:{
+
+            datalabels:{
+                color:"#fff",
+
+                formatter:function(value){
+
+                    let hh =
+                        Math.floor(value/60);
+
+                    let mm =
+                        value % 60;
+
+                    return (
+                        String(hh).padStart(2,'0')
+                        + ':'
+                        + String(mm).padStart(2,'0')
+                    );
+                }
+            }
+        }
     }
 });
 

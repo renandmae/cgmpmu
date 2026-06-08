@@ -12419,7 +12419,18 @@ def dashboard_gerencial():
     </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+function minutosParaHHMM(minutos){
 
+    let hh = Math.floor(minutos / 60);
+    let mm = minutos % 60;
+
+    return (
+        String(hh).padStart(2,'0')
+        + ':'
+        + String(mm).padStart(2,'0')
+    );
+}
 <script>
 
 const atividade_labels =

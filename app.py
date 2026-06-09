@@ -11885,6 +11885,13 @@ def dashboard_gerencial():
         gap:20px;
         margin-bottom:25px;
     }
+
+    .cards-6{
+        display:grid;
+        grid-template-columns:repeat(6,1fr);
+        gap:20px;
+        margin-bottom:25px;
+    }
     
     .cards-3{
         display:grid;
@@ -12251,25 +12258,25 @@ def dashboard_gerencial():
             <h4>RF</h4>
             <div class="valor">{{ os_rf }}</div>
         </div>
+    </div>
 
     <div class="progress-box">
 
-    <h3>Indicador de Execução das O.S</h3>
-
-    <div style="margin-bottom:10px;">
-        {{ os_iniciadas }}
-        de
-        {{ total_os }}
-        ({{ perc_os_exec|round(2) }}%)
-    </div>
-
-    <div class="progress">
-        <div
-            class="progress-bar"
-            style="width:{{ perc_os_exec }}%">
+        <h3>Indicador de Execução das O.S</h3>
+    
+        <div style="margin-bottom:10px;">
+            {{ os_iniciadas }}
+            de
+            {{ total_os }}
+            ({{ perc_os_exec|round(2) }}%)
         </div>
-    </div>
-    </div>
+    
+        <div class="progress">
+            <div
+                class="progress-bar"
+                style="width:{{ perc_os_exec }}%">
+            </div>
+        </div>
     
     </div>
     
@@ -12307,7 +12314,31 @@ def dashboard_gerencial():
     Requisições
     </div>
     
-    <div class="cards">
+            <div class="cards-6">
+        
+            <div class="card card-azul">
+        
+            <div class="icone">✅</div>
+        
+            <h4>Qtd. Analisadas</h4>
+        
+            <div class="valor">
+                {{ cards_req.qtd_analisadas }}
+            </div>
+        
+        </div>
+        
+        <div class="card card-roxo">
+        
+            <div class="icone">💵</div>
+        
+            <h4>Valor Analisado</h4>
+        
+            <div class="valor">
+                R$ {{ fmt_br(cards_req.valor_analisado) }}
+            </div>
+        
+        </div>
     
         <div class="card card-roxo">
             <div class="icone">📝</div>

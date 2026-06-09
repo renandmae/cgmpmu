@@ -12039,6 +12039,7 @@ def painel_audit():
         border-radius:18px;
         padding:20px;
         margin-bottom:25px;
+        color:white !important;
     }
     
     .progress{

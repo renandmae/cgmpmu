@@ -12207,7 +12207,7 @@ def painel_audit():
     
     <div class="progress-box">
     
-        <h3>Execução Global do PAINT por HORAS EXECUTADAS / PREVISTAS</h3>
+        <h3 style="color:white !important;">Execução Global do PAINT por HORAS EXECUTADAS / PREVISTAS</h3>
     
         <div style="margin-bottom:10px;">
             {{ percentual_global|round(2) }}%
@@ -12224,7 +12224,7 @@ def painel_audit():
 
     <div class="progress-box">
 
-    <h3>% de Execução do PAINT 2026 - Projetos Em Execução</h3>
+    <h3 style="color:white !important;">% de Execução do PAINT 2026 - Projetos Em Execução</h3>
 
     <div style="margin-bottom:10px;">
         {{ paint_executados }}
@@ -12276,7 +12276,7 @@ def painel_audit():
 
     <div class="progress-box">
 
-        <h3>Indicador de Execução das O.S</h3>
+        <h3 style="color:white !important;">Indicador de Execução das O.S</h3>
     
         <div style="margin-bottom:10px;">
             {{ os_iniciadas }}

@@ -12041,6 +12041,10 @@ def painel_audit():
         margin-bottom:25px;
         color:white !important;
     }
+
+    .progress-box h3{
+        color:white !important;
+    }
     
     .progress{
         width:100%;

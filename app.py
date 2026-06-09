@@ -12317,7 +12317,7 @@ def painel_audit():
     
             <div class="cards-6">
         
-            <div class="card card-azul">
+            <div class="card card-ciano">
         
             <div class="icone">✅</div>
         
@@ -12329,7 +12329,7 @@ def painel_audit():
         
         </div>
         
-        <div class="card card-roxo">
+        <div class="card card-ciano">
         
             <div class="icone">💵</div>
         
@@ -12349,7 +12349,7 @@ def painel_audit():
             </div>
         </div>
     
-        <div class="card card-ciano">
+        <div class="card card-roxo">
             <div class="icone">📂</div>
             <h4>Req. com Nota</h4>
             <div class="valor">
@@ -12373,7 +12373,7 @@ def painel_audit():
             </div>
         </div>
     
-        <div class="card card-laranja">
+        <div class="card card-verde">
     
             <div class="icone">🎯</div>
     

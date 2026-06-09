@@ -798,7 +798,8 @@ tr.analisado { background:#e6ffed; }
         <button class="menu-btn menu6">📈 Painel</button>
         <div class="dropdown">
         <a href="/admin_projetos">📂 Projetos</a>
-        <a href="/painel_requisicoes">📊 Painel</a>
+        <a href="/painel_requisicoes">📊 Painel Reqs. Prev.</a>
+        <a href="/painel_audit">🔎 Painel Audit. 2026</a>
         
         {% if perfil == 'admin' %}
         <a href="/visao">📉 Visão/h</a>
@@ -11335,8 +11336,8 @@ def delete_nota(id):
     con.close()
     return "OK"
 
-@app.route("/dashboard_gerencial")
-def dashboard_gerencial():
+@app.route("/painel_audit")
+def painel_audit():
 
     if "user" not in session:
         return redirect("/")
@@ -12153,7 +12154,7 @@ def dashboard_gerencial():
     
     <div class="dashboard">
     
-    <h1>📊 Dashboard Gerencial</h1>
+    <h1>📊 Auditoria - PAINT 2026</h1>
     
     <div class="section-title">
     Visão Geral
@@ -12281,7 +12282,7 @@ def dashboard_gerencial():
     </div>
     
     <div class="section-title">
-    Consultorias e Atendimentos
+    Consultorias/Treinamentos e Orientações para Secretarias
     </div>
     
     <div class="cards">
@@ -12311,7 +12312,7 @@ def dashboard_gerencial():
     </div>
     
     <div class="section-title">
-    Requisições
+    Requisições Preventivas - Resumo
     </div>
     
             <div class="cards-6">
@@ -12433,7 +12434,7 @@ def dashboard_gerencial():
     
         <div class="chart-box">
             <div class="chart-title">
-                Critérios das Requisições
+                Critérios das Requisições Preventivas
             </div>
             <canvas id="grafCriterio"></canvas>
         </div>
@@ -12811,15 +12812,74 @@ new Chart(
 document.getElementById("grafCriterio"),
 {
     type:"doughnut",
+
     data:{
         labels:criterio_labels,
         datasets:[{
             data:criterio_data
         }]
     },
+
+    plugins:[ChartDataLabels],
+
     options:{
+
         responsive:true,
-        maintainAspectRatio:false
+        maintainAspectRatio:false,
+
+        plugins:{
+
+            legend:{
+                labels:{
+                    color:"white"
+                }
+            },
+
+            tooltip:{
+                callbacks:{
+                    label:function(context){
+
+                        let valor = context.raw;
+
+                        let total =
+                            context.dataset.data
+                            .reduce((a,b)=>a+b,0);
+
+                        let perc =
+                            ((valor / total) * 100)
+                            .toFixed(2);
+
+                        return (
+                            valor
+                            + " requisições ("
+                            + perc
+                            + "%)"
+                        );
+                    }
+                }
+            },
+
+            datalabels:{
+
+                color:"#fff",
+
+                formatter:function(value,ctx){
+
+                    let total =
+                        ctx.chart.data.datasets[0].data
+                        .reduce((a,b)=>a+b,0);
+
+                    let perc =
+                        ((value/total)*100)
+                        .toFixed(1);
+
+                    return (
+                        value
+                        + " (" + perc + "%)"
+                    );
+                }
+            }
+        }
     }
 });
 

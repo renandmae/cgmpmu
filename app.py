@@ -11924,18 +11924,21 @@ def painel_audit():
         margin:0;
         font-size:14px;
         opacity:.9;
+        color:white !important;
     }
     
     .card .valor{
         margin-top:10px;
         font-size:30px;
         font-weight:700;
+        color:white !important;
     }
     
     .card .sub{
         margin-top:8px;
         font-size:13px;
         opacity:.95;
+        color:white !important;
     }
     
     .card .icone{
@@ -11953,6 +11956,7 @@ def painel_audit():
             #2563eb,
             #1d4ed8
         );
+        color:white !important;
     }
     
     .card-verde{
@@ -11962,6 +11966,7 @@ def painel_audit():
             #16a34a,
             #15803d
         );
+        color:white !important;
     }
     
     .card-roxo{
@@ -11971,6 +11976,7 @@ def painel_audit():
             #7c3aed,
             #6d28d9
         );
+        color:white !important;
     }
     
     .card-laranja{
@@ -11980,6 +11986,7 @@ def painel_audit():
             #ea580c,
             #c2410c
         );
+        color:white !important;
     }
     
     .card-ciano{
@@ -11989,6 +11996,7 @@ def painel_audit():
             #0891b2,
             #0e7490
         );
+        color:white !important;
     }
     
     .chart-box{

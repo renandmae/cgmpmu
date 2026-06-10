@@ -5573,9 +5573,15 @@ def admin_projetos():
 
     for r in os_rows:
     
+        data_fim_prazo = (
+            r["dt_previsao_fim"]
+            if r["dt_previsao_fim"]
+            else r["rf_dt_envio_sup"]
+        )
+        
         prazo, restante = calcular_prazo(
             r["dt_inicio"],
-            r["dt_previsao_fim"],
+            data_fim_prazo,
             r["dt_conclusao"]
         )
     
@@ -5586,12 +5592,9 @@ def admin_projetos():
     
         hh_exec = f"{hh:02d}:{mm:02d}"
     
-        # regra da data fim
-        dt_fim = (
-            r["dt_previsao_fim"]
-            if r["dt_previsao_fim"]
-            else r["rf_dt_envio_sup"]
-        )
+        dt_fim = r["dt_previsao_fim"]
+        if not dt_fim:
+            dt_fim = r["rf_dt_envio_sup"]
     
         os_data.append({
             "codigo": r["codigo"],
@@ -5610,8 +5613,8 @@ def admin_projetos():
     
             "hh_exec": hh_exec,
     
-            "dt_inicio": fmt(r["dt_inicio"]),
-            "dt_fim": fmt(dt_fim),
+            "dt_inicio": fmt(r["dt_inicio"]) if r["dt_inicio"] else "",
+            "dt_fim": fmt(dt_fim) if dt_fim else "",
     
             "prazo": prazo,
             "restante": restante,

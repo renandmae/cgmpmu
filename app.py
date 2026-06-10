@@ -11811,17 +11811,17 @@ def painel_audit():
     cur.execute("""
     SELECT COUNT(*) AS qtd
     FROM os o
-    LEFT JOIN (
-        SELECT DISTINCT os
-        FROM horas
-        WHERE COALESCE(duracao_minutos,0) > 0
-    ) h ON h.os_codigo = o.codigo
     WHERE
         COALESCE(o.plan0100,0) > 0
         OR COALESCE(o.exec0100,0) > 0
         OR COALESCE(o.rp0100,0) > 0
         OR COALESCE(o.rf0100,0) > 0
-        OR h.os_codigo IS NOT NULL
+        OR EXISTS (
+            SELECT 1
+            FROM horas h
+            WHERE h.os_codigo = o.codigo
+              AND COALESCE(h.duracao_minutos,0) > 0
+        )
     """)
     
     os_iniciadas = cur.fetchone()["qtd"] or 0

@@ -2530,19 +2530,78 @@ def os_gestao():
         perfil=session['perfil']
     )
 
-<div style="margin-bottom:15px;">
-    <a href="/os/gestao/export"
-       style="
-            background:#16a34a;
-            color:white;
-            padding:10px 16px;
-            border-radius:8px;
-            text-decoration:none;
-            font-weight:bold;
-       ">
-       📥 Exportar Dados
-    </a>
-</div>
+@app.route('/os/gestao/export')
+def os_gestao_export():
+
+    if 'user' not in session:
+        return redirect('/')
+
+    if session['perfil'] != 'admin':
+        return 'Acesso negado'
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT
+            codigo,
+            resumo,
+            unidade,
+            equipe,
+            dt_previsao_fim,
+            COALESCE(plan0100,0) AS plan0100,
+            COALESCE(exec0100,0) AS exec0100,
+            COALESCE(rp0100,0) AS rp0100,
+            COALESCE(rf0100,0) AS rf0100
+        FROM os
+        ORDER BY codigo
+    """)
+
+    rows = cur.fetchall()
+
+    cur.close()
+    con.close()
+
+    output = StringIO()
+
+    writer = csv.writer(output, delimiter=';')
+
+    writer.writerow([
+        'OS',
+        'DESCRICAO',
+        'DIRETORIA',
+        'EQUIPE',
+        'PRAZO',
+        'PLANEJAMENTO (%)',
+        'EXECUCAO (%)',
+        'RP (%)',
+        'RF (%)'
+    ])
+
+    for r in rows:
+        writer.writerow([
+            r['codigo'],
+            r['resumo'],
+            r['unidade'],
+            r['equipe'],
+            r['dt_previsao_fim'],
+            r['plan0100'],
+            r['exec0100'],
+            r['rp0100'],
+            r['rf0100']
+        ])
+
+    csv_data = output.getvalue()
+    output.close()
+
+    return Response(
+        csv_data,
+        mimetype='text/csv',
+        headers={
+            'Content-Disposition':
+            'attachment; filename=os_gestao.csv'
+        }
+    )
 
 @app.route('/os/rh')
 def os_rh():

@@ -2458,6 +2458,20 @@ def os_gestao():
         Controle das Ordens de Serviço
     </div>
 
+    <div style="margin-bottom:15px;">
+        <a href="/os/gestao/export"
+           style="
+                background:#16a34a;
+                color:white;
+                padding:10px 16px;
+                border-radius:8px;
+                text-decoration:none;
+                font-weight:bold;
+           ">
+           📥 Exportar Dados
+        </a>
+    </div>
+
     <div class="filtro">
         <input type="text" id="searchInput" placeholder="Filtrar...">
     </div>
@@ -2515,6 +2529,20 @@ def os_gestao():
         user=session['user'],
         perfil=session['perfil']
     )
+
+<div style="margin-bottom:15px;">
+    <a href="/os/gestao/export"
+       style="
+            background:#16a34a;
+            color:white;
+            padding:10px 16px;
+            border-radius:8px;
+            text-decoration:none;
+            font-weight:bold;
+       ">
+       📥 Exportar Dados
+    </a>
+</div>
 
 @app.route('/os/rh')
 def os_rh():

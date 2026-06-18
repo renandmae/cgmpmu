@@ -14,7 +14,6 @@ import os
 import psycopg2
 import psycopg2.extras
 from psycopg2 import IntegrityError
-from io import StringIO
 from datetime import datetime
 
 import requests
@@ -2529,7 +2528,11 @@ def os_gestao():
         user=session['user'],
         perfil=session['perfil']
     )
-    
+
+from flask import send_file
+from openpyxl import Workbook
+from io import BytesIO
+
 @app.route('/os/gestao/export')
 def os_gestao_export():
 
@@ -2562,45 +2565,44 @@ def os_gestao_export():
     cur.close()
     con.close()
 
-    output = StringIO()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "OS Gestão"
 
-    writer = csv.writer(output, delimiter=';')
-
-    writer.writerow([
-        'OS',
-        'DESCRICAO',
-        'DIRETORIA',
-        'EQUIPE',
-        'PRAZO',
-        'PLANEJAMENTO (%)',
-        'EXECUCAO (%)',
-        'RP (%)',
-        'RF (%)'
+    ws.append([
+        "OS",
+        "DESCRIÇÃO",
+        "DIRETORIA",
+        "EQUIPE",
+        "PRAZO",
+        "PLANEJAMENTO (%)",
+        "EXECUÇÃO (%)",
+        "RP (%)",
+        "RF (%)"
     ])
 
     for r in rows:
-        writer.writerow([
-            r['codigo'],
-            r['resumo'],
-            r['unidade'],
-            r['equipe'],
-            r['dt_previsao_fim'],
-            r['plan0100'],
-            r['exec0100'],
-            r['rp0100'],
-            r['rf0100']
+        ws.append([
+            r["codigo"],
+            r["resumo"],
+            r["unidade"],
+            r["equipe"],
+            r["dt_previsao_fim"],
+            f'{r["plan0100"]}%',
+            f'{r["exec0100"]}%',
+            f'{r["rp0100"]}%',
+            f'{r["rf0100"]}%'
         ])
 
-    csv_data = output.getvalue()
-    output.close()
+    arquivo = BytesIO()
+    wb.save(arquivo)
+    arquivo.seek(0)
 
-    return Response(
-        csv_data,
-        mimetype='text/csv',
-        headers={
-            'Content-Disposition':
-            'attachment; filename=os_gestao.csv'
-        }
+    return send_file(
+        arquivo,
+        as_attachment=True,
+        download_name="os_gestao.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
 @app.route('/os/rh')

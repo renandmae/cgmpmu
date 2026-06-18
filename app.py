@@ -14,7 +14,7 @@ import os
 import psycopg2
 import psycopg2.extras
 from psycopg2 import IntegrityError
-
+from io import StringIO
 from datetime import datetime
 
 import requests
@@ -2529,7 +2529,7 @@ def os_gestao():
         user=session['user'],
         perfil=session['perfil']
     )
-
+    
 @app.route('/os/gestao/export')
 def os_gestao_export():
 

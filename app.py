@@ -1139,7 +1139,7 @@ def menu():
         
         </div>
         """
-        html += """
+    html += """
         <hr style="margin:40px 0;">
         
         <h2 style="text-align:center;">
@@ -1156,12 +1156,12 @@ def menu():
                 title="CGM_PAINEL"
                 width="100%"
                 height="700"
-                src="https://app.powerbi.com/reportEmbed?reportId=a78590ee-0972-4a9c-8e75-0184cfee32f8&autoAuth=true&ctid=7f5f4b64-70d0-430f-b076-a48862b86518&actionBarEnabled=true&reportCopilotInEmbed=true"
+                src="https://app.powerbi.com/view?r=eyJrIjoiNWM5YTM5MGUtMjU5OS00ZTU4LTgzNzItNWQxMDViYTRlZWQ3IiwidCI6IjdmNWY0YjY0LTcwZDAtNDMwZi1iMDc2LWE0ODg2MmI4NjUxOCJ9"
                 frameborder="0"
                 allowfullscreen>
             </iframe>
         </div>
-        """
+    """
     
     html += """
     <script>

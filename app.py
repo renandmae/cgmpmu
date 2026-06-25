@@ -1139,29 +1139,6 @@ def menu():
         
         </div>
         """
-    html += """
-        <hr style="margin:40px 0;">
-        
-        <h2 style="text-align:center;">
-            📊 Dashboard de Gestão
-        </h2>
-        
-        <div style="
-            background:white;
-            border-radius:12px;
-            padding:10px;
-            box-shadow:0 2px 10px rgba(0,0,0,.15);
-        ">
-            <iframe
-                title="CGM_PAINEL"
-                width="100%"
-                height="700"
-                src="https://app.powerbi.com/view?r=eyJrIjoiNWM5YTM5MGUtMjU5OS00ZTU4LTgzNzItNWQxMDViYTRlZWQ3IiwidCI6IjdmNWY0YjY0LTcwZDAtNDMwZi1iMDc2LWE0ODg2MmI4NjUxOCJ9"
-                frameborder="0"
-                allowfullscreen>
-            </iframe>
-        </div>
-    """
     
     html += """
     <script>

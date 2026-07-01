@@ -13660,13 +13660,21 @@ def requisicoes_eng():
     # =========================
     def extrair_ano(numero_ano):
         try:
+            if not numero_ano:
+                return datetime.today().year
             return int(str(numero_ano).split("/")[-1])
         except:
             return datetime.today().year
-
+    
+    
     def semana_para_mes_ano(semana, ano):
         try:
-            d = datetime.fromisocalendar(int(ano), int(semana), 1)
+            semana = int(semana)
+            ano = int(ano)
+    
+            # ISO week safe fix
+            d = datetime.fromisocalendar(ano, semana, 1)
+    
             return d.strftime("%b/%y").lower()
         except:
             return ""
@@ -13678,16 +13686,6 @@ def requisicoes_eng():
         LIMIT %s OFFSET %s
     """, (limit, offset))
 
-    rows = cur.fetchall()
-
-    # requisicoes
-    cur.execute("""
-        SELECT *
-        FROM requisicoes_eng
-        ORDER BY semana DESC,
-                 valor_requisicao DESC NULLS LAST,
-                 id DESC
-    """)
     rows = cur.fetchall()
 
     # apontamentos
@@ -13797,23 +13795,25 @@ textarea{
     text-align:right;
 }
 
+.col-semana{width:110px}
 .col-secretaria{width:180px}
-.col-numero{width:90px}
+.col-numero{width:100px}
 .col-tipo{width:120px}
 .col-valor{width:100px}
-.col-status{width:70px}
-.col-natureza{width:90px}
-.col-item{width:60px}
+.col-status{width:90px}
+.col-natureza{width:110px}
+.col-item{width:70px}
 .col-desc{width:180px}
+.col-req{width:80px} /* 🔥 FALTAVA ISSO */
 .col-fornecedor{width:180px}
-.col-edital{width:150px}
-.col-contrato{width:150px}
+.col-edital{width:140px}
+.col-contrato{width:140px}
 .col-oficio{width:120px}
 .col-na{width:90px}
-.col-monitor{width:80px}
-.col-beneficio{width:100px}
+.col-monitor{width:90px}
+.col-beneficio{width:110px}
 .col-apont{width:220px}
-.col-acao{width:70px}
+.col-acao{width:80px}
 
 </style>
 

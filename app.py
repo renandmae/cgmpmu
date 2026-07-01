@@ -13647,6 +13647,22 @@ border-collapse:collapse;
 
 @app.route("/requisicoes_eng")
 def requisicoes_eng():
+from datetime import datetime
+
+MESES_PT = {
+    1: "jan",
+    2: "fev",
+    3: "mar",
+    4: "abr",
+    5: "mai",
+    6: "jun",
+    7: "jul",
+    8: "ago",
+    9: "set",
+    10: "out",
+    11: "nov",
+    12: "dez"
+}
 
     page = int(request.args.get("page", 1))
     limit = 100
@@ -13669,13 +13685,9 @@ def requisicoes_eng():
     
     def semana_para_mes_ano(semana, ano):
         try:
-            semana = int(semana)
-            ano = int(ano)
-    
-            # ISO week safe fix
-            d = datetime.fromisocalendar(ano, semana, 1)
-    
-            return d.strftime("%b/%y").lower()
+            d = datetime.fromisocalendar(int(ano), int(semana), 1)
+            mes = MESES_PT[d.month]
+            return f"{mes}/{str(ano)[-2:]}"
         except:
             return ""
 

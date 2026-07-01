@@ -13670,11 +13670,11 @@ def requisicoes_eng():
     
     
     def semana_para_mes_ano(semana, ano):
-    try:
-        d = datetime.fromisocalendar(int(ano), int(semana), 1)
-        return d.strftime("%b/%y")
-    except:
-        return ""
+        try:
+            d = datetime.fromisocalendar(int(ano), int(semana), 1)
+            return d.strftime("%b/%y")
+        except:
+            return ""
 
     cur.execute("""
         SELECT *

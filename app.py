@@ -13875,7 +13875,6 @@ onkeyup="filtrar()">
 <tr>
 <td>{{r.semana_formatada}}</td>
 <td>{{r.secretaria}}</td>
-<td>{{r.secretaria}}</td>
 <td>{{r.numero_ano}}</td>
 <td>{{r.tipo_documento}}</td>
 

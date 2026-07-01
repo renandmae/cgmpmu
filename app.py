@@ -13645,10 +13645,6 @@ border-collapse:collapse;
         perfil=session["perfil"]
     )
 
-@app.route("/requisicoes_eng")
-def requisicoes_eng():
-from datetime import datetime
-
 MESES_PT = {
     1: "jan",
     2: "fev",
@@ -13663,6 +13659,8 @@ MESES_PT = {
     11: "nov",
     12: "dez"
 }
+@app.route("/requisicoes_eng")
+def requisicoes_eng():
 
     page = int(request.args.get("page", 1))
     limit = 100

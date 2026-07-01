@@ -13228,22 +13228,22 @@ def requisicoes_eng_import():
     # =====================================
     if request.method == "POST" and request.form.get("acao") == "salvar_edit":
 
-    con = get_db()
-    cur = con.cursor()
-
-    cur.execute("""
-        UPDATE req_eng_apontamentos
-        SET descricao=%s
-        WHERE id=%s
-    """,(
-        request.form.get("descricao"),
-        request.form.get("ap_id")
-    ))
-
-    con.commit()
-    con.close()
-
-    return redirect("/requisicoes_eng/import")
+        con = get_db()
+        cur = con.cursor()
+    
+        cur.execute("""
+            UPDATE req_eng_apontamentos
+            SET descricao=%s
+            WHERE id=%s
+        """,(
+            request.form.get("descricao"),
+            request.form.get("ap_id")
+        ))
+    
+        con.commit()
+        con.close()
+    
+        return redirect("/requisicoes_eng/import")
 
     # =====================================
     # IMPORTAÇÃO

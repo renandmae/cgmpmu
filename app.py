@@ -13645,20 +13645,8 @@ border-collapse:collapse;
         perfil=session["perfil"]
     )
 
-MESES_PT = {
-    1: "jan",
-    2: "fev",
-    3: "mar",
-    4: "abr",
-    5: "mai",
-    6: "jun",
-    7: "jul",
-    8: "ago",
-    9: "set",
-    10: "out",
-    11: "nov",
-    12: "dez"
-}
+import locale
+locale.setlocale(locale.LC_TIME, "pt_BR.utf8")
 @app.route("/requisicoes_eng")
 def requisicoes_eng():
 
@@ -13682,12 +13670,11 @@ def requisicoes_eng():
     
     
     def semana_para_mes_ano(semana, ano):
-        try:
-            d = datetime.fromisocalendar(int(ano), int(semana), 1)
-            mes = MESES_PT[d.month]
-            return f"{mes}/{str(ano)[-2:]}"
-        except:
-            return ""
+    try:
+        d = datetime.fromisocalendar(int(ano), int(semana), 1)
+        return d.strftime("%b/%y")
+    except:
+        return ""
 
     cur.execute("""
         SELECT *

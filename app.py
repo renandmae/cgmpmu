@@ -13154,6 +13154,916 @@ function filterTable(inputId,tableId){
         fmt_br=fmt_br
     )
 
+@app.route("/requisicoes_eng/import", methods=["GET","POST"])
+def requisicoes_eng_import():
+
+    if "user" not in session:
+        return redirect("/")
+
+    msg = ""
+
+    # =====================================
+    # CADASTRAR APONTAMENTO
+    # =====================================
+    if request.method == "POST" and request.form.get("acao") == "novo_ap":
+
+        con = get_db()
+        cur = con.cursor()
+
+        descricao = request.form.get("descricao")
+
+        if descricao:
+            cur.execute("""
+                INSERT INTO req_eng_apontamentos(descricao)
+                VALUES(%s)
+                ON CONFLICT(descricao)
+                DO NOTHING
+            """,(descricao,))
+
+            con.commit()
+
+        con.close()
+
+        return redirect("/requisicoes_eng/import")
+
+
+    # =====================================
+    # EXCLUIR APONTAMENTO
+    # =====================================
+    if request.method == "POST" and request.form.get("acao") == "del_ap":
+
+        con = get_db()
+        cur = con.cursor()
+
+        cur.execute("""
+            DELETE
+            FROM req_eng_apontamentos
+            WHERE id=%s
+        """,(request.form.get("ap_id"),))
+
+        con.commit()
+        con.close()
+
+        return redirect("/requisicoes_eng/import")
+
+
+    # =====================================
+    # IMPORTAÇÃO
+    # =====================================
+    if request.method == "POST" and not request.form.get("acao"):
+
+        try:
+
+            import pandas as pd
+            import re
+
+            semana = request.form.get("semana")
+            arq = request.files.get("arquivo")
+
+            if not arq:
+                raise Exception("Arquivo não enviado")
+
+            df = pd.read_excel(arq)
+
+            con = get_db()
+            cur = con.cursor()
+
+            inseridos = 0
+            ignorados = 0
+
+            for _, r in df.iterrows():
+
+                secretaria = (
+                    str(r.iloc[0]).strip()
+                    if pd.notna(r.iloc[0])
+                    else ""
+                )
+
+                numero = (
+                    str(r.iloc[1]).strip()
+                    if pd.notna(r.iloc[1])
+                    else ""
+                )
+
+                if not secretaria or not numero:
+                    continue
+
+                m = re.match(
+                    r"^(\d+)",
+                    secretaria
+                )
+
+                if not m:
+                    continue
+
+                codigo = m.group(1).zfill(2)
+
+                chave = f"{codigo}/{numero}"
+
+                cur.execute("""
+                    SELECT 1
+                    FROM requisicoes_eng
+                    WHERE chave=%s
+                """,(chave,))
+
+                if cur.fetchone():
+                    ignorados += 1
+                    continue
+
+                valor = None
+
+                if pd.notna(r.iloc[3]):
+
+                    txt = str(r.iloc[3])
+
+                    txt = txt.replace(
+                        "R$",""
+                    )
+
+                    txt = txt.replace(
+                        ".",""
+                    )
+
+                    txt = txt.replace(
+                        ",","."
+                    )
+
+                    txt = txt.strip()
+
+                    try:
+                        valor = float(txt)
+                    except:
+                        pass
+
+                data_criacao = None
+                data_tramitacao = None
+
+                try:
+
+                    if pd.notna(r.iloc[5]):
+                        data_criacao = pd.to_datetime(
+                            r.iloc[5]
+                        )
+
+                    if pd.notna(r.iloc[7]):
+                        data_tramitacao = pd.to_datetime(
+                            r.iloc[7]
+                        )
+
+                except:
+                    pass
+
+                cur.execute("""
+                    INSERT INTO requisicoes_eng(
+                        chave,
+                        semana,
+                        secretaria,
+                        numero_ano,
+                        tipo_documento,
+                        valor_requisicao,
+                        nome_solicitante,
+                        data_criacao,
+                        status_atual,
+                        data_tramitacao,
+                        natureza_despesa,
+                        item_despesa,
+                        item_despesa2,
+                        nome_fornecedor,
+                        edital,
+                        contrato
+                    )
+                    VALUES(
+                        %s,%s,%s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,%s,%s,%s
+                    )
+                """,(
+
+                    chave,
+                    semana,
+
+                    secretaria,
+                    numero,
+
+                    r.iloc[2]
+                    if pd.notna(r.iloc[2])
+                    else None,
+
+                    valor,
+
+                    r.iloc[4]
+                    if pd.notna(r.iloc[4])
+                    else None,
+
+                    data_criacao,
+
+                    r.iloc[6]
+                    if pd.notna(r.iloc[6])
+                    else None,
+
+                    data_tramitacao,
+
+                    r.iloc[8]
+                    if pd.notna(r.iloc[8])
+                    else None,
+
+                    r.iloc[9]
+                    if pd.notna(r.iloc[9])
+                    else None,
+
+                    r.iloc[10]
+                    if pd.notna(r.iloc[10])
+                    else None,
+
+                    r.iloc[11]
+                    if pd.notna(r.iloc[11])
+                    else None,
+
+                    r.iloc[12]
+                    if pd.notna(r.iloc[12])
+                    else None,
+
+                    r.iloc[13]
+                    if pd.notna(r.iloc[13])
+                    else None
+                ))
+
+                inseridos += 1
+
+            con.commit()
+            con.close()
+
+            msg = (
+                f"{inseridos} importados. "
+                f"{ignorados} já existiam."
+            )
+
+        except Exception as e:
+            msg = str(e)
+
+    # =====================================
+    # CARREGA APONTAMENTOS
+    # =====================================
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT *
+        FROM req_eng_apontamentos
+        ORDER BY id
+    """)
+
+    aps = cur.fetchall()
+
+    con.close()
+
+    # =====================================
+    # HTML
+    # =====================================
+    html = """
+
+<h2>
+📤 Importar Requisições Engenharia
+</h2>
+
+<form
+method="post"
+enctype="multipart/form-data">
+
+    Semana<br>
+
+    <input
+        type="number"
+        name="semana"
+        required
+        style="width:120px">
+
+    <br><br>
+
+    Arquivo Excel<br>
+
+    <input
+        type="file"
+        name="arquivo"
+        accept=".xlsx,.xls"
+        required>
+
+    <br><br>
+
+    <button type="submit">
+        📤 Importar
+    </button>
+
+</form>
+
+{% if msg %}
+<br>
+<div style="
+    background:#eef;
+    padding:10px;
+    border:1px solid #99c;
+">
+{{msg}}
+</div>
+{% endif %}
+
+<hr>
+
+<h3>
+Checklist / Apontamentos
+</h3>
+
+<div style="
+display:flex;
+gap:30px;
+">
+
+<div style="
+flex:1;
+border:1px solid #ddd;
+padding:15px;
+border-radius:8px;
+">
+
+<h4>
+Novo apontamento
+</h4>
+
+<form method="post">
+
+    <input
+        type="hidden"
+        name="acao"
+        value="novo_ap">
+
+    <textarea
+        name="descricao"
+        required
+        style="
+        width:100%;
+        height:100px;
+        ">
+    </textarea>
+
+    <br><br>
+
+    <button type="submit">
+        ➕ Cadastrar
+    </button>
+
+</form>
+
+</div>
+
+<div style="
+flex:2;
+border:1px solid #ddd;
+padding:15px;
+border-radius:8px;
+">
+
+<h4>
+Apontamentos cadastrados
+</h4>
+
+<table
+border="1"
+width="100%"
+style="
+border-collapse:collapse;
+">
+
+<tr>
+<th width="50">ID</th>
+<th>Descrição</th>
+<th width="70">Ação</th>
+</tr>
+
+{% for a in aps %}
+
+<tr>
+
+<td>
+{{a.id}}
+</td>
+
+<td>
+{{a.descricao}}
+</td>
+
+<td>
+
+<form method="post">
+
+<input
+type="hidden"
+name="acao"
+value="del_ap">
+
+<input
+type="hidden"
+name="ap_id"
+value="{{a.id}}">
+
+<button
+onclick="return confirm('Excluir?')">
+🗑
+</button>
+
+</form>
+
+</td>
+
+</tr>
+
+{% endfor %}
+
+</table>
+
+</div>
+
+</div>
+"""
+
+    return render_template_string(
+        BASE.replace(
+            "{% block content %}{% endblock %}",
+            html
+        ),
+        aps=aps,
+        msg=msg,
+        user=session["user"],
+        perfil=session["perfil"]
+    )
+
+@app.route("/requisicoes_eng")
+def requisicoes_eng():
+
+    if "user" not in session:
+        return redirect("/")
+
+    con = get_db()
+    cur = con.cursor()
+
+    # requisicoes
+    cur.execute("""
+        SELECT *
+        FROM requisicoes_eng
+        ORDER BY semana DESC,
+                 valor_requisicao DESC NULLS LAST,
+                 id DESC
+    """)
+    rows = cur.fetchall()
+
+    # apontamentos
+    cur.execute("""
+        SELECT *
+        FROM req_eng_apontamentos
+        ORDER BY id
+    """)
+    apontamentos = cur.fetchall()
+
+    # relacionamentos
+    cur.execute("""
+        SELECT requisicao_id,
+               array_agg(apontamento_id) apontamentos
+        FROM req_eng_apontamentos_rel
+        GROUP BY requisicao_id
+    """)
+
+    mapa = {}
+
+    for r in cur.fetchall():
+        mapa[r["requisicao_id"]] = r["apontamentos"]
+
+    for r in rows:
+        r["apontamentos"] = mapa.get(r["id"], [])
+
+    con.close()
+
+    html = """
+<style>
+
+.card{
+    background:white;
+    border-radius:10px;
+    padding:15px;
+    box-shadow:0 2px 10px rgba(0,0,0,.08);
+}
+
+.toolbar{
+    display:flex;
+    gap:10px;
+    margin-bottom:15px;
+}
+
+.toolbar input{
+    padding:8px;
+    width:300px;
+}
+
+.btn{
+    background:#2563eb;
+    color:white;
+    border:none;
+    border-radius:6px;
+    padding:8px 12px;
+    cursor:pointer;
+    text-decoration:none;
+}
+
+.btn-green{
+    background:#16a34a;
+}
+
+.btn-red{
+    background:#dc2626;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+}
+
+th{
+    background:#f3f4f6;
+    font-size:12px;
+}
+
+th,td{
+    border:1px solid #ddd;
+    padding:5px;
+    vertical-align:top;
+    font-size:12px;
+    word-break:break-word;
+}
+
+input,select,textarea{
+    width:100%;
+    box-sizing:border-box;
+    padding:4px;
+    font-size:12px;
+}
+
+textarea{
+    min-height:60px;
+}
+
+.valor{
+    text-align:right;
+}
+
+.col-secretaria{width:180px}
+.col-numero{width:90px}
+.col-tipo{width:120px}
+.col-valor{width:100px}
+.col-status{width:70px}
+.col-natureza{width:90px}
+.col-item{width:60px}
+.col-desc{width:180px}
+.col-fornecedor{width:180px}
+.col-edital{width:150px}
+.col-contrato{width:150px}
+.col-oficio{width:120px}
+.col-na{width:90px}
+.col-monitor{width:80px}
+.col-beneficio{width:100px}
+.col-apont{width:220px}
+.col-acao{width:70px}
+
+</style>
+
+<div class="card">
+
+<h2>
+🏗️ Requisições Engenharia
+</h2>
+
+<div class="toolbar">
+
+<a href="/requisicoes_eng/import"
+class="btn">
+📤 Importar
+</a>
+
+<a href="/requisicoes_eng/apontamentos"
+class="btn">
+⚙ Apontamentos
+</a>
+
+<input
+id="busca"
+placeholder="Pesquisar..."
+onkeyup="filtrar()">
+
+</div>
+
+<div style="overflow:auto;">
+
+<table id="tbl">
+
+<tr>
+
+<th class="col-secretaria">Secretaria</th>
+<th class="col-numero">N°/Ano</th>
+<th class="col-tipo">Tipo</th>
+<th class="col-valor">Valor</th>
+<th class="col-status">Status</th>
+<th class="col-natureza">Natureza</th>
+<th class="col-item">Item</th>
+<th class="col-desc">Item Desc</th>
+<th class="col-fornecedor">Fornecedor</th>
+<th class="col-edital">Edital</th>
+<th class="col-contrato">Contrato</th>
+
+<th class="col-oficio">Nº Ofício</th>
+<th class="col-na">NA</th>
+<th class="col-monitor">Monitor.</th>
+<th class="col-beneficio">Benefício</th>
+<th class="col-apont">Apontamentos</th>
+<th class="col-acao">Ação</th>
+
+</tr>
+
+{% for r in rows %}
+
+<tr>
+
+<td>{{r.secretaria}}</td>
+<td>{{r.numero_ano}}</td>
+<td>{{r.tipo_documento}}</td>
+
+<td class="valor">
+R$ {{ "{:,.2f}".format(r.valor_requisicao or 0).replace(",", "X").replace(".", ",").replace("X",".") }}
+</td>
+
+<td>{{r.status_atual}}</td>
+
+<td>{{r.natureza_despesa}}</td>
+
+<td>{{r.item_despesa}}</td>
+
+<td>{{r.item_despesa2}}</td>
+
+<td>{{r.nome_fornecedor}}</td>
+
+<td>{{r.edital}}</td>
+
+<td>{{r.contrato}}</td>
+
+<td>
+<input
+id="oficio{{r.id}}"
+value="{{r.num_oficio or ''}}">
+</td>
+
+<td>
+<input
+id="na{{r.id}}"
+value="{{r.na_gerada or ''}}">
+</td>
+
+<td>
+
+<select id="monitor{{r.id}}">
+<option value="0"
+{% if not r.monitoramento %}
+selected
+{% endif %}
+>
+Não
+</option>
+
+<option value="1"
+{% if r.monitoramento %}
+selected
+{% endif %}
+>
+Sim
+</option>
+
+</select>
+
+</td>
+
+<td>
+
+<input
+id="benef{{r.id}}"
+type="number"
+step="0.01"
+value="{{r.beneficio_financeiro or ''}}">
+
+</td>
+
+<td>
+
+<select
+id="ap{{r.id}}"
+multiple
+size="5">
+
+{% for a in apontamentos %}
+
+<option
+value="{{a.id}}"
+{% if a.id in r.apontamentos %}
+selected
+{% endif %}
+>
+{{a.descricao}}
+</option>
+
+{% endfor %}
+
+</select>
+
+</td>
+
+<td>
+
+<button
+class="btn btn-green"
+onclick="salvar({{r.id}})">
+💾
+</button>
+
+</td>
+
+</tr>
+
+{% endfor %}
+
+</table>
+
+</div>
+
+</div>
+
+<script>
+
+function filtrar(){
+
+    let t =
+        document
+        .getElementById(
+            "busca"
+        )
+        .value
+        .toLowerCase()
+
+    document
+    .querySelectorAll(
+        "#tbl tr"
+    )
+    .forEach(
+        (r,i)=>{
+
+            if(i==0)
+                return
+
+            r.style.display =
+                r.innerText
+                .toLowerCase()
+                .includes(t)
+                ? ""
+                : "none"
+        }
+    )
+}
+
+function salvar(id){
+
+    let aps=[]
+
+    document
+    .querySelectorAll(
+        "#ap"+id+" option:checked"
+    )
+    .forEach(
+        x=>aps.push(x.value)
+    )
+
+    fetch(
+        "/requisicoes_eng/salvar/"+id,
+        {
+            method:"POST",
+
+            headers:{
+                "Content-Type":
+                "application/json"
+            },
+
+            body:JSON.stringify({
+
+                num_oficio:
+                    document
+                    .getElementById(
+                        "oficio"+id
+                    ).value,
+
+                na_gerada:
+                    document
+                    .getElementById(
+                        "na"+id
+                    ).value,
+
+                monitoramento:
+                    document
+                    .getElementById(
+                        "monitor"+id
+                    ).value=="1",
+
+                beneficio:
+                    document
+                    .getElementById(
+                        "benef"+id
+                    ).value,
+
+                apontamentos:
+                    aps
+            })
+        }
+    )
+    .then(r=>r.json())
+    .then(r=>{
+
+        if(r.ok){
+            alert("Salvo")
+        }
+        else{
+            alert("Erro")
+        }
+
+    })
+}
+
+</script>
+"""
+
+    return render_template_string(
+        BASE.replace(
+            "{% block content %}{% endblock %}",
+            html
+        ),
+        rows=rows,
+        apontamentos=apontamentos,
+        user=session["user"],
+        perfil=session["perfil"]
+    )
+
+@app.route(
+    "/requisicoes_eng/salvar/<int:id>",
+    methods=["POST"]
+)
+def req_eng_salvar(id):
+
+    if "user" not in session:
+        return jsonify(ok=False)
+
+    data=request.json
+
+    con=get_db()
+    cur=con.cursor()
+
+    cur.execute("""
+        UPDATE requisicoes_eng
+        SET
+            num_oficio=%s,
+            na_gerada=%s,
+            monitoramento=%s,
+            beneficio_financeiro=%s
+        WHERE id=%s
+    """,(
+        data["num_oficio"],
+        data["na_gerada"],
+        data["monitoramento"],
+        data["beneficio"] or None,
+        id
+    ))
+
+    cur.execute("""
+        DELETE
+        FROM req_eng_apontamentos_rel
+        WHERE requisicao_id=%s
+    """,(id,))
+
+    for ap in data["apontamentos"]:
+
+        cur.execute("""
+            INSERT INTO
+            req_eng_apontamentos_rel(
+                requisicao_id,
+                apontamento_id
+            )
+            VALUES(%s,%s)
+        """,(id,ap))
+
+    con.commit()
+    con.close()
+
+    return jsonify(ok=True)
+
 @app.route("/api/<tabela>")
 def api_tabela(tabela):
 

@@ -13233,6 +13233,30 @@ def requisicoes_eng_import():
 
             import re
             from datetime import datetime
+            def parse_data(v):
+            
+                if not v:
+                    return None
+            
+                if isinstance(v, datetime):
+                    return v
+            
+                formatos = [
+                    "%d/%m/%Y %H:%M:%S",
+                    "%d/%m/%Y %H:%M",
+                    "%d/%m/%Y"
+                ]
+            
+                for f in formatos:
+                    try:
+                        return datetime.strptime(
+                            str(v).strip(),
+                            f
+                        )
+                    except:
+                        pass
+            
+                return None
             
             for linha in ws.iter_rows(min_row=2, values_only=True):
             
@@ -13289,10 +13313,10 @@ def requisicoes_eng_import():
                 try:
             
                     if linha[5]:
-                        data_criacao = linha[5]
+                        data_criacao = parse_data(linha[5])
             
                     if linha[7]:
-                        data_tramitacao = linha[7]
+                        data_tramitacao = parse_data(linha[7])
             
                 except:
                     pass

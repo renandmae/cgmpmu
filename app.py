@@ -13648,11 +13648,37 @@ border-collapse:collapse;
 @app.route("/requisicoes_eng")
 def requisicoes_eng():
 
-    if "user" not in session:
-        return redirect("/")
+    page = int(request.args.get("page", 1))
+    limit = 100
+    offset = (page - 1) * limit
 
     con = get_db()
     cur = con.cursor()
+
+    # =========================
+    # FUNÇÕES AUXILIARES
+    # =========================
+    def extrair_ano(numero_ano):
+        try:
+            return int(str(numero_ano).split("/")[-1])
+        except:
+            return datetime.today().year
+
+    def semana_para_mes_ano(semana, ano):
+        try:
+            d = datetime.fromisocalendar(int(ano), int(semana), 1)
+            return d.strftime("%b/%y").lower()
+        except:
+            return ""
+
+    cur.execute("""
+        SELECT *
+        FROM requisicoes_eng
+        ORDER BY semana DESC NULLS LAST, id DESC
+        LIMIT %s OFFSET %s
+    """, (limit, offset))
+
+    rows = cur.fetchall()
 
     # requisicoes
     cur.execute("""
@@ -13687,6 +13713,14 @@ def requisicoes_eng():
 
     for r in rows:
         r["apontamentos"] = mapa.get(r["id"], [])
+        semana = r.get("semana")
+        ano = extrair_ano(r.get("numero_ano"))
+
+        if semana:
+            mes_ano = semana_para_mes_ano(semana, ano)
+            r["semana_formatada"] = f"{semana} ({mes_ano})"
+        else:
+            r["semana_formatada"] = ""
 
     con.close()
 
@@ -13813,7 +13847,7 @@ onkeyup="filtrar()">
 <table id="tbl">
 
 <tr>
-
+<th class="col-semana">Semana</th>
 <th class="col-secretaria">Secretaria</th>
 <th class="col-numero">N°/Ano</th>
 <th class="col-tipo">Tipo</th>
@@ -13822,6 +13856,7 @@ onkeyup="filtrar()">
 <th class="col-natureza">Natureza</th>
 <th class="col-item">Item</th>
 <th class="col-desc">Item Desc</th>
+<th class="col-req">Req</th>
 <th class="col-fornecedor">Fornecedor</th>
 <th class="col-edital">Edital</th>
 <th class="col-contrato">Contrato</th>
@@ -13838,7 +13873,8 @@ onkeyup="filtrar()">
 {% for r in rows %}
 
 <tr>
-
+<td>{{r.semana_formatada}}</td>
+<td>{{r.secretaria}}</td>
 <td>{{r.secretaria}}</td>
 <td>{{r.numero_ano}}</td>
 <td>{{r.tipo_documento}}</td>
@@ -13854,6 +13890,8 @@ R$ {{ "{:,.2f}".format(r.valor_requisicao or 0).replace(",", "X").replace(".", "
 <td>{{r.item_despesa}}</td>
 
 <td>{{r.item_despesa2}}</td>
+
+<td>{{r.req_tipo}}</td>
 
 <td>{{r.nome_fornecedor}}</td>
 
@@ -13936,6 +13974,10 @@ selected
 class="btn btn-green"
 onclick="salvar({{r.id}})">
 💾
+</button>
+
+<button class="btn btn-red" onclick="excluir({{r.id}})">
+🗑
 </button>
 
 </td>
@@ -14048,6 +14090,24 @@ function salvar(id){
     })
 }
 
+function excluir(id){
+
+    if(!confirm("Confirma exclusão?")) return;
+
+    fetch("/requisicoes_eng/delete/" + id, {
+        method: "POST"
+    })
+    .then(r => r.json())
+    .then(r => {
+        if(r.ok){
+            alert("Excluído");
+            location.reload();
+        } else {
+            alert("Erro ao excluir");
+        }
+    });
+
+}
 </script>
 """
 
@@ -14061,6 +14121,31 @@ function salvar(id){
         user=session["user"],
         perfil=session["perfil"]
     )
+
+@app.route("/requisicoes_eng/delete/<int:id>", methods=["POST"])
+def requisicoes_eng_delete(id):
+
+    if "user" not in session:
+        return {"ok": False}
+
+    con = get_db()
+    cur = con.cursor()
+
+    # remove relacionamentos primeiro
+    cur.execute("""
+        DELETE FROM req_eng_apontamentos_rel
+        WHERE requisicao_id = %s
+    """, (id,))
+
+    cur.execute("""
+        DELETE FROM requisicoes_eng
+        WHERE id = %s
+    """, (id,))
+
+    con.commit()
+    con.close()
+
+    return {"ok": True}
 
 @app.route(
     "/requisicoes_eng/salvar/<int:id>",

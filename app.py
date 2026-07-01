@@ -13214,8 +13214,7 @@ def requisicoes_eng_import():
 
         try:
 
-            import pandas as pd
-            import re
+            from openpyxl import load_workbook
 
             semana = request.form.get("semana")
             arq = request.files.get("arquivo")
@@ -13223,7 +13222,8 @@ def requisicoes_eng_import():
             if not arq:
                 raise Exception("Arquivo não enviado")
 
-            df = pd.read_excel(arq)
+            wb = load_workbook(arq, data_only=True)
+            ws = wb.active
 
             con = get_db()
             cur = con.cursor()
@@ -13231,88 +13231,72 @@ def requisicoes_eng_import():
             inseridos = 0
             ignorados = 0
 
-            for _, r in df.iterrows():
-
-                secretaria = (
-                    str(r.iloc[0]).strip()
-                    if pd.notna(r.iloc[0])
-                    else ""
-                )
-
-                numero = (
-                    str(r.iloc[1]).strip()
-                    if pd.notna(r.iloc[1])
-                    else ""
-                )
-
+            import re
+            from datetime import datetime
+            
+            for linha in ws.iter_rows(min_row=2, values_only=True):
+            
+                secretaria = str(linha[0]).strip() if linha[0] else ""
+                numero = str(linha[1]).strip() if linha[1] else ""
+            
                 if not secretaria or not numero:
                     continue
-
-                m = re.match(
-                    r"^(\d+)",
-                    secretaria
-                )
-
+            
+                m = re.match(r"^(\d+)", secretaria)
+            
                 if not m:
                     continue
-
+            
                 codigo = m.group(1).zfill(2)
-
+            
                 chave = f"{codigo}/{numero}"
-
+            
                 cur.execute("""
                     SELECT 1
                     FROM requisicoes_eng
                     WHERE chave=%s
-                """,(chave,))
-
+                """, (chave,))
+            
                 if cur.fetchone():
                     ignorados += 1
                     continue
-
+            
+                # ==========================
+                # VALOR
+                # ==========================
                 valor = None
-
-                if pd.notna(r.iloc[3]):
-
-                    txt = str(r.iloc[3])
-
-                    txt = txt.replace(
-                        "R$",""
-                    )
-
-                    txt = txt.replace(
-                        ".",""
-                    )
-
-                    txt = txt.replace(
-                        ",","."
-                    )
-
+            
+                if linha[3] is not None:
+            
+                    txt = str(linha[3])
+            
+                    txt = txt.replace("R$", "")
+                    txt = txt.replace(".", "")
+                    txt = txt.replace(",", ".")
                     txt = txt.strip()
-
+            
                     try:
                         valor = float(txt)
                     except:
                         pass
-
+            
+                # ==========================
+                # DATAS
+                # ==========================
                 data_criacao = None
                 data_tramitacao = None
-
+            
                 try:
-
-                    if pd.notna(r.iloc[5]):
-                        data_criacao = pd.to_datetime(
-                            r.iloc[5]
-                        )
-
-                    if pd.notna(r.iloc[7]):
-                        data_tramitacao = pd.to_datetime(
-                            r.iloc[7]
-                        )
-
+            
+                    if linha[5]:
+                        data_criacao = linha[5]
+            
+                    if linha[7]:
+                        data_tramitacao = linha[7]
+            
                 except:
                     pass
-
+            
                 cur.execute("""
                     INSERT INTO requisicoes_eng(
                         chave,
@@ -13336,57 +13320,39 @@ def requisicoes_eng_import():
                         %s,%s,%s,%s,%s,%s,%s,%s,
                         %s,%s,%s,%s,%s,%s,%s,%s
                     )
-                """,(
-
+                """, (
+            
                     chave,
                     semana,
-
+            
                     secretaria,
                     numero,
-
-                    r.iloc[2]
-                    if pd.notna(r.iloc[2])
-                    else None,
-
+            
+                    linha[2] if linha[2] else None,
+            
                     valor,
-
-                    r.iloc[4]
-                    if pd.notna(r.iloc[4])
-                    else None,
-
+            
+                    linha[4] if linha[4] else None,
+            
                     data_criacao,
-
-                    r.iloc[6]
-                    if pd.notna(r.iloc[6])
-                    else None,
-
+            
+                    linha[6] if linha[6] else None,
+            
                     data_tramitacao,
-
-                    r.iloc[8]
-                    if pd.notna(r.iloc[8])
-                    else None,
-
-                    r.iloc[9]
-                    if pd.notna(r.iloc[9])
-                    else None,
-
-                    r.iloc[10]
-                    if pd.notna(r.iloc[10])
-                    else None,
-
-                    r.iloc[11]
-                    if pd.notna(r.iloc[11])
-                    else None,
-
-                    r.iloc[12]
-                    if pd.notna(r.iloc[12])
-                    else None,
-
-                    r.iloc[13]
-                    if pd.notna(r.iloc[13])
-                    else None
+            
+                    linha[8] if linha[8] else None,
+            
+                    linha[9] if linha[9] else None,
+            
+                    linha[10] if linha[10] else None,
+            
+                    linha[11] if linha[11] else None,
+            
+                    linha[12] if linha[12] else None,
+            
+                    linha[13] if linha[13] else None
                 ))
-
+            
                 inseridos += 1
 
             con.commit()

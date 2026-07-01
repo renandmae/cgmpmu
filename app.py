@@ -13162,6 +13162,23 @@ def requisicoes_eng_import():
 
     msg = ""
 
+    editar = None
+
+    if request.args.get("editar"):
+    
+        con = get_db()
+        cur = con.cursor()
+    
+        cur.execute("""
+            SELECT *
+            FROM req_eng_apontamentos
+            WHERE id=%s
+        """,(request.args.get("editar"),))
+    
+        editar = cur.fetchone()
+    
+        con.close()
+
     # =====================================
     # CADASTRAR APONTAMENTO
     # =====================================
@@ -13206,6 +13223,27 @@ def requisicoes_eng_import():
 
         return redirect("/requisicoes_eng/import")
 
+    # =====================================
+    # EDITAR APONTAMENTO
+    # =====================================
+    if request.method == "POST" and request.form.get("acao") == "salvar_edit":
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+        UPDATE req_eng_apontamentos
+        SET descricao=%s
+        WHERE id=%s
+    """,(
+        request.form.get("descricao"),
+        request.form.get("ap_id")
+    ))
+
+    con.commit()
+    con.close()
+
+    return redirect("/requisicoes_eng/import")
 
     # =====================================
     # IMPORTAÇÃO
@@ -13475,7 +13513,7 @@ border-radius:8px;
 ">
 
 <h4>
-Novo apontamento
+{{ 'Editar apontamento' if editar else 'Novo apontamento' }}
 </h4>
 
 <form method="post">
@@ -13483,21 +13521,25 @@ Novo apontamento
     <input
         type="hidden"
         name="acao"
-        value="novo_ap">
+        value="{{ 'salvar_edit' if editar else 'novo_ap' }}">
+
+    {% if editar %}
+    <input
+        type="hidden"
+        name="ap_id"
+        value="{{editar.id}}">
+    {% endif %}
 
     <textarea
         name="descricao"
         required
-        style="
-        width:100%;
-        height:100px;
-        ">
-    </textarea>
+        style="width:100%;height:100px;"
+    >{{editar.descricao if editar else ''}}</textarea>
 
     <br><br>
 
     <button type="submit">
-        ➕ Cadastrar
+        {{ '💾 Salvar' if editar else '➕ Cadastrar' }}
     </button>
 
 </form>
@@ -13523,45 +13565,63 @@ border-collapse:collapse;
 ">
 
 <tr>
-<th width="50">ID</th>
-<th>Descrição</th>
-<th width="70">Ação</th>
+    <th>Descrição</th>
+    <th width="120">Ações</th>
 </tr>
 
 {% for a in aps %}
 
 <tr>
 
-<td>
-{{a.id}}
-</td>
+    <td>
+        {{a.descricao}}
+    </td>
 
-<td>
-{{a.descricao}}
-</td>
+    <td>
 
-<td>
+        <!-- editar -->
+        <form method="post" style="display:inline;">
 
-<form method="post">
+            <input
+                type="hidden"
+                name="acao"
+                value="edit_ap">
 
-<input
-type="hidden"
-name="acao"
-value="del_ap">
+            <input
+                type="hidden"
+                name="ap_id"
+                value="{{a.id}}">
 
-<input
-type="hidden"
-name="ap_id"
-value="{{a.id}}">
+            <a href="/requisicoes_eng/import?editar={{a.id}}">
+                ✏️
+            </a>
 
-<button
-onclick="return confirm('Excluir?')">
-🗑
-</button>
+        </form>
 
-</form>
+        <!-- excluir -->
+        <form
+            method="post"
+            style="display:inline;"
+        >
 
-</td>
+            <input
+                type="hidden"
+                name="acao"
+                value="del_ap">
+
+            <input
+                type="hidden"
+                name="ap_id"
+                value="{{a.id}}">
+
+            <button
+                onclick="return confirm('Excluir?')">
+                🗑
+            </button>
+
+        </form>
+
+    </td>
 
 </tr>
 

@@ -13852,9 +13852,11 @@ class="btn">
 📤 Importar
 </a>
 
-<a href="/requisicoes_eng/apontamentos"
-class="btn">
-⚙ Apontamentos
+<a
+    id="btnExportar"
+    href="/requisicoes_eng/export"
+    class="btn">
+📥 Exportar
 </a>
 
 <input
@@ -13864,6 +13866,37 @@ onkeyup="filtrar()">
 
 </div>
 
+<div style="
+display:flex;
+gap:10px;
+margin-bottom:10px;
+flex-wrap:wrap;
+">
+
+<select id="filtroReq" onchange="filtrar()">
+    <option value="">Req (todos)</option>
+    <option>ADITAMENTO</option>
+    <option>CONTRATAÇÃO</option>
+    <option>LIQUIDAÇÃO</option>
+</select>
+
+<select id="filtroSecretaria" onchange="filtrar()">
+    <option value="">Secretaria (todas)</option>
+
+    {% for s in rows|map(attribute='secretaria')|unique %}
+        {% if s %}
+        <option>{{s}}</option>
+        {% endif %}
+    {% endfor %}
+</select>
+
+<input
+    id="filtroSemana"
+    type="number"
+    placeholder="Semana"
+    onkeyup="filtrar()">
+
+</div>
 <div style="overflow:auto;">
 
 <table id="tbl">
@@ -14017,32 +14050,112 @@ onclick="salvar({{r.id}})">
 
 function filtrar(){
 
-    let t =
+    let busca =
         document
-        .getElementById(
-            "busca"
-        )
+        .getElementById("busca")
         .value
-        .toLowerCase()
+        .toLowerCase();
+
+    let req =
+        document
+        .getElementById("filtroReq")
+        .value
+        .toLowerCase();
+
+    let sec =
+        document
+        .getElementById("filtroSecretaria")
+        .value
+        .toLowerCase();
+
+    let semana =
+        document
+        .getElementById("filtroSemana")
+        .value;
 
     document
-    .querySelectorAll(
-        "#tbl tr"
-    )
-    .forEach(
-        (r,i)=>{
+    .querySelectorAll("#tbl tr")
+    .forEach((r,i)=>{
 
-            if(i==0)
-                return
+        if(i==0)
+            return;
 
-            r.style.display =
-                r.innerText
-                .toLowerCase()
-                .includes(t)
-                ? ""
-                : "none"
-        }
-    )
+        let texto =
+            r.innerText.toLowerCase();
+
+        let okBusca =
+            texto.includes(busca);
+
+        let okReq =
+            !req ||
+            r.cells[9]
+            .innerText
+            .toLowerCase()
+            .includes(req);
+
+        let okSec =
+            !sec ||
+            r.cells[2]
+            .innerText
+            .toLowerCase()
+            .includes(sec);
+
+        let okSemana =
+            !semana ||
+            r.cells[0]
+            .innerText
+            .startsWith(semana);
+
+        r.style.display =
+            okBusca &&
+            okReq &&
+            okSec &&
+            okSemana
+            ? ""
+            : "none";
+    });
+
+    atualizarLinkExportacao();
+}
+
+function atualizarLinkExportacao(){
+
+    let p =
+        new URLSearchParams();
+
+    p.set(
+        "req",
+        document
+        .getElementById("filtroReq")
+        .value
+    );
+
+    p.set(
+        "secretaria",
+        document
+        .getElementById("filtroSecretaria")
+        .value
+    );
+
+    p.set(
+        "semana",
+        document
+        .getElementById("filtroSemana")
+        .value
+    );
+
+    p.set(
+        "busca",
+        document
+        .getElementById("busca")
+        .value
+    );
+
+    document
+        .getElementById("btnExportar")
+        .href =
+        "/requisicoes_eng/export?"
+        + p.toString();
 }
 
 function salvar(id){
@@ -14141,6 +14254,162 @@ function excluir(id){
         apontamentos=apontamentos,
         user=session["user"],
         perfil=session["perfil"]
+    )
+
+@app.route("/requisicoes_eng/export")
+def requisicoes_eng_export():
+
+    if "user" not in session:
+        return redirect("/")
+
+    req = request.args.get("req")
+    secretaria = request.args.get("secretaria")
+    semana = request.args.get("semana")
+    busca = request.args.get("busca","")
+
+    con = get_db()
+    cur = con.cursor()
+
+    sql = """
+        SELECT *
+        FROM requisicoes_eng
+        WHERE 1=1
+    """
+
+    params = []
+
+    if req:
+        sql += " AND req_tipo=%s"
+        params.append(req)
+
+    if secretaria:
+        sql += " AND secretaria=%s"
+        params.append(secretaria)
+
+    if semana:
+        sql += " AND semana=%s"
+        params.append(semana)
+
+    sql += """
+        ORDER BY semana DESC,
+                 id DESC
+    """
+
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+
+    cur.execute("""
+        SELECT
+            r.requisicao_id,
+            string_agg(
+                a.descricao,
+                ' | '
+                ORDER BY a.id
+            )
+        FROM req_eng_apontamentos_rel r
+        JOIN req_eng_apontamentos a
+            ON a.id=r.apontamento_id
+        GROUP BY r.requisicao_id
+    """)
+
+    mapa = {
+        x[0]:x[1]
+        for x in cur.fetchall()
+    }
+
+    con.close()
+
+    import pandas as pd
+
+    dados=[]
+
+    for r in rows:
+
+        linha = {
+
+            "Semana":
+                r["semana"],
+
+            "Nº Req.":
+                r["numero_ano"],
+
+            "Secretaria":
+                r["secretaria"],
+
+            "Tipo":
+                r["tipo_documento"],
+
+            "Valor":
+                r["valor_requisicao"],
+
+            "Status":
+                r["status_atual"],
+
+            "Natureza":
+                r["natureza_despesa"],
+
+            "Item":
+                r["item_despesa"],
+
+            "Item Desc":
+                r["item_despesa2"],
+
+            "Req":
+                r["req_tipo"],
+
+            "Fornecedor":
+                r["nome_fornecedor"],
+
+            "Edital":
+                r["edital"],
+
+            "Contrato":
+                r["contrato"],
+
+            "Nº Ofício":
+                r["num_oficio"],
+
+            "NA":
+                r["na_gerada"],
+
+            "Monitor.":
+                "Sim" if r["monitoramento"] else "Não",
+
+            "Benefício":
+                r["beneficio_financeiro"],
+
+            "Apontamentos":
+                mapa.get(r["id"], "")
+        }
+
+        # filtro textual
+        if busca:
+            texto = str(linha).lower()
+            if busca.lower() not in texto:
+                continue
+
+        dados.append(linha)
+
+    df = pd.DataFrame(dados)
+
+    output = io.BytesIO()
+
+    with pd.ExcelWriter(
+        output,
+        engine="openpyxl"
+    ) as writer:
+        df.to_excel(
+            writer,
+            index=False
+        )
+
+    output.seek(0)
+
+    return send_file(
+        output,
+        download_name=
+            "requisicoes_eng.xlsx",
+        as_attachment=True
     )
 
 @app.route("/requisicoes_eng/delete/<int:id>", methods=["POST"])

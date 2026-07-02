@@ -13645,8 +13645,6 @@ border-collapse:collapse;
         perfil=session["perfil"]
     )
 
-import locale
-locale.setlocale(locale.LC_TIME, "pt_BR.utf8")
 @app.route("/requisicoes_eng")
 def requisicoes_eng():
 
@@ -13671,8 +13669,34 @@ def requisicoes_eng():
     
     def semana_para_mes_ano(semana, ano):
         try:
-            d = datetime.fromisocalendar(int(ano), int(semana), 1)
-            return d.strftime("%b/%y")
+            semana = int(semana)
+    
+            if semana <= 5:
+                mes = "jan"
+            elif semana <= 9:
+                mes = "fev"
+            elif semana <= 13:
+                mes = "mar"
+            elif semana <= 18:
+                mes = "abr"
+            elif semana <= 22:
+                mes = "mai"
+            elif semana <= 26:
+                mes = "jun"
+            elif semana <= 31:
+                mes = "jul"
+            elif semana <= 35:
+                mes = "ago"
+            elif semana <= 39:
+                mes = "set"
+            elif semana <= 44:
+                mes = "out"
+            elif semana <= 48:
+                mes = "nov"
+            else:
+                mes = "dez"
+    
+            return f"{mes}/{str(ano)[-2:]}"
         except:
             return ""
 
@@ -13845,8 +13869,8 @@ onkeyup="filtrar()">
 
 <tr>
 <th class="col-semana">Semana</th>
+<th class="col-numero">Nº Req.</th>
 <th class="col-secretaria">Secretaria</th>
-<th class="col-numero">N°/Ano</th>
 <th class="col-tipo">Tipo</th>
 <th class="col-valor">Valor</th>
 <th class="col-status">Status</th>
@@ -13871,8 +13895,8 @@ onkeyup="filtrar()">
 
 <tr>
 <td>{{r.semana_formatada}}</td>
-<td>{{r.secretaria}}</td>
 <td>{{r.numero_ano}}</td>
+<td>{{r.secretaria}}</td>
 <td>{{r.tipo_documento}}</td>
 
 <td class="valor">

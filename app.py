@@ -13640,6 +13640,7 @@ border-collapse:collapse;
             html
         ),
         aps=aps,
+        editar=editar,
         msg=msg,
         user=session["user"],
         perfil=session["perfil"]

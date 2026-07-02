@@ -14360,10 +14360,14 @@ def requisicoes_eng_export():
     if "user" not in session:
         return redirect("/")
 
+    import io
+    from openpyxl import Workbook
+    from flask import send_file
+
     req = request.args.get("req")
     secretaria = request.args.get("secretaria")
     semana = request.args.get("semana")
-    busca = request.args.get("busca","")
+    busca = request.args.get("busca", "")
 
     con = get_db()
     cur = con.cursor()
@@ -14396,6 +14400,7 @@ def requisicoes_eng_export():
     cur.execute(sql, params)
     rows = cur.fetchall()
 
+    # apontamentos
     cur.execute("""
         SELECT
             r.requisicao_id,
@@ -14403,111 +14408,111 @@ def requisicoes_eng_export():
                 a.descricao,
                 ' | '
                 ORDER BY a.id
-            )
+            ) AS descricao
         FROM req_eng_apontamentos_rel r
         JOIN req_eng_apontamentos a
-            ON a.id=r.apontamento_id
+            ON a.id = r.apontamento_id
         GROUP BY r.requisicao_id
     """)
 
     mapa = {
-        x["requisicao_id"]: x["string_agg"]
+        x["requisicao_id"]: x["descricao"]
         for x in cur.fetchall()
     }
 
     con.close()
 
-    import pandas as pd
+    # descrição do código da análise
+    analises = {
+        "AP": "Auditada Preventivamente",
+        "AG": "Aguardando envio da Planilha pela Sec. Ordenadora",
+        "DI": "Dispensável de auditoria Req, poderá ser auditado processo",
+        "AR": "Deverá ser auditada a requisição de compra, processo poderá ser oportunamente"
+    }
 
-    dados=[]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Requisições"
+
+    cabecalho = [
+        "Semana",
+        "Nº Req.",
+        "Secretaria",
+        "Tipo",
+        "Valor",
+        "Status",
+        "Natureza",
+        "Item",
+        "Item Desc",
+        "Req",
+        "Fornecedor",
+        "Edital",
+        "Contrato",
+        "Análise",
+        "Nº Ofício",
+        "NA",
+        "Monitor.",
+        "Benefício",
+        "Apontamentos"
+    ]
+
+    ws.append(cabecalho)
 
     for r in rows:
 
-        linha = {
+        linha = [
+            r["semana"],
+            r["numero_ano"],
+            r["secretaria"],
+            r["tipo_documento"],
+            r["valor_requisicao"],
+            r["status_atual"],
+            r["natureza_despesa"],
+            r["item_despesa"],
+            r["item_despesa2"],
+            r["req_tipo"],
+            r["nome_fornecedor"],
+            r["edital"],
+            r["contrato"],
+            analises.get(r.get("analise"), ""),
+            r["num_oficio"],
+            r["na_gerada"],
+            "Sim" if r["monitoramento"] else "Não",
+            r["beneficio_financeiro"],
+            mapa.get(r["id"], "")
+        ]
 
-            "Semana":
-                r["semana"],
-
-            "Nº Req.":
-                r["numero_ano"],
-
-            "Secretaria":
-                r["secretaria"],
-
-            "Tipo":
-                r["tipo_documento"],
-
-            "Valor":
-                r["valor_requisicao"],
-
-            "Status":
-                r["status_atual"],
-
-            "Natureza":
-                r["natureza_despesa"],
-
-            "Item":
-                r["item_despesa"],
-
-            "Item Desc":
-                r["item_despesa2"],
-
-            "Req":
-                r["req_tipo"],
-
-            "Fornecedor":
-                r["nome_fornecedor"],
-
-            "Edital":
-                r["edital"],
-
-            "Contrato":
-                r["contrato"],
-
-            "Nº Ofício":
-                r["num_oficio"],
-
-            "NA":
-                r["na_gerada"],
-
-            "Monitor.":
-                "Sim" if r["monitoramento"] else "Não",
-
-            "Benefício":
-                r["beneficio_financeiro"],
-
-            "Apontamentos":
-                mapa.get(r["id"], "")
-        }
-
-        # filtro textual
+        # filtro textual igual ao da tela
         if busca:
-            texto = str(linha).lower()
+            texto = " ".join(
+                str(x or "").lower()
+                for x in linha
+            )
+
             if busca.lower() not in texto:
                 continue
 
-        dados.append(linha)
+        ws.append(linha)
 
-    df = pd.DataFrame(dados)
+    # largura automática aproximada
+    for coluna in ws.columns:
+        tamanho = max(
+            len(str(c.value or ""))
+            for c in coluna
+        )
+        ws.column_dimensions[
+            coluna[0].column_letter
+        ].width = min(tamanho + 2, 60)
 
     output = io.BytesIO()
-
-    with pd.ExcelWriter(
-        output,
-        engine="openpyxl"
-    ) as writer:
-        df.to_excel(
-            writer,
-            index=False
-        )
-
+    wb.save(output)
     output.seek(0)
 
     return send_file(
         output,
-        download_name=
-            "requisicoes_eng.xlsx",
-        as_attachment=True
+        download_name="requisicoes_eng.xlsx",
+        as_attachment=True,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
 @app.route("/requisicoes_eng/delete/<int:id>", methods=["POST"])

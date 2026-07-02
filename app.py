@@ -13830,26 +13830,28 @@ textarea{
 .col-fornecedor{width:180px}
 .col-edital{width:140px}
 .col-contrato{width:140px}
+.col-analise{width:140px}
 .col-oficio{width:120px}
 .col-na{width:90px}
 .col-monitor{width:90px}
 .col-beneficio{width:110px}
 .col-apont{width:220px}
 .col-acao{width:80px}
-.auditada{
-    background:#dcfce7 !important;
+
+.auditada td{
+    background:#bbf7d0 !important; /* verde */
 }
 
-.aguardando{
-    background:#e5e7eb !important;
+.aguardando td{
+    background:#d1d5db !important; /* cinza */
 }
 
-.dispensavel{
-    background:#fed7aa !important;
+.dispensavel td{
+    background:#fdba74 !important; /* laranja */
 }
 
-.auditar{
-    background:#fef08a !important;
+.auditar td{
+    background:#fde047 !important; /* amarelo */
 }
 
 </style>

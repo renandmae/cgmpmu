@@ -14230,7 +14230,10 @@ def api_tabela(tabela):
         "os_status_user",
         "projeto_paint",
         "requisicoes",
-        "horas"
+        "horas",
+        "req_eng_apontamentos",
+        "requisicoes_eng",
+        "req_eng_apontamentos_rel"
     }
 
     if tabela not in permitidas:

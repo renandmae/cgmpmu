@@ -14313,7 +14313,7 @@ def requisicoes_eng_export():
     """)
 
     mapa = {
-        x[0]:x[1]
+        x["id"]: x["descricao"]
         for x in cur.fetchall()
     }
 

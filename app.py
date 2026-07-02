@@ -13836,6 +13836,21 @@ textarea{
 .col-beneficio{width:110px}
 .col-apont{width:220px}
 .col-acao{width:80px}
+.auditada{
+    background:#dcfce7 !important;
+}
+
+.aguardando{
+    background:#e5e7eb !important;
+}
+
+.dispensavel{
+    background:#fed7aa !important;
+}
+
+.auditar{
+    background:#fef08a !important;
+}
 
 </style>
 
@@ -13915,7 +13930,7 @@ flex-wrap:wrap;
 <th class="col-fornecedor">Fornecedor</th>
 <th class="col-edital">Edital</th>
 <th class="col-contrato">Contrato</th>
-
+<th class="col-analise">Análise</th>
 <th class="col-oficio">Nº Ofício</th>
 <th class="col-na">NA</th>
 <th class="col-monitor">Monitor.</th>
@@ -13952,6 +13967,41 @@ R$ {{ "{:,.2f}".format(r.valor_requisicao or 0).replace(",", "X").replace(".", "
 <td>{{r.edital}}</td>
 
 <td>{{r.contrato}}</td>
+
+<td>
+
+<select
+    id="analise{{r.id}}"
+    onchange="aplicarCor(this)">
+
+    <option value=""
+    {% if not r.analise %}selected{% endif %}>
+        -
+    </option>
+
+    <option value="AP"
+    {% if r.analise=='AP' %}selected{% endif %}>
+        AP - Auditada Preventivamente
+    </option>
+
+    <option value="AG"
+    {% if r.analise=='AG' %}selected{% endif %}>
+        AG - Aguardando envio
+    </option>
+
+    <option value="DI"
+    {% if r.analise=='DI' %}selected{% endif %}>
+        DI - Dispensável
+    </option>
+
+    <option value="AR"
+    {% if r.analise=='AR' %}selected{% endif %}>
+        AR - Deverá ser auditada
+    </option>
+
+</select>
+
+</td>
 
 <td>
 <input
@@ -14182,6 +14232,12 @@ function salvar(id){
 
             body:JSON.stringify({
 
+                analise:
+                document
+                    .getElementById(
+                        "analise"+id
+                    ).value,
+
                 num_oficio:
                     document
                     .getElementById(
@@ -14224,6 +14280,37 @@ function salvar(id){
     })
 }
 
+function aplicarCor(sel){
+
+    let tr = sel.closest("tr");
+
+    tr.classList.remove(
+        "auditada",
+        "aguardando",
+        "dispensavel",
+        "auditar"
+    );
+
+    switch(sel.value){
+
+        case "AP":
+            tr.classList.add("auditada");
+            break;
+
+        case "AG":
+            tr.classList.add("aguardando");
+            break;
+
+        case "DI":
+            tr.classList.add("dispensavel");
+            break;
+
+        case "AR":
+            tr.classList.add("auditar");
+            break;
+    }
+}
+
 function excluir(id){
 
     if(!confirm("Confirma exclusão?")) return;
@@ -14241,6 +14328,15 @@ function excluir(id){
         }
     });
 
+}
+// AQUI NO FINAL
+window.onload = function(){
+
+    document
+        .querySelectorAll("[id^='analise']")
+        .forEach(aplicarCor);
+
+    atualizarLinkExportacao();
 }
 </script>
 """
@@ -14313,7 +14409,7 @@ def requisicoes_eng_export():
     """)
 
     mapa = {
-        x["id"]: x["descricao"]
+        x["requisicao_id"]: x["string_agg"]
         for x in cur.fetchall()
     }
 
@@ -14454,12 +14550,14 @@ def req_eng_salvar(id):
     cur.execute("""
         UPDATE requisicoes_eng
         SET
+            analise=%s,
             num_oficio=%s,
             na_gerada=%s,
             monitoramento=%s,
             beneficio_financeiro=%s
         WHERE id=%s
     """,(
+        data["analise"],
         data["num_oficio"],
         data["na_gerada"],
         data["monitoramento"],

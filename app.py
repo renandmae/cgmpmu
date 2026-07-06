@@ -13649,10 +13649,7 @@ border-collapse:collapse;
 @app.route("/requisicoes_eng")
 def requisicoes_eng():
 
-    page = int(request.args.get("page", 1))
-    limit = 100
-    offset = (page - 1) * limit
-
+    # aqui fica paginacao se precisar, limit offset, etc
     con = get_db()
     cur = con.cursor()
 
@@ -13705,8 +13702,7 @@ def requisicoes_eng():
         SELECT *
         FROM requisicoes_eng
         ORDER BY semana DESC NULLS LAST, id DESC
-        LIMIT %s OFFSET %s
-    """, (limit, offset))
+    """)
 
     rows = cur.fetchall()
 

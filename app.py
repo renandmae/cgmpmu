@@ -13738,6 +13738,15 @@ def requisicoes_eng():
         else:
             r["semana_formatada"] = ""
 
+    cur.execute("""
+        SELECT DISTINCT semana
+        FROM requisicoes_eng
+        WHERE semana IS NOT NULL
+        ORDER BY semana DESC
+    """)
+    
+    semanas = [r["semana"] for r in cur.fetchall()]
+
     con.close()
 
     html = """
@@ -13889,7 +13898,7 @@ flex-wrap:wrap;
 <select id="filtroReq" onchange="filtrar()">
     <option value="">Req (todos)</option>
     <option>ADITAMENTO</option>
-    <option>CONTRATAÇÃO</option>
+    <option selected>CONTRATAÇÃO</option>
     <option>LIQUIDAÇÃO</option>
 </select>
 
@@ -13903,11 +13912,15 @@ flex-wrap:wrap;
     {% endfor %}
 </select>
 
-<input
-    id="filtroSemana"
-    type="number"
-    placeholder="Semana"
-    onkeyup="filtrar()">
+<select id="filtroSemana" onchange="filtrar()">
+    <option value="">Todas as semanas</option>
+
+    {% for s in semanas %}
+        <option value="{{s}}">
+            {{s}}
+        </option>
+    {% endfor %}
+</select>
 
 </div>
 <div style="overflow:auto;">
@@ -14369,6 +14382,7 @@ window.onload = function(){
         .forEach(aplicarCor);
 
     atualizarLinkExportacao();
+    filtrar();   // <-- adicionar esta linha
 }
 </script>
 """
@@ -14380,6 +14394,7 @@ window.onload = function(){
         ),
         rows=rows,
         apontamentos=apontamentos,
+        semanas=semanas,
         user=session["user"],
         perfil=session["perfil"]
     )

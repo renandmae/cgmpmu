@@ -13826,7 +13826,7 @@ textarea{
 .col-natureza{width:110px}
 .col-item{width:70px}
 .col-desc{width:180px}
-.col-req{width:80px} /* 🔥 FALTAVA ISSO */
+.col-req{width:100px} /* 🔥 FALTAVA ISSO */
 .col-fornecedor{width:180px}
 .col-edital{width:140px}
 .col-contrato{width:140px}
@@ -13962,7 +13962,33 @@ R$ {{ "{:,.2f}".format(r.valor_requisicao or 0).replace(",", "X").replace(".", "
 
 <td>{{r.item_despesa2}}</td>
 
-<td>{{r.req_tipo}}</td>
+<td>
+
+<select id="req{{r.id}}">
+
+    <option value=""
+    {% if not r.req_tipo %}selected{% endif %}>
+        -
+    </option>
+
+    <option value="ADITAMENTO"
+    {% if r.req_tipo=='ADITAMENTO' %}selected{% endif %}>
+        ADITAMENTO
+    </option>
+
+    <option value="CONTRATAÇÃO"
+    {% if r.req_tipo=='CONTRATAÇÃO' %}selected{% endif %}>
+        CONTRATAÇÃO
+    </option>
+
+    <option value="LIQUIDAÇÃO"
+    {% if r.req_tipo=='LIQUIDAÇÃO' %}selected{% endif %}>
+        LIQUIDAÇÃO
+    </option>
+
+</select>
+
+</td>
 
 <td>{{r.nome_fornecedor}}</td>
 
@@ -14234,6 +14260,12 @@ function salvar(id){
 
             body:JSON.stringify({
 
+                req_tipo:
+                document
+                    .getElementById(
+                        "req"+id
+                    ).value,
+                
                 analise:
                 document
                     .getElementById(
@@ -14557,6 +14589,7 @@ def req_eng_salvar(id):
     cur.execute("""
         UPDATE requisicoes_eng
         SET
+            req_tipo=%s,
             analise=%s,
             num_oficio=%s,
             na_gerada=%s,
@@ -14564,6 +14597,7 @@ def req_eng_salvar(id):
             beneficio_financeiro=%s
         WHERE id=%s
     """,(
+        data["req_tipo"],
         data["analise"],
         data["num_oficio"],
         data["na_gerada"],

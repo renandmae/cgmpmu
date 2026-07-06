@@ -14166,10 +14166,12 @@ function filtrar(){
 
         let okReq =
             !req ||
-            r.cells[9]
-            .innerText
-            .toLowerCase()
-            .includes(req);
+            (
+                r.cells[9]
+                 .querySelector("select")
+                 ?.value
+                 .toLowerCase() === req
+            );
 
         let okSec =
             !sec ||

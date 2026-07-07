@@ -13160,6 +13160,9 @@ def requisicoes_eng_import():
     if "user" not in session:
         return redirect("/")
 
+    if session['perfil'] != 'admin' and session['user'] != 'laianne':
+    return 'Acesso negado'
+
     msg = ""
 
     editar = None
@@ -13648,7 +13651,10 @@ border-collapse:collapse;
 
 @app.route("/requisicoes_eng")
 def requisicoes_eng():
-
+    
+    if session['perfil'] != 'admin' and session['user'] != 'laianne':
+        return 'Acesso negado'
+    
     # aqui fica paginacao se precisar, limit offset, etc
     con = get_db()
     cur = con.cursor()
@@ -13897,6 +13903,7 @@ flex-wrap:wrap;
 
 <select id="filtroReq" onchange="filtrar()">
     <option value="">Req (todos)</option>
+    <option value="-">A CLASSIFICAR</option>
     <option>ADITAMENTO</option>
     <option selected>CONTRATAÇÃO</option>
     <option>LIQUIDAÇÃO</option>
@@ -14173,14 +14180,23 @@ function filtrar(){
         let okBusca =
             texto.includes(busca);
 
-        let okReq =
-            !req ||
-            (
-                r.cells[9]
-                 .querySelector("select")
-                 ?.value
-                 .toLowerCase() === req
-            );
+        let valorReq =
+            r.cells[9]
+             .querySelector("select")
+             ?.value
+             .toLowerCase();
+        
+        let okReq;
+        
+        if (!req) {
+            okReq = true;
+        }
+        else if (req == "-") {
+            okReq = valorReq == "";
+        }
+        else {
+            okReq = valorReq == req;
+        }
 
         let okSec =
             !sec ||

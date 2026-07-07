@@ -13161,7 +13161,7 @@ def requisicoes_eng_import():
         return redirect("/")
 
     if session['perfil'] != 'admin' and session['user'] != 'laianne':
-    return 'Acesso negado'
+        return 'Acesso negado'
 
     msg = ""
 

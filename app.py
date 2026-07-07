@@ -13622,7 +13622,7 @@ style="
 border-collapse:collapse;
 ">
 
-<tr data-tipo="{{a.tipo}}">
+<tr>
     <th width="140">Tipo</th>
     <th>Descrição</th>
     <th width="120">Ações</th>
@@ -13630,7 +13630,7 @@ border-collapse:collapse;
 
 {% for a in aps %}
 
-<tr>
+<tr data-tipo="{{a.tipo}}">
     <td>{{a.tipo}}</td>
     <td>
         {{a.descricao}}

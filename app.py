@@ -13191,14 +13191,21 @@ def requisicoes_eng_import():
         cur = con.cursor()
 
         descricao = request.form.get("descricao")
+        tipo = request.form.get("tipo")
 
         if descricao:
             cur.execute("""
-                INSERT INTO req_eng_apontamentos(descricao)
-                VALUES(%s)
+                INSERT INTO req_eng_apontamentos(
+                    descricao,
+                    tipo
+                )
+                VALUES(%s,%s)
                 ON CONFLICT(descricao)
                 DO NOTHING
-            """,(descricao,))
+            """,(
+                descricao,
+                tipo
+            ))
 
             con.commit()
 
@@ -13236,10 +13243,12 @@ def requisicoes_eng_import():
     
         cur.execute("""
             UPDATE req_eng_apontamentos
-            SET descricao=%s
+            SET descricao=%s,
+            tipo=%s
             WHERE id=%s
         """,(
             request.form.get("descricao"),
+            request.form.get("tipo"),
             request.form.get("ap_id")
         ))
     
@@ -13539,6 +13548,32 @@ border-radius:8px;
         style="width:100%;height:100px;"
     >{{editar.descricao if editar else ''}}</textarea>
 
+    Tipo<br>
+
+<select
+    name="tipo"
+    required
+    style="width:220px">
+
+    <option value="CONTRATAÇÃO"
+    {% if editar and editar.tipo=='CONTRATAÇÃO' %}selected{% endif %}>
+        CONTRATAÇÃO
+    </option>
+
+    <option value="LIQUIDAÇÃO"
+    {% if editar and editar.tipo=='LIQUIDAÇÃO' %}selected{% endif %}>
+        LIQUIDAÇÃO
+    </option>
+
+    <option value="ADITAMENTO"
+    {% if editar and editar.tipo=='ADITAMENTO' %}selected{% endif %}>
+        ADITAMENTO
+    </option>
+
+</select>
+
+<br><br>
+
     <br><br>
 
     <button type="submit">
@@ -13560,14 +13595,35 @@ border-radius:8px;
 Apontamentos cadastrados
 </h4>
 
-<table
+<div style="margin-bottom:10px;">
+
+<button onclick="filtrarAp('')">
+Todos
+</button>
+
+<button onclick="filtrarAp('CONTRATAÇÃO')">
+Contratação
+</button>
+
+<button onclick="filtrarAp('LIQUIDAÇÃO')">
+Liquidação
+</button>
+
+<button onclick="filtrarAp('ADITAMENTO')">
+Aditamento
+</button>
+
+</div>
+
+<table id ="tblAp"
 border="1"
 width="100%"
 style="
 border-collapse:collapse;
 ">
 
-<tr>
+<tr data-tipo="{{a.tipo}}">
+    <th width="140">Tipo</th>
     <th>Descrição</th>
     <th width="120">Ações</th>
 </tr>
@@ -13575,7 +13631,7 @@ border-collapse:collapse;
 {% for a in aps %}
 
 <tr>
-
+    <td>{{a.tipo}}</td>
     <td>
         {{a.descricao}}
     </td>
@@ -13633,7 +13689,24 @@ border-collapse:collapse;
 </table>
 
 </div>
+<script>
+function filtrarAp(tipo){
 
+    document.querySelectorAll("#tblAp tr[data-tipo]").forEach(function(linha){
+
+        if(tipo=="" || linha.dataset.tipo==tipo)
+            linha.style.display="";
+
+        else
+            linha.style.display="none";
+
+    });
+
+}
+window.onload = function(){
+    filtrarAp("CONTRATAÇÃO");
+}
+</script>
 </div>
 """
 

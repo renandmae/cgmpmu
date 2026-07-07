@@ -13160,7 +13160,7 @@ def requisicoes_eng_import():
     if "user" not in session:
         return redirect("/")
 
-    if session['perfil'] != 'admin' and session['user'] != 'laianne':
+    if session['perfil'] != 'admin' and session['user'] != 'Laianne Fogaça':
         return 'Acesso negado'
 
     msg = ""
@@ -13652,7 +13652,7 @@ border-collapse:collapse;
 @app.route("/requisicoes_eng")
 def requisicoes_eng():
     
-    if session['perfil'] != 'admin' and session['user'] != 'laianne':
+    if session['perfil'] != 'admin' and session['user'] != 'Laianne Fogaça':
         return 'Acesso negado'
     
     # aqui fica paginacao se precisar, limit offset, etc

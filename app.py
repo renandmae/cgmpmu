@@ -14053,7 +14053,9 @@ R$ {{ "{:,.2f}".format(r.valor_requisicao or 0).replace(",", "X").replace(".", "
 
 <td>
 
-<select id="req{{r.id}}">
+<select
+    id="req{{r.id}}"
+    onchange="trocarTipo({{r.id}})">
 
     <option value=""
     {% if not r.req_tipo %}selected{% endif %}>
@@ -14174,6 +14176,8 @@ size="5">
 
 {% for a in apontamentos %}
 
+{% if a.tipo == r.req_tipo %}
+
 <option
 value="{{a.id}}"
 {% if a.id in r.apontamentos %}
@@ -14182,6 +14186,8 @@ selected
 >
 {{a.descricao}}
 </option>
+
+{% endif %}
 
 {% endfor %}
 
@@ -14214,6 +14220,61 @@ onclick="salvar({{r.id}})">
 </div>
 
 <script>
+
+const APONTAMENTOS = [
+
+{% for a in apontamentos %}
+
+{
+    id: {{a.id}},
+    tipo: {{a.tipo|tojson}},
+    descricao: {{a.descricao|tojson}}
+},
+
+{% endfor %}
+
+];
+
+</script>
+
+<script>
+
+function trocarTipo(id){
+
+    let tipo =
+        document.getElementById("req"+id).value;
+
+    let sel =
+        document.getElementById("ap"+id);
+
+    // guarda os já selecionados
+    let selecionados = [];
+
+    [...sel.options].forEach(o=>{
+        if(o.selected)
+            selecionados.push(o.value);
+    });
+
+    sel.innerHTML = "";
+
+    APONTAMENTOS.forEach(function(a){
+
+        if(a.tipo != tipo)
+            return;
+
+        let op = document.createElement("option");
+
+        op.value = a.id;
+        op.text = a.descricao;
+
+        if(selecionados.includes(String(a.id)))
+            op.selected = true;
+
+        sel.appendChild(op);
+
+    });
+
+}
 
 function filtrar(){
 
@@ -14470,8 +14531,18 @@ window.onload = function(){
         .querySelectorAll("[id^='analise']")
         .forEach(aplicarCor);
 
+    document
+        .querySelectorAll("[id^='req']")
+        .forEach(function(x){
+
+            trocarTipo(
+                x.id.replace("req","")
+            );
+
+        });
+
     atualizarLinkExportacao();
-    filtrar();   // <-- adicionar esta linha
+    filtrar();
 }
 </script>
 """

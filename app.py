@@ -14794,15 +14794,41 @@ def painel_reqs_engenharia():
     
     cur.execute("""
     SELECT
-        secretaria,
-        COUNT(DISTINCT chave) AS analisadas,
-        SUM(valor_requisicao) AS valor_analisado,
-        COUNT(DISTINCT na_gerada) FILTER(WHERE na_gerada IS NOT NULL) AS notas,
-        SUM(valor_requisicao) FILTER(WHERE na_gerada IS NOT NULL) AS valor_notas
-    FROM requisicoes_eng
-    WHERE analise='AP'
-    GROUP BY secretaria
-    ORDER BY secretaria
+        x.secretaria,
+        x.analisadas,
+        x.valor_analisado,
+        x.notas,
+        x.valor_notas,
+        COALESCE(a.apontamentos,0) AS apontamentos
+    FROM (
+    
+        SELECT
+            secretaria,
+            COUNT(DISTINCT chave) AS analisadas,
+            SUM(valor_requisicao) AS valor_analisado,
+            COUNT(DISTINCT na_gerada) FILTER (WHERE na_gerada IS NOT NULL) AS notas,
+            SUM(valor_requisicao) FILTER (WHERE na_gerada IS NOT NULL) AS valor_notas
+        FROM requisicoes_eng
+        WHERE analise='AP'
+        GROUP BY secretaria
+    
+    ) x
+    
+    LEFT JOIN (
+    
+        SELECT
+            r.secretaria,
+            COUNT(rel.id) AS apontamentos
+        FROM req_eng_apontamentos_rel rel
+        INNER JOIN requisicoes_eng r
+            ON r.id = rel.requisicao_id
+        WHERE r.analise='AP'
+        GROUP BY r.secretaria
+    
+    ) a
+    ON a.secretaria = x.secretaria
+    
+    ORDER BY x.secretaria
     """)
     
     tabela_secretarias = cur.fetchall()
@@ -15097,6 +15123,7 @@ Resumo por Secretaria
 <th>Valor Analisado</th>
 <th>Notas Auditoria</th>
 <th>Valor Notas</th>
+<th>Apontamentos</th>
 </tr>
 
 
@@ -15118,7 +15145,7 @@ R$ {{ "{:,.2f}".format(t.valor_analisado or 0) }}
 R$ {{ "{:,.2f}".format(t.valor_notas or 0) }}
 </td>
 
-
+<td>{{t.apontamentos}}</td>
 </tr>
 
 {% endfor %}

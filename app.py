@@ -14577,7 +14577,7 @@ def painel_reqs_engenharia():
         WHERE req_tipo IS NOT NULL
         ORDER BY req_tipo
     """)
-    tipos = [x[0] for x in cur.fetchall()]
+    tipos = [x["req_tipo"] for x in cur.fetchall()]
 
     cur.execute("""
         SELECT DISTINCT secretaria
@@ -14585,7 +14585,7 @@ def painel_reqs_engenharia():
         WHERE secretaria IS NOT NULL
         ORDER BY secretaria
     """)
-    secretarias = [x[0] for x in cur.fetchall()]
+    secretarias = [x["secretaria"] for x in cur.fetchall()]
 
     where = "WHERE r.analise='AP'"
     params = []
@@ -14616,12 +14616,12 @@ def painel_reqs_engenharia():
     dados = cur.fetchone()
 
     cards = {
-        "analisados": dados[0] or 0,
-        "valor_analisado": dados[1] or 0,
-        "notas": dados[2] or 0,
-        "valor_notas": dados[3] or 0,
-        "reqs_notas": dados[4] or 0,
-        "apontamentos": dados[5] or 0
+        "analisados": dados["count"] or 0,
+        "valor_analisado": dados["coalesce"] or 0,
+        "notas": dados["count_2"] or 0,
+        "valor_notas": dados["coalesce_2"] or 0,
+        "reqs_notas": dados["count_3"] or 0,
+        "apontamentos": dados["count_4"] or 0
     }
 
     con.close()

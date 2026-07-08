@@ -14625,7 +14625,7 @@ def painel_reqs_engenharia():
         "notas": dados["notas"] or 0,
         "valor_notas": dados["valor_notas"] or 0,
         "reqs_notas": dados["reqs_notas"] or 0,
-        "apontamentos": dados["apontamentos"] or 0
+        "apontamentos": 0
     }
 
     cur.execute(f"""

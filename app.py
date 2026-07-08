@@ -14600,26 +14600,20 @@ def painel_reqs_engenharia():
 
     sql = f"""
         SELECT
-            COUNT(DISTINCT r.chave) AS analisados,
-            COALESCE(SUM(r.valor_requisicao),0) AS valor_analisado,
-            COUNT(DISTINCT r.na_gerada) FILTER(WHERE r.na_gerada IS NOT NULL) AS notas,
-            COALESCE(SUM(r.valor_requisicao) FILTER(WHERE r.na_gerada IS NOT NULL),0) AS valor_notas,
-            COUNT(DISTINCT r.chave) FILTER(WHERE r.na_gerada IS NOT NULL) AS reqs_notas,
-            COUNT(rel.id) AS apontamentos
+            COUNT(*) AS analisados,
+            COALESCE(SUM(valor_requisicao),0) AS valor_analisado,
+            COUNT(DISTINCT na_gerada) FILTER(WHERE na_gerada IS NOT NULL) AS notas,
+            COALESCE(SUM(valor_requisicao) FILTER(WHERE na_gerada IS NOT NULL),0) AS valor_notas,
+            COUNT(*) FILTER(WHERE na_gerada IS NOT NULL) AS reqs_notas
         FROM (
-            SELECT DISTINCT
-                id,
+            SELECT
                 chave,
-                valor_requisicao,
-                na_gerada,
-                req_tipo,
-                secretaria
+                MAX(valor_requisicao) AS valor_requisicao,
+                MAX(na_gerada) AS na_gerada
             FROM requisicoes_eng
             WHERE analise='AP'
+            GROUP BY chave
         ) r
-        LEFT JOIN req_eng_apontamentos_rel rel
-            ON rel.requisicao_id=r.id
-        {where.replace("r.analise='AP'","1=1")}
     """
 
     cur.execute(sql, params)
@@ -14634,6 +14628,18 @@ def painel_reqs_engenharia():
         "apontamentos": dados["apontamentos"] or 0
     }
 
+    cur.execute(f"""
+        SELECT COUNT(rel.id) AS apontamentos
+        FROM req_eng_apontamentos_rel rel
+        INNER JOIN requisicoes_eng r
+            ON r.id = rel.requisicao_id
+        {where}
+    """, params)
+    
+    apont = cur.fetchone()
+    
+    cards["apontamentos"] = apont["apontamentos"] or 0    
+    
     con.close()
 
     html = """
@@ -14713,7 +14719,7 @@ Todas
 <div class="row g-4">
 
 
-<div class="col">
+<div class="col-xl-2 col-lg-4 col-md-6">
 <div class="card border-0 shadow h-100">
 <div class="card-body">
 
@@ -14735,7 +14741,7 @@ Analisados
 
 
 
-<div class="col">
+<div class="col-xl-2 col-lg-4 col-md-6">
 <div class="card border-0 shadow h-100">
 <div class="card-body">
 
@@ -14757,7 +14763,7 @@ R$ {{ "{:,.2f}".format(cards.valor_analisado).replace(",", "X").replace(".", ","
 
 
 
-<div class="col">
+<div class="col-xl-2 col-lg-4 col-md-6">
 <div class="card border-0 shadow h-100">
 <div class="card-body">
 
@@ -14779,7 +14785,7 @@ Notas Auditoria
 
 
 
-<div class="col">
+<div class="col-xl-2 col-lg-4 col-md-6">
 <div class="card border-0 shadow h-100">
 <div class="card-body">
 
@@ -14801,7 +14807,7 @@ R$ {{ "{:,.2f}".format(cards.valor_notas).replace(",", "X").replace(".", ",").re
 
 
 
-<div class="col">
+<div class="col-xl-2 col-lg-4 col-md-6">
 <div class="card border-0 shadow h-100">
 <div class="card-body">
 
@@ -14823,7 +14829,7 @@ Reqs com Nota
 
 
 
-<div class="col">
+<div class="col-xl-2 col-lg-4 col-md-6">
 <div class="card border-0 shadow h-100">
 <div class="card-body">
 

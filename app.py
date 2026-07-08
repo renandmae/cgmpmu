@@ -14643,6 +14643,51 @@ def painel_reqs_engenharia():
     con.close()
 
     html = """
+<style>
+.dashboard-cards {
+    display:grid;
+    grid-template-columns:repeat(6, 1fr);
+    gap:20px;
+    width:100%;
+}
+
+.dashboard-card {
+    background:#ffffff;
+    border:1px solid #d3e0f0;
+    border-radius:16px;
+    padding:20px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.08);
+    min-height:170px;
+    transition:0.2s;
+}
+
+.dashboard-card:hover {
+    transform:translateY(-3px);
+    box-shadow:0 8px 20px rgba(0,0,0,0.12);
+}
+
+.dashboard-icon {
+    width:55px;
+    height:55px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:28px;
+}
+
+@media(max-width:1200px){
+    .dashboard-cards{
+        grid-template-columns:repeat(3,1fr);
+    }
+}
+
+@media(max-width:768px){
+    .dashboard-cards{
+        grid-template-columns:repeat(1,1fr);
+    }
+}
+</style>
 <div class="container-fluid py-4">
 
 <div class="card shadow-sm border-0 mb-4">
@@ -14713,15 +14758,9 @@ Todas
 
 </div>
 </div>
+<div class="dashboard-cards">
 
-
-
-<div class="row g-4">
-
-
-<div class="col-xl-2 col-lg-4 col-md-6">
-<div class="card border-0 shadow h-100">
-<div class="card-body">
+<div class="dashboard-card">
 
 <div class="rounded-circle bg-primary bg-opacity-10 p-3 d-inline-block">
 <i class="bi bi-search text-primary fs-2"></i>
@@ -14736,14 +14775,9 @@ Analisados
 </h2>
 
 </div>
-</div>
-</div>
 
 
-
-<div class="col-xl-2 col-lg-4 col-md-6">
-<div class="card border-0 shadow h-100">
-<div class="card-body">
+<div class="dashboard-card">
 
 <div class="rounded-circle bg-success bg-opacity-10 p-3 d-inline-block">
 <i class="bi bi-currency-dollar text-success fs-2"></i>
@@ -14758,14 +14792,9 @@ R$ {{ "{:,.2f}".format(cards.valor_analisado).replace(",", "X").replace(".", ","
 </h5>
 
 </div>
-</div>
-</div>
 
 
-
-<div class="col-xl-2 col-lg-4 col-md-6">
-<div class="card border-0 shadow h-100">
-<div class="card-body">
+<div class="dashboard-card">
 
 <div class="rounded-circle bg-warning bg-opacity-10 p-3 d-inline-block">
 <i class="bi bi-file-earmark-check-fill text-warning fs-2"></i>
@@ -14780,14 +14809,9 @@ Notas Auditoria
 </h2>
 
 </div>
-</div>
-</div>
 
 
-
-<div class="col-xl-2 col-lg-4 col-md-6">
-<div class="card border-0 shadow h-100">
-<div class="card-body">
+<div class="dashboard-card">
 
 <div class="rounded-circle bg-danger bg-opacity-10 p-3 d-inline-block">
 <i class="bi bi-cash-stack text-danger fs-2"></i>
@@ -14802,14 +14826,9 @@ R$ {{ "{:,.2f}".format(cards.valor_notas).replace(",", "X").replace(".", ",").re
 </h5>
 
 </div>
-</div>
-</div>
 
 
-
-<div class="col-xl-2 col-lg-4 col-md-6">
-<div class="card border-0 shadow h-100">
-<div class="card-body">
+<div class="dashboard-card">
 
 <div class="rounded-circle bg-info bg-opacity-10 p-3 d-inline-block">
 <i class="bi bi-files text-info fs-2"></i>
@@ -14824,14 +14843,9 @@ Reqs com Nota
 </h2>
 
 </div>
-</div>
-</div>
 
 
-
-<div class="col-xl-2 col-lg-4 col-md-6">
-<div class="card border-0 shadow h-100">
-<div class="card-body">
+<div class="dashboard-card">
 
 <div class="rounded-circle bg-secondary bg-opacity-10 p-3 d-inline-block">
 <i class="bi bi-exclamation-triangle-fill text-secondary fs-2"></i>
@@ -14846,13 +14860,9 @@ Apontamentos
 </h2>
 
 </div>
-</div>
-</div>
-
 
 </div>
 
-</div>
 """
 
     return render_template_string(

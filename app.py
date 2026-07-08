@@ -14864,8 +14864,9 @@ def painel_reqs_engenharia():
 }
 
 .chart-box canvas {
-    max-height:350px !important;
+    height:320px !important;
 }
+
 .chart-box.large canvas {
     height:450px !important;
 }
@@ -15162,7 +15163,7 @@ data:{{secret_valores|safe}}
 },
 options:{
 responsive:true,
-maintainAspectRatio:false
+maintainAspectRatio:false,
 indexAxis:'y'
 }
 });

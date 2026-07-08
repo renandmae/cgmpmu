@@ -14609,11 +14609,14 @@ def painel_reqs_engenharia():
             SELECT
                 chave,
                 MAX(valor_requisicao) AS valor_requisicao,
-                MAX(na_gerada) AS na_gerada
+                MAX(na_gerada) AS na_gerada,
+                MAX(req_tipo) AS req_tipo,
+                MAX(secretaria) AS secretaria
             FROM requisicoes_eng
             WHERE analise='AP'
             GROUP BY chave
         ) r
+        {where.replace("WHERE r.analise='AP'","")}
     """
 
     cur.execute(sql, params)
@@ -14639,6 +14642,147 @@ def painel_reqs_engenharia():
     apont = cur.fetchone()
     
     cards["apontamentos"] = apont["apontamentos"] or 0    
+
+    # ==========================
+    # GRÁFICO ANALISADOS POR MÊS
+    # ==========================
+    
+    cur.execute(f"""
+        SELECT
+            CASE
+                WHEN semana BETWEEN 1 AND 4 THEN 'Jan'
+                WHEN semana BETWEEN 5 AND 8 THEN 'Fev'
+                WHEN semana BETWEEN 9 AND 13 THEN 'Mar'
+                WHEN semana BETWEEN 14 AND 17 THEN 'Abr'
+                WHEN semana BETWEEN 18 AND 22 THEN 'Mai'
+                WHEN semana BETWEEN 23 AND 26 THEN 'Jun'
+                WHEN semana BETWEEN 27 AND 30 THEN 'Jul'
+                WHEN semana BETWEEN 31 AND 35 THEN 'Ago'
+                WHEN semana BETWEEN 36 AND 39 THEN 'Set'
+                WHEN semana BETWEEN 40 AND 44 THEN 'Out'
+                WHEN semana BETWEEN 45 AND 48 THEN 'Nov'
+                WHEN semana BETWEEN 49 AND 52 THEN 'Dez'
+            END AS mes,
+            COUNT(DISTINCT chave) AS qtd
+        FROM requisicoes_eng
+        WHERE analise='AP'
+        AND EXTRACT(YEAR FROM data_criacao)=2026
+        GROUP BY mes
+        ORDER BY MIN(semana)
+    """)
+    
+    dados_mes = cur.fetchall()
+    
+    graf_mes_labels = [x["mes"] for x in dados_mes]
+    graf_mes_valores = [x["qtd"] for x in dados_mes]
+    
+    
+    
+    # ==========================
+    # ANALISADOS POR SECRETARIA
+    # ==========================
+    
+    cur.execute(f"""
+        SELECT
+            secretaria,
+            COUNT(DISTINCT chave) AS qtd
+        FROM requisicoes_eng
+        WHERE analise='AP'
+        GROUP BY secretaria
+        ORDER BY qtd DESC
+    """)
+    
+    dados_secretaria = cur.fetchall()
+    
+    secret_labels = [x["secretaria"] for x in dados_secretaria]
+    secret_valores = [x["qtd"] for x in dados_secretaria]
+    
+    
+    
+    # ==========================
+    # NOTAS POR SECRETARIA
+    # ==========================
+    
+    cur.execute("""
+    SELECT
+        secretaria,
+        COUNT(DISTINCT na_gerada) AS qtd
+    FROM requisicoes_eng
+    WHERE analise='AP'
+    AND na_gerada IS NOT NULL
+    GROUP BY secretaria
+    ORDER BY qtd DESC
+    """)
+    
+    dados_notas = cur.fetchall()
+    
+    notas_labels = [x["secretaria"] for x in dados_notas]
+    notas_valores = [x["qtd"] for x in dados_notas]
+    
+    
+    
+    # ==========================
+    # APONTAMENTOS POR DESCRIÇÃO
+    # ==========================
+    
+    cur.execute("""
+    SELECT
+        a.descricao,
+        COUNT(rel.id) AS qtd
+    FROM req_eng_apontamentos_rel rel
+    INNER JOIN req_eng_apontamentos a
+    ON a.id = rel.apontamento_id
+    GROUP BY a.descricao
+    ORDER BY qtd DESC
+    """)
+    
+    dados_ap_desc = cur.fetchall()
+    
+    ap_desc_labels = [x["descricao"] for x in dados_ap_desc]
+    ap_desc_valores = [x["qtd"] for x in dados_ap_desc]
+    
+    
+    
+    # ==========================
+    # APONTAMENTOS POR SECRETARIA
+    # ==========================
+    
+    cur.execute("""
+    SELECT
+        r.secretaria,
+        COUNT(rel.id) AS qtd
+    FROM req_eng_apontamentos_rel rel
+    INNER JOIN requisicoes_eng r
+    ON r.id = rel.requisicao_id
+    GROUP BY r.secretaria
+    ORDER BY qtd DESC
+    """)
+    
+    dados_ap_sec = cur.fetchall()
+    
+    ap_sec_labels = [x["secretaria"] for x in dados_ap_sec]
+    ap_sec_valores = [x["qtd"] for x in dados_ap_sec]
+    
+    
+    
+    # ==========================
+    # TABELA FINAL
+    # ==========================
+    
+    cur.execute("""
+    SELECT
+        secretaria,
+        COUNT(DISTINCT chave) AS analisadas,
+        SUM(valor_requisicao) AS valor_analisado,
+        COUNT(DISTINCT na_gerada) FILTER(WHERE na_gerada IS NOT NULL) AS notas,
+        SUM(valor_requisicao) FILTER(WHERE na_gerada IS NOT NULL) AS valor_notas
+    FROM requisicoes_eng
+    WHERE analise='AP'
+    GROUP BY secretaria
+    ORDER BY secretaria
+    """)
+    
+    tabela_secretarias = cur.fetchall()
     
     con.close()
 
@@ -14863,6 +15007,165 @@ Apontamentos
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+
+<div class="card mt-4">
+<h3>
+<i class="bi bi-graph-up"></i>
+Analisados por mês
+</h3>
+<canvas id="grafMes"></canvas>
+</div>
+
+
+<div class="card mt-4">
+<h3>Analisados por Secretaria</h3>
+<canvas id="grafSecretaria"></canvas>
+</div>
+
+
+<div class="card mt-4">
+<h3>Notas Auditoria por Secretaria</h3>
+<canvas id="grafNotas"></canvas>
+</div>
+
+
+<div class="card mt-4">
+<h3>Apontamentos por Descrição</h3>
+<canvas id="grafApDesc"></canvas>
+</div>
+
+
+<div class="card mt-4">
+<h3>Apontamentos por Secretaria</h3>
+<canvas id="grafApSec"></canvas>
+</div>
+
+
+
+<div class="card mt-4">
+
+<h3>
+Resumo por Secretaria
+</h3>
+
+<table width="100%">
+
+<tr>
+<th>Secretaria</th>
+<th>Analisadas</th>
+<th>Valor Analisado</th>
+<th>Notas Auditoria</th>
+<th>Valor Notas</th>
+</tr>
+
+
+{% for t in tabela_secretarias %}
+
+<tr>
+
+<td>{{t.secretaria}}</td>
+
+<td>{{t.analisadas}}</td>
+
+<td>
+R$ {{ "{:,.2f}".format(t.valor_analisado or 0) }}
+</td>
+
+<td>{{t.notas}}</td>
+
+<td>
+R$ {{ "{:,.2f}".format(t.valor_notas or 0) }}
+</td>
+
+
+</tr>
+
+{% endfor %}
+
+</table>
+
+</div>
+
+
+
+<script>
+
+new Chart(
+document.getElementById('grafMes'),
+{
+type:'line',
+data:{
+labels:{{graf_mes_labels|safe}},
+datasets:[{
+label:'Analisados',
+data:{{graf_mes_valores|safe}},
+borderWidth:3
+}]
+}
+});
+
+
+new Chart(
+document.getElementById('grafSecretaria'),
+{
+type:'bar',
+data:{
+labels:{{secret_labels|safe}},
+datasets:[{
+label:'Analisados',
+data:{{secret_valores|safe}}
+}]
+},
+options:{
+indexAxis:'y'
+}
+});
+
+
+new Chart(
+document.getElementById('grafNotas'),
+{
+type:'bar',
+data:{
+labels:{{notas_labels|safe}},
+datasets:[{
+label:'Notas Auditoria',
+data:{{notas_valores|safe}}
+}]
+}
+});
+
+
+new Chart(
+document.getElementById('grafApDesc'),
+{
+type:'bar',
+data:{
+labels:{{ap_desc_labels|safe}},
+datasets:[{
+label:'Quantidade',
+data:{{ap_desc_valores|safe}}
+}]
+}
+});
+
+
+new Chart(
+document.getElementById('grafApSec'),
+{
+type:'bar',
+data:{
+labels:{{ap_sec_labels|safe}},
+datasets:[{
+label:'Quantidade',
+data:{{ap_sec_valores|safe}}
+}]
+}
+});
+</script>
+
 """
 
     return render_template_string(
@@ -14876,7 +15179,18 @@ Apontamentos
         req_tipo=req_tipo,
         secretaria=secretaria,
         user=session["user"],
-        perfil=session["perfil"]
+        perfil=session["perfil"],
+        graf_mes_labels=graf_mes_labels,
+        graf_mes_valores=graf_mes_valores,
+        secret_labels=secret_labels,
+        secret_valores=secret_valores,
+        notas_labels=notas_labels,
+        notas_valores=notas_valores,
+        ap_desc_labels=ap_desc_labels,
+        ap_desc_valores=ap_desc_valores,
+        ap_sec_labels=ap_sec_labels,
+        ap_sec_valores=ap_sec_valores,
+        tabela_secretarias=tabela_secretarias
     )
 
 @app.route("/requisicoes_eng/export")

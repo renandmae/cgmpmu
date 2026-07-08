@@ -14596,50 +14596,45 @@ def painel_reqs_eng():
 
 
 
-    # ============================
+    # ==================================================
     # CARDS
-    # ============================
+    # ==================================================
 
     sql_cards = f"""
+        SELECT
 
-    SELECT
+            COUNT(DISTINCT r.chave) AS analisados,
 
-    COUNT(DISTINCT r.chave) AS analisados,
-
-
-    COALESCE(
-        SUM(r.valor_requisicao),
-        0
-    ) AS valor_analisado,
+            COALESCE(
+                SUM(r.valor_requisicao),
+                0
+            ) AS valor_analisado,
 
 
-    COUNT(
-        DISTINCT r.na_gerada
-    )
-    FILTER(
-        WHERE r.na_gerada IS NOT NULL
-    ) AS notas_auditoria,
+            COUNT(DISTINCT r.na_gerada)
+            FILTER(
+                WHERE r.na_gerada IS NOT NULL
+            ) AS notas_auditoria,
 
 
-    COALESCE(
-        SUM(r.valor_requisicao)
-        FILTER(
-            WHERE r.na_gerada IS NOT NULL
-        ),
-        0
-    ) AS valor_notas,
+            COALESCE(
+                SUM(r.valor_requisicao)
+                FILTER(
+                    WHERE r.na_gerada IS NOT NULL
+                ),
+                0
+            ) AS valor_notas,
 
 
-    COUNT(DISTINCT r.chave)
-    FILTER(
-        WHERE r.na_gerada IS NOT NULL
-    ) AS reqs_notas
+            COUNT(DISTINCT r.chave)
+            FILTER(
+                WHERE r.na_gerada IS NOT NULL
+            ) AS reqs_notas
 
 
-    FROM requisicoes_eng r
+        FROM requisicoes_eng r
 
-    {filtros}
-
+        {filtros}
     """
 
 
@@ -14648,28 +14643,30 @@ def painel_reqs_eng():
         params
     )
 
+
     cards = cur.fetchone()
 
 
 
-    # ============================
+    # ==================================================
     # TOTAL APONTAMENTOS
-    # ============================
+    # ==================================================
 
     sql_apont = f"""
 
-    SELECT
-        COUNT(rel.id)
+        SELECT
+            COUNT(rel.id)
 
-    FROM requisicoes_eng r
-
-    INNER JOIN
-    req_eng_apontamentos_rel rel
-
-    ON rel.requisicao_id = r.id
+        FROM requisicoes_eng r
 
 
-    {filtros}
+        INNER JOIN
+        req_eng_apontamentos_rel rel
+
+        ON rel.requisicao_id = r.id
+
+
+        {filtros}
 
     """
 
@@ -14684,9 +14681,9 @@ def painel_reqs_eng():
 
 
 
-    # ============================
+    # ==================================================
     # SECRETARIAS FILTRO
-    # ============================
+    # ==================================================
 
     cur.execute("""
         SELECT DISTINCT secretaria
@@ -14695,43 +14692,46 @@ def painel_reqs_eng():
         ORDER BY secretaria
     """)
 
+
     secretarias = [
-        x[0]
-        for x in cur.fetchall()
+        r[0]
+        for r in cur.fetchall()
     ]
 
 
 
-    # ============================
+    # ==================================================
     # GRÁFICO SECRETARIAS
-    # ============================
+    # ==================================================
 
-    sql_sec = f"""
+    sql_secretaria = f"""
 
-    SELECT
+        SELECT
 
-        r.secretaria,
+            r.secretaria,
 
-        COUNT(DISTINCT r.chave) qtd
-
-
-    FROM requisicoes_eng r
+            COUNT(DISTINCT r.chave) AS qtd
 
 
-    {filtros}
+        FROM requisicoes_eng r
 
 
-    GROUP BY r.secretaria
+        {filtros}
 
-    ORDER BY qtd DESC
 
-    LIMIT 10
+        GROUP BY r.secretaria
+
+
+        ORDER BY qtd DESC
+
+
+        LIMIT 10
 
     """
 
 
     cur.execute(
-        sql_sec,
+        sql_secretaria,
         params
     )
 
@@ -14740,30 +14740,29 @@ def painel_reqs_eng():
 
 
 
-    # ============================
-    # GRÁFICO TIPOS
-    # ============================
+    # ==================================================
+    # GRÁFICO TIPO REQUISIÇÃO
+    # ==================================================
 
     sql_tipo = f"""
 
-    SELECT
+        SELECT
 
-        r.req_tipo,
+            COALESCE(r.req_tipo,'SEM TIPO'),
 
-        COUNT(DISTINCT r.chave) qtd
-
-
-    FROM requisicoes_eng r
+            COUNT(DISTINCT r.chave) AS qtd
 
 
-    {filtros}
+        FROM requisicoes_eng r
 
 
-    GROUP BY r.req_tipo
+        {filtros}
 
 
-    ORDER BY qtd DESC
+        GROUP BY r.req_tipo
 
+
+        ORDER BY qtd DESC
 
     """
 
@@ -14778,42 +14777,44 @@ def painel_reqs_eng():
 
 
 
-    # ============================
+    # ==================================================
     # RANKING APONTAMENTOS
-    # ============================
+    # ==================================================
 
     sql_rank = f"""
 
-    SELECT
+        SELECT
 
-        a.descricao,
+            a.descricao,
 
-        COUNT(rel.id) qtd
-
-
-    FROM requisicoes_eng r
+            COUNT(rel.id) AS qtd
 
 
-    INNER JOIN
-    req_eng_apontamentos_rel rel
-
-    ON rel.requisicao_id=r.id
+        FROM requisicoes_eng r
 
 
-    INNER JOIN
-    req_eng_apontamentos a
+        INNER JOIN
+        req_eng_apontamentos_rel rel
 
-    ON a.id=rel.apontamento_id
-
-
-    {filtros}
+        ON rel.requisicao_id = r.id
 
 
-    GROUP BY a.descricao
+        INNER JOIN
+        req_eng_apontamentos a
 
-    ORDER BY qtd DESC
+        ON a.id = rel.apontamento_id
 
-    LIMIT 10
+
+        {filtros}
+
+
+        GROUP BY a.descricao
+
+
+        ORDER BY qtd DESC
+
+
+        LIMIT 10
 
     """
 
@@ -14832,126 +14833,132 @@ def painel_reqs_eng():
 
 
 
-    html = """
+    html = r"""
 
 <style>
 
-.dashboard{
-
-padding:20px;
-
+.dashboard-eng{
+    padding:20px;
 }
 
 
-.filtros{
-
-display:flex;
-justify-content:center;
-gap:15px;
-margin-bottom:25px;
-
-}
-
-
-.filtros select{
-
-padding:10px;
-border-radius:8px;
-border:1px solid #ddd;
-font-size:14px;
-
+.dashboard-eng h2{
+    margin-bottom:20px;
 }
 
 
 
-.cards{
+.filtros-eng{
 
-display:grid;
-grid-template-columns:
-repeat(auto-fit,minmax(220px,1fr));
+    display:flex;
+    justify-content:center;
+    gap:15px;
+    margin-bottom:25px;
 
-gap:20px;
+}
+
+
+.filtros-eng select{
+
+    padding:10px;
+    border-radius:8px;
+    border:1px solid #ddd;
+    font-size:14px;
 
 }
 
 
 
-.card-ind{
+.cards-eng{
 
-background:white;
-border-radius:15px;
-padding:20px;
+    display:grid;
+    grid-template-columns:
+    repeat(auto-fit,minmax(220px,1fr));
 
-box-shadow:
-0 4px 15px rgba(0,0,0,.10);
-
-}
-
-
-
-.card-ind h1{
-
-margin:0;
-font-size:32px;
-
-}
-
-
-.card-ind span{
-
-font-size:14px;
-color:#666;
-
-}
-
-
-.icon{
-
-font-size:35px;
+    gap:20px;
 
 }
 
 
 
-.graficos{
+.card-eng{
 
-margin-top:30px;
+    background:white;
 
-display:grid;
+    border-radius:15px;
 
-grid-template-columns:
-repeat(auto-fit,minmax(400px,1fr));
+    padding:20px;
 
-gap:25px;
+    box-shadow:
+    0 4px 15px rgba(0,0,0,.10);
 
 }
 
 
 
-.box-graf{
+.card-eng .icone{
 
-background:white;
+    font-size:32px;
 
-padding:20px;
+}
 
-border-radius:15px;
 
-box-shadow:
-0 4px 15px rgba(0,0,0,.10);
+.card-eng h1{
+
+    margin:8px 0;
+
+    font-size:30px;
+
+}
+
+
+.card-eng span{
+
+    color:#666;
+
+}
+
+
+
+.graficos-eng{
+
+    margin-top:30px;
+
+    display:grid;
+
+    grid-template-columns:
+    repeat(auto-fit,minmax(400px,1fr));
+
+    gap:20px;
+
+}
+
+
+
+.box-graf-eng{
+
+    background:white;
+
+    padding:20px;
+
+    border-radius:15px;
+
+    box-shadow:
+    0 4px 15px rgba(0,0,0,.10);
 
 }
 
 
 canvas{
 
-max-height:300px;
+    max-height:300px;
 
 }
 
 </style>
 
 
-<div class="dashboard">
+<div class="dashboard-eng">
 
 
 <h2>
@@ -14959,25 +14966,25 @@ max-height:300px;
 </h2>
 
 
+<div class="filtros-eng">
 
-<div class="filtros">
 
-
-<select onchange="filtrar()" id="tipo">
+<select id="tipoFiltro"
+onchange="filtrarPainel()">
 
 <option value="">
-Todos Tipos
+Todos os Tipos
 </option>
 
-<option>
+<option value="CONTRATAÇÃO">
 CONTRATAÇÃO
 </option>
 
-<option>
+<option value="LIQUIDAÇÃO">
 LIQUIDAÇÃO
 </option>
 
-<option>
+<option value="ADITAMENTO">
 ADITAMENTO
 </option>
 
@@ -14986,17 +14993,18 @@ ADITAMENTO
 
 
 
-<select onchange="filtrar()" id="sec">
+<select id="secretariaFiltro"
+onchange="filtrarPainel()">
 
 
 <option value="">
-Todas Secretarias
+Todas as Secretarias
 </option>
 
 
 {% for s in secretarias %}
 
-<option>
+<option value="{{s}}">
 {{s}}
 </option>
 
@@ -15007,197 +15015,394 @@ Todas Secretarias
 
 
 </div>
+ id="2b3a8d"
+<div class="cards-eng">
 
 
+<div class="card-eng">
+    <div class="icone">
+        ✅
+    </div>
 
-<div class="cards">
+    <h1>
+        {{cards.analisados}}
+    </h1>
 
-
-<div class="card-ind">
-<div class="icon">✅</div>
-<h1>{{cards.analisados}}</h1>
-<span>Analisados</span>
+    <span>
+        Analisados
+    </span>
 </div>
 
 
-<div class="card-ind">
-<div class="icon">💰</div>
-<h1>
-R$ {{ "{:,.2f}".format(cards.valor_analisado).replace(",", "X").replace(".", ",").replace("X",".") }}
-</h1>
-<span>Valor Analisado</span>
+
+<div class="card-eng">
+
+    <div class="icone">
+        💰
+    </div>
+
+    <h1>
+        R$
+        {{ "{:,.2f}".format(cards.valor_analisado or 0)
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X",".") }}
+    </h1>
+
+    <span>
+        Valor Analisado
+    </span>
+
+</div>
+
+
+
+<div class="card-eng">
+
+    <div class="icone">
+        📄
+    </div>
+
+
+    <h1>
+        {{cards.notas_auditoria}}
+    </h1>
+
+
+    <span>
+        Notas Auditoria
+    </span>
+
+
 </div>
 
 
-<div class="card-ind">
-<div class="icon">📄</div>
-<h1>{{cards.notas_auditoria}}</h1>
-<span>Notas Auditoria</span>
-</div>
+
+<div class="card-eng">
 
 
-<div class="card-ind">
-<div class="icon">💵</div>
-<h1>
-R$ {{ "{:,.2f}".format(cards.valor_notas).replace(",", "X").replace(".", ",").replace("X",".") }}
-</h1>
-<span>Valor Notas</span>
-</div>
+    <div class="icone">
+        💵
+    </div>
 
 
-<div class="card-ind">
-<div class="icon">📌</div>
-<h1>{{cards.reqs_notas}}</h1>
-<span>Reqs com NA</span>
-</div>
+    <h1>
+
+        R$
+        {{ "{:,.2f}".format(cards.valor_notas or 0)
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X",".") }}
+
+    </h1>
 
 
-<div class="card-ind">
-<div class="icon">📝</div>
-<h1>{{total_apontamentos}}</h1>
-<span>Total Apontamentos</span>
-</div>
+    <span>
+        Valor Notas Auditoria
+    </span>
 
 
 </div>
-    
-    html += """
-<div class="graficos">
-<div class="box-graf">
+
+
+
+<div class="card-eng">
+
+
+    <div class="icone">
+        📌
+    </div>
+
+
+    <h1>
+        {{cards.reqs_notas}}
+    </h1>
+
+
+    <span>
+        Reqs com Nota Auditoria
+    </span>
+
+
+</div>
+
+
+
+<div class="card-eng">
+
+
+    <div class="icone">
+        📝
+    </div>
+
+
+    <h1>
+        {{total_apontamentos}}
+    </h1>
+
+
+    <span>
+        Total Apontamentos
+    </span>
+
+
+</div>
+
+
+
+</div>
+
+
+
+
+
+<div class="graficos-eng">
+
+
+<div class="box-graf-eng">
+
 <h3>
 📊 Requisições por Secretaria
 </h3>
+
 <canvas id="grafSecretaria"></canvas>
+
 </div>
-<div class="box-graf">
+
+
+
+
+<div class="box-graf-eng">
+
 <h3>
 📊 Requisições por Tipo
 </h3>
+
 <canvas id="grafTipo"></canvas>
+
 </div>
-<div class="box-graf">
+
+
+
+
+<div class="box-graf-eng">
+
 <h3>
 📝 Ranking de Apontamentos
 </h3>
-<canvas id="grafApont"></canvas>
+
+<canvas id="grafApontamentos"></canvas>
+
 </div>
+
+
+
+
 </div>
+
+
 </div>
+
+
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+
 <script>
-function filtrar(){
+
+
+function filtrarPainel(){
+
 
     let tipo =
-        document.getElementById("tipo").value;
+        document
+        .getElementById("tipoFiltro")
+        .value;
 
 
-    let sec =
-        document.getElementById("sec").value;
+
+    let secretaria =
+        document
+        .getElementById("secretariaFiltro")
+        .value;
 
 
-    let params =
-        new URLSearchParams();
+
+    let url =
+        "/painel_reqs_eng?";
 
 
-    if(tipo)
-        params.set(
-            "req_tipo",
-            tipo
-        );
 
+    if(tipo){
 
-    if(sec)
-        params.set(
-            "secretaria",
-            sec
-        );
-
-
-    window.location.href =
-        "/painel_reqs_eng?"
+        url +=
+        "req_tipo="
         +
-        params.toString();
+        encodeURIComponent(tipo);
+
+    }
+
+
+
+    if(secretaria){
+
+        if(tipo){
+
+            url += "&";
+
+        }
+
+
+        url +=
+        "secretaria="
+        +
+        encodeURIComponent(secretaria);
+
+    }
+
+
+
+    window.location.href=url;
+
 
 }
 
-const dadosSecretaria = {
+
+
+
+
+const grafSecretaria = new Chart(
+
+document.getElementById(
+    "grafSecretaria"
+),
+
+{
+
+type:"bar",
+
+
+data:{
+
+
 labels:
+
 {{ graf_secretaria
 |map(attribute=0)
 |list
 |tojson }},
+
+
+
 datasets:[{
+
 label:
-"Quantidade",
+"Requisições",
+
+
+
 data:
+
 {{ graf_secretaria
 |map(attribute=1)
 |list
 |tojson }}
-}]
-};
 
-new Chart(
-document.getElementById(
-"grafSecretaria"
-),
-{
-type:"bar",
-data:dadosSecretaria,
+
+}]
+
+
+},
+
+
 options:{
+
+
 responsive:true,
+
+
 plugins:{
+
+
 legend:{
+
+
 display:false
+
+
 }
+
+
 }
+
+
 }
+
+
 }
+
 );
 
-const dadosTipo = {
-labels:
-{{ graf_tipo
-|map(attribute=0)
-|list
-|tojson }},
-datasets:[{
-label:
-"Quantidade",
 
-data:
 
-{{ graf_tipo
-|map(attribute=1)
-|list
-|tojson }}
 
-}]
 
-};
-
-new Chart(
+const grafTipo = new Chart(
 
 document.getElementById(
-"grafTipo"
+    "grafTipo"
 ),
 
 {
+
 
 type:"doughnut",
 
 
-data:dadosTipo,
+
+data:{
+
+
+labels:
+
+{{ graf_tipo
+|map(attribute=0)
+|list
+|tojson }},
+
+
+
+datasets:[{
+
+label:
+"Quantidade",
+
+
+data:
+
+{{ graf_tipo
+|map(attribute=1)
+|list
+|tojson }}
+
+
+}]
+
+
+},
+
 
 
 options:{
 
+
 responsive:true
 
-}
 
 }
 
+
+}
 
 );
 
@@ -15205,7 +15410,19 @@ responsive:true
 
 
 
-const dadosApont = {
+const grafApontamentos = new Chart(
+
+document.getElementById(
+    "grafApontamentos"
+),
+
+{
+
+
+type:"bar",
+
+
+data:{
 
 
 labels:
@@ -15220,7 +15437,7 @@ labels:
 datasets:[{
 
 label:
-"Apontamentos",
+"Quantidade",
 
 
 data:
@@ -15231,29 +15448,15 @@ data:
 |tojson }}
 
 
-
 }]
 
 
-};
+},
 
-
-
-new Chart(
-
-document.getElementById(
-"grafApont"
-),
-
-{
-
-type:"bar",
-
-
-data:dadosApont,
 
 
 options:{
+
 
 indexAxis:"y",
 
@@ -15263,21 +15466,80 @@ responsive:true,
 
 plugins:{
 
+
 legend:{
+
 
 display:false
 
-}
 
 }
 
 
 }
+
+
+}
+
 
 }
 
 );
 
+
+
+
+
+// mantém os filtros selecionados
+
+window.onload=function(){
+
+
+    let params =
+        new URLSearchParams(
+            window.location.search
+        );
+
+
+
+    let tipo =
+        params.get(
+            "req_tipo"
+        );
+
+
+
+    let secretaria =
+        params.get(
+            "secretaria"
+        );
+
+
+
+    if(tipo){
+
+        document
+        .getElementById(
+            "tipoFiltro"
+        )
+        .value=tipo;
+
+    }
+
+
+
+    if(secretaria){
+
+        document
+        .getElementById(
+            "secretariaFiltro"
+        )
+        .value=secretaria;
+
+    }
+
+
+}
 
 
 
@@ -15296,6 +15558,7 @@ display:false
 
 
         cards=cards,
+
 
         total_apontamentos=
             total_apontamentos,
@@ -15319,6 +15582,7 @@ display:false
 
         user=
             session["user"],
+
 
         perfil=
             session["perfil"]

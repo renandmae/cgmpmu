@@ -14598,6 +14598,18 @@ def painel_reqs_engenharia():
         where += " AND r.secretaria=%s"
         params.append(secretaria)
 
+    filtro_graf = ""
+
+    params_graf = []
+    
+    if req_tipo != "TODOS":
+        filtro_graf += " AND req_tipo=%s"
+        params_graf.append(req_tipo)
+    
+    if secretaria != "TODAS":
+        filtro_graf += " AND secretaria=%s"
+        params_graf.append(secretaria)
+
     sql = f"""
         SELECT
             COUNT(*) AS analisados,
@@ -14616,7 +14628,9 @@ def painel_reqs_engenharia():
             WHERE analise='AP'
             GROUP BY chave
         ) r
-        {where.replace("WHERE r.analise='AP'","")}
+        WHERE 1=1
+        {"AND r.req_tipo=%s" if req_tipo != "TODOS" else ""}
+        {"AND r.secretaria=%s" if secretaria != "TODAS" else ""}
     """
 
     cur.execute(sql, params)
@@ -14648,28 +14662,29 @@ def painel_reqs_engenharia():
     # ==========================
     
     cur.execute(f"""
-        SELECT
-            CASE
-                WHEN semana BETWEEN 1 AND 4 THEN 'Jan'
-                WHEN semana BETWEEN 5 AND 8 THEN 'Fev'
-                WHEN semana BETWEEN 9 AND 13 THEN 'Mar'
-                WHEN semana BETWEEN 14 AND 17 THEN 'Abr'
-                WHEN semana BETWEEN 18 AND 22 THEN 'Mai'
-                WHEN semana BETWEEN 23 AND 26 THEN 'Jun'
-                WHEN semana BETWEEN 27 AND 30 THEN 'Jul'
-                WHEN semana BETWEEN 31 AND 35 THEN 'Ago'
-                WHEN semana BETWEEN 36 AND 39 THEN 'Set'
-                WHEN semana BETWEEN 40 AND 44 THEN 'Out'
-                WHEN semana BETWEEN 45 AND 48 THEN 'Nov'
-                WHEN semana BETWEEN 49 AND 52 THEN 'Dez'
-            END AS mes,
-            COUNT(DISTINCT chave) AS qtd
-        FROM requisicoes_eng
-        WHERE analise='AP'
-        AND EXTRACT(YEAR FROM data_criacao)=2026
-        GROUP BY mes
-        ORDER BY MIN(semana)
-    """)
+    SELECT
+        CASE
+            WHEN semana BETWEEN 1 AND 4 THEN 'Jan'
+            WHEN semana BETWEEN 5 AND 8 THEN 'Fev'
+            WHEN semana BETWEEN 9 AND 13 THEN 'Mar'
+            WHEN semana BETWEEN 14 AND 17 THEN 'Abr'
+            WHEN semana BETWEEN 18 AND 22 THEN 'Mai'
+            WHEN semana BETWEEN 23 AND 26 THEN 'Jun'
+            WHEN semana BETWEEN 27 AND 30 THEN 'Jul'
+            WHEN semana BETWEEN 31 AND 35 THEN 'Ago'
+            WHEN semana BETWEEN 36 AND 39 THEN 'Set'
+            WHEN semana BETWEEN 40 AND 44 THEN 'Out'
+            WHEN semana BETWEEN 45 AND 48 THEN 'Nov'
+            WHEN semana BETWEEN 49 AND 52 THEN 'Dez'
+        END AS mes,
+        COUNT(DISTINCT chave) AS qtd
+    FROM requisicoes_eng
+    WHERE analise='AP'
+    AND EXTRACT(YEAR FROM data_criacao)=2026
+    {filtro_graf}
+    GROUP BY mes
+    ORDER BY MIN(semana)
+    """, params_graf)
     
     dados_mes = cur.fetchall()
     
@@ -14683,14 +14698,15 @@ def painel_reqs_engenharia():
     # ==========================
     
     cur.execute(f"""
-        SELECT
-            secretaria,
-            COUNT(DISTINCT chave) AS qtd
-        FROM requisicoes_eng
-        WHERE analise='AP'
-        GROUP BY secretaria
-        ORDER BY qtd DESC
-    """)
+    SELECT
+        secretaria,
+        COUNT(DISTINCT chave) AS qtd
+    FROM requisicoes_eng
+    WHERE analise='AP'
+    {filtro_graf}
+    GROUP BY secretaria
+    ORDER BY qtd DESC
+    """, params_graf)
     
     dados_secretaria = cur.fetchall()
     
@@ -14703,16 +14719,17 @@ def painel_reqs_engenharia():
     # NOTAS POR SECRETARIA
     # ==========================
     
-    cur.execute("""
+    cur.execute(f"""
     SELECT
         secretaria,
         COUNT(DISTINCT na_gerada) AS qtd
     FROM requisicoes_eng
     WHERE analise='AP'
     AND na_gerada IS NOT NULL
+    {filtro_graf}
     GROUP BY secretaria
     ORDER BY qtd DESC
-    """)
+    """, params_graf)
     
     dados_notas = cur.fetchall()
     
@@ -14725,16 +14742,20 @@ def painel_reqs_engenharia():
     # APONTAMENTOS POR DESCRIÇÃO
     # ==========================
     
-    cur.execute("""
+    cur.execute(f"""
     SELECT
         a.descricao,
         COUNT(rel.id) AS qtd
     FROM req_eng_apontamentos_rel rel
     INNER JOIN req_eng_apontamentos a
     ON a.id = rel.apontamento_id
+    INNER JOIN requisicoes_eng r
+    ON r.id = rel.requisicao_id
+    WHERE r.analise='AP'
+    {filtro_graf.replace("req_tipo","r.req_tipo").replace("secretaria","r.secretaria")}
     GROUP BY a.descricao
     ORDER BY qtd DESC
-    """)
+    """, params_graf)
     
     dados_ap_desc = cur.fetchall()
     
@@ -14747,16 +14768,18 @@ def painel_reqs_engenharia():
     # APONTAMENTOS POR SECRETARIA
     # ==========================
     
-    cur.execute("""
+    cur.execute(f"""
     SELECT
         r.secretaria,
         COUNT(rel.id) AS qtd
     FROM req_eng_apontamentos_rel rel
     INNER JOIN requisicoes_eng r
     ON r.id = rel.requisicao_id
+    WHERE r.analise='AP'
+    {filtro_graf.replace("req_tipo","r.req_tipo").replace("secretaria","r.secretaria")}
     GROUP BY r.secretaria
     ORDER BY qtd DESC
-    """)
+    """, params_graf)
     
     dados_ap_sec = cur.fetchall()
     

@@ -14559,131 +14559,25 @@ window.onload = function(){
         perfil=session["perfil"]
     )
 
-@app.route("/painel_reqs_eng")
-def painel_reqs_eng():
+@app.route("/painel_reqs_engenharia")
+def painel_reqs_engenharia():
 
-    if session['perfil'] != 'admin' and session['user'] != 'Laianne Fogaça':
-        return 'Acesso negado'
-
+    if "user" not in session:
+        return redirect("/")
 
     con = get_db()
     cur = con.cursor()
 
+    req_tipo = request.args.get("req_tipo", "TODOS")
+    secretaria = request.args.get("secretaria", "TODAS")
 
-    req_tipo = request.args.get("req_tipo", "")
-    secretaria = request.args.get("secretaria", "")
-
-
-    filtros = """
-        WHERE r.analise = 'AP'
-    """
-
-    params = []
-
-
-    if req_tipo:
-        filtros += """
-            AND r.req_tipo = %s
-        """
-        params.append(req_tipo)
-
-
-    if secretaria:
-        filtros += """
-            AND r.secretaria = %s
-        """
-        params.append(secretaria)
-
-
-
-    # ==================================================
-    # CARDS
-    # ==================================================
-
-    sql_cards = f"""
-        SELECT
-
-            COUNT(DISTINCT r.chave) AS analisados,
-
-            COALESCE(
-                SUM(r.valor_requisicao),
-                0
-            ) AS valor_analisado,
-
-
-            COUNT(DISTINCT r.na_gerada)
-            FILTER(
-                WHERE r.na_gerada IS NOT NULL
-            ) AS notas_auditoria,
-
-
-            COALESCE(
-                SUM(r.valor_requisicao)
-                FILTER(
-                    WHERE r.na_gerada IS NOT NULL
-                ),
-                0
-            ) AS valor_notas,
-
-
-            COUNT(DISTINCT r.chave)
-            FILTER(
-                WHERE r.na_gerada IS NOT NULL
-            ) AS reqs_notas
-
-
-        FROM requisicoes_eng r
-
-        {filtros}
-    """
-
-
-    cur.execute(
-        sql_cards,
-        params
-    )
-
-
-    cards = cur.fetchone()
-
-
-
-    # ==================================================
-    # TOTAL APONTAMENTOS
-    # ==================================================
-
-    sql_apont = f"""
-
-        SELECT
-            COUNT(rel.id)
-
-        FROM requisicoes_eng r
-
-
-        INNER JOIN
-        req_eng_apontamentos_rel rel
-
-        ON rel.requisicao_id = r.id
-
-
-        {filtros}
-
-    """
-
-
-    cur.execute(
-        sql_apont,
-        params
-    )
-
-
-    total_apontamentos = cur.fetchone()[0]
-
-
-
-    # ==================================================
-    # SECRETARIAS FILTRO
-    # ==================================================
+    cur.execute("""
+        SELECT DISTINCT req_tipo
+        FROM requisicoes_eng
+        WHERE req_tipo IS NOT NULL
+        ORDER BY req_tipo
+    """)
+    tipos = [x[0] for x in cur.fetchall()]
 
     cur.execute("""
         SELECT DISTINCT secretaria
@@ -14691,902 +14585,272 @@ def painel_reqs_eng():
         WHERE secretaria IS NOT NULL
         ORDER BY secretaria
     """)
+    secretarias = [x[0] for x in cur.fetchall()]
 
+    where = "WHERE r.analise='AP'"
+    params = []
 
-    secretarias = [
-        r[0]
-        for r in cur.fetchall()
-    ]
+    if req_tipo != "TODOS":
+        where += " AND r.req_tipo=%s"
+        params.append(req_tipo)
 
+    if secretaria != "TODAS":
+        where += " AND r.secretaria=%s"
+        params.append(secretaria)
 
-
-    # ==================================================
-    # GRÁFICO SECRETARIAS
-    # ==================================================
-
-    sql_secretaria = f"""
-
+    sql = f"""
         SELECT
-
-            r.secretaria,
-
-            COUNT(DISTINCT r.chave) AS qtd
-
-
+            COUNT(DISTINCT r.chave),
+            COALESCE(SUM(DISTINCT r.valor_requisicao),0),
+            COUNT(DISTINCT r.na_gerada) FILTER(WHERE r.na_gerada IS NOT NULL),
+            COALESCE(SUM(DISTINCT r.valor_requisicao) FILTER(WHERE r.na_gerada IS NOT NULL),0),
+            COUNT(DISTINCT r.chave) FILTER(WHERE r.na_gerada IS NOT NULL),
+            COUNT(rel.id)
         FROM requisicoes_eng r
-
-
-        {filtros}
-
-
-        GROUP BY r.secretaria
-
-
-        ORDER BY qtd DESC
-
-
-        LIMIT 10
-
+        LEFT JOIN req_eng_apontamentos_rel rel
+            ON rel.requisicao_id=r.id
+        {where}
     """
 
+    cur.execute(sql, params)
+    dados = cur.fetchone()
 
-    cur.execute(
-        sql_secretaria,
-        params
-    )
-
-
-    graf_secretaria = cur.fetchall()
-
-
-
-    # ==================================================
-    # GRÁFICO TIPO REQUISIÇÃO
-    # ==================================================
-
-    sql_tipo = f"""
-
-        SELECT
-
-            COALESCE(r.req_tipo,'SEM TIPO'),
-
-            COUNT(DISTINCT r.chave) AS qtd
-
-
-        FROM requisicoes_eng r
-
-
-        {filtros}
-
-
-        GROUP BY r.req_tipo
-
-
-        ORDER BY qtd DESC
-
-    """
-
-
-    cur.execute(
-        sql_tipo,
-        params
-    )
-
-
-    graf_tipo = cur.fetchall()
-
-
-
-    # ==================================================
-    # RANKING APONTAMENTOS
-    # ==================================================
-
-    sql_rank = f"""
-
-        SELECT
-
-            a.descricao,
-
-            COUNT(rel.id) AS qtd
-
-
-        FROM requisicoes_eng r
-
-
-        INNER JOIN
-        req_eng_apontamentos_rel rel
-
-        ON rel.requisicao_id = r.id
-
-
-        INNER JOIN
-        req_eng_apontamentos a
-
-        ON a.id = rel.apontamento_id
-
-
-        {filtros}
-
-
-        GROUP BY a.descricao
-
-
-        ORDER BY qtd DESC
-
-
-        LIMIT 10
-
-    """
-
-
-    cur.execute(
-        sql_rank,
-        params
-    )
-
-
-    ranking = cur.fetchall()
-
-
+    cards = {
+        "analisados": dados[0] or 0,
+        "valor_analisado": dados[1] or 0,
+        "notas": dados[2] or 0,
+        "valor_notas": dados[3] or 0,
+        "reqs_notas": dados[4] or 0,
+        "apontamentos": dados[5] or 0
+    }
 
     con.close()
 
-
-
-    html = r"""
-
-<style>
-
-.dashboard-eng{
-    padding:20px;
-}
-
-
-.dashboard-eng h2{
-    margin-bottom:20px;
-}
-
-
-
-.filtros-eng{
-
-    display:flex;
-    justify-content:center;
-    gap:15px;
-    margin-bottom:25px;
-
-}
-
-
-.filtros-eng select{
-
-    padding:10px;
-    border-radius:8px;
-    border:1px solid #ddd;
-    font-size:14px;
-
-}
-
-
-
-.cards-eng{
-
-    display:grid;
-    grid-template-columns:
-    repeat(auto-fit,minmax(220px,1fr));
-
-    gap:20px;
-
-}
-
-
-
-.card-eng{
-
-    background:white;
-
-    border-radius:15px;
-
-    padding:20px;
-
-    box-shadow:
-    0 4px 15px rgba(0,0,0,.10);
-
-}
-
-
-
-.card-eng .icone{
-
-    font-size:32px;
-
-}
-
-
-.card-eng h1{
-
-    margin:8px 0;
-
-    font-size:30px;
-
-}
-
-
-.card-eng span{
-
-    color:#666;
-
-}
-
-
-
-.graficos-eng{
-
-    margin-top:30px;
-
-    display:grid;
-
-    grid-template-columns:
-    repeat(auto-fit,minmax(400px,1fr));
-
-    gap:20px;
-
-}
-
-
-
-.box-graf-eng{
-
-    background:white;
-
-    padding:20px;
-
-    border-radius:15px;
-
-    box-shadow:
-    0 4px 15px rgba(0,0,0,.10);
-
-}
-
-
-canvas{
-
-    max-height:300px;
-
-}
-
-</style>
-
-
-<div class="dashboard-eng">
-
-
-<h2>
-🏗️ Painel Reqs. Engenharia
+    html = """
+<div class="container-fluid py-4">
+
+<div class="card shadow-sm border-0 mb-4">
+<div class="card-body text-center">
+
+<h2 class="fw-bold mb-1">
+<i class="bi bi-clipboard-data-fill text-primary"></i>
+Painel Reqs. Engenharia
 </h2>
 
+<p class="text-muted mb-0">
+Indicadores de análise das requisições de engenharia
+</p>
 
-<div class="filtros-eng">
+</div>
+</div>
 
 
-<select id="tipoFiltro"
-onchange="filtrarPainel()">
+<div class="card shadow-sm border-0 mb-4">
+<div class="card-body">
 
-<option value="">
-Todos os Tipos
+<form method="GET" class="row justify-content-center g-3">
+
+<div class="col-md-4">
+<label class="fw-bold">
+<i class="bi bi-diagram-3-fill"></i>
+Tipo Requisição
+</label>
+
+<select name="req_tipo" class="form-select shadow-sm" onchange="this.form.submit()">
+
+<option value="TODOS">
+Todos
 </option>
 
-<option value="CONTRATAÇÃO">
-CONTRATAÇÃO
+{% for t in tipos %}
+<option value="{{t}}" {% if req_tipo==t %}selected{% endif %}>
+{{t}}
 </option>
-
-<option value="LIQUIDAÇÃO">
-LIQUIDAÇÃO
-</option>
-
-<option value="ADITAMENTO">
-ADITAMENTO
-</option>
-
-
-</select>
-
-
-
-<select id="secretariaFiltro"
-onchange="filtrarPainel()">
-
-
-<option value="">
-Todas as Secretarias
-</option>
-
-
-{% for s in secretarias %}
-
-<option value="{{s}}">
-{{s}}
-</option>
-
 {% endfor %}
 
+</select>
+</div>
+
+
+<div class="col-md-4">
+<label class="fw-bold">
+<i class="bi bi-building-fill"></i>
+Secretaria
+</label>
+
+<select name="secretaria" class="form-select shadow-sm" onchange="this.form.submit()">
+
+<option value="TODAS">
+Todas
+</option>
+
+{% for s in secretarias %}
+<option value="{{s}}" {% if secretaria==s %}selected{% endif %}>
+{{s}}
+</option>
+{% endfor %}
 
 </select>
+</div>
 
+</form>
 
 </div>
- id="2b3a8d"
-<div class="cards-eng">
-
-
-<div class="card-eng">
-    <div class="icone">
-        ✅
-    </div>
-
-    <h1>
-        {{cards.analisados}}
-    </h1>
-
-    <span>
-        Analisados
-    </span>
 </div>
 
 
 
-<div class="card-eng">
+<div class="row g-4">
 
-    <div class="icone">
-        💰
-    </div>
 
-    <h1>
-        R$
-        {{ "{:,.2f}".format(cards.valor_analisado or 0)
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X",".") }}
-    </h1>
+<div class="col-xl-2 col-md-4 col-sm-6">
+<div class="card border-0 shadow h-100">
+<div class="card-body">
 
-    <span>
-        Valor Analisado
-    </span>
+<div class="rounded-circle bg-primary bg-opacity-10 p-3 d-inline-block">
+<i class="bi bi-search text-primary fs-2"></i>
+</div>
 
+<h6 class="text-muted mt-3">
+Analisados
+</h6>
+
+<h2 class="fw-bold">
+{{cards.analisados}}
+</h2>
+
+</div>
+</div>
 </div>
 
 
 
-<div class="card-eng">
+<div class="col-xl-2 col-md-4 col-sm-6">
+<div class="card border-0 shadow h-100">
+<div class="card-body">
 
-    <div class="icone">
-        📄
-    </div>
+<div class="rounded-circle bg-success bg-opacity-10 p-3 d-inline-block">
+<i class="bi bi-currency-dollar text-success fs-2"></i>
+</div>
 
+<h6 class="text-muted mt-3">
+Valor Analisado
+</h6>
 
-    <h1>
-        {{cards.notas_auditoria}}
-    </h1>
+<h5 class="fw-bold">
+R$ {{ "{:,.2f}".format(cards.valor_analisado).replace(",", "X").replace(".", ",").replace("X",".") }}
+</h5>
 
-
-    <span>
-        Notas Auditoria
-    </span>
-
-
+</div>
+</div>
 </div>
 
 
 
-<div class="card-eng">
+<div class="col-xl-2 col-md-4 col-sm-6">
+<div class="card border-0 shadow h-100">
+<div class="card-body">
 
+<div class="rounded-circle bg-warning bg-opacity-10 p-3 d-inline-block">
+<i class="bi bi-file-earmark-check-fill text-warning fs-2"></i>
+</div>
 
-    <div class="icone">
-        💵
-    </div>
+<h6 class="text-muted mt-3">
+Notas Auditoria
+</h6>
 
+<h2 class="fw-bold">
+{{cards.notas}}
+</h2>
 
-    <h1>
-
-        R$
-        {{ "{:,.2f}".format(cards.valor_notas or 0)
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X",".") }}
-
-    </h1>
-
-
-    <span>
-        Valor Notas Auditoria
-    </span>
-
-
+</div>
+</div>
 </div>
 
 
 
-<div class="card-eng">
+<div class="col-xl-2 col-md-4 col-sm-6">
+<div class="card border-0 shadow h-100">
+<div class="card-body">
 
+<div class="rounded-circle bg-danger bg-opacity-10 p-3 d-inline-block">
+<i class="bi bi-cash-stack text-danger fs-2"></i>
+</div>
 
-    <div class="icone">
-        📌
-    </div>
+<h6 class="text-muted mt-3">
+Valor Notas
+</h6>
 
+<h5 class="fw-bold">
+R$ {{ "{:,.2f}".format(cards.valor_notas).replace(",", "X").replace(".", ",").replace("X",".") }}
+</h5>
 
-    <h1>
-        {{cards.reqs_notas}}
-    </h1>
-
-
-    <span>
-        Reqs com Nota Auditoria
-    </span>
-
-
+</div>
+</div>
 </div>
 
 
 
-<div class="card-eng">
+<div class="col-xl-2 col-md-4 col-sm-6">
+<div class="card border-0 shadow h-100">
+<div class="card-body">
 
+<div class="rounded-circle bg-info bg-opacity-10 p-3 d-inline-block">
+<i class="bi bi-files text-info fs-2"></i>
+</div>
 
-    <div class="icone">
-        📝
-    </div>
+<h6 class="text-muted mt-3">
+Reqs com Nota
+</h6>
 
+<h2 class="fw-bold">
+{{cards.reqs_notas}}
+</h2>
 
-    <h1>
-        {{total_apontamentos}}
-    </h1>
-
-
-    <span>
-        Total Apontamentos
-    </span>
-
-
+</div>
+</div>
 </div>
 
 
 
+<div class="col-xl-2 col-md-4 col-sm-6">
+<div class="card border-0 shadow h-100">
+<div class="card-body">
+
+<div class="rounded-circle bg-secondary bg-opacity-10 p-3 d-inline-block">
+<i class="bi bi-exclamation-triangle-fill text-secondary fs-2"></i>
 </div>
 
+<h6 class="text-muted mt-3">
+Apontamentos
+</h6>
 
-
-
-
-<div class="graficos-eng">
-
-
-<div class="box-graf-eng">
-
-<h3>
-📊 Requisições por Secretaria
-</h3>
-
-<canvas id="grafSecretaria"></canvas>
+<h2 class="fw-bold">
+{{cards.apontamentos}}
+</h2>
 
 </div>
-
-
-
-
-<div class="box-graf-eng">
-
-<h3>
-📊 Requisições por Tipo
-</h3>
-
-<canvas id="grafTipo"></canvas>
-
 </div>
-
-
-
-
-<div class="box-graf-eng">
-
-<h3>
-📝 Ranking de Apontamentos
-</h3>
-
-<canvas id="grafApontamentos"></canvas>
-
-</div>
-
-
-
-
 </div>
 
 
 </div>
 
-
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-
-<script>
-
-
-function filtrarPainel(){
-
-
-    let tipo =
-        document
-        .getElementById("tipoFiltro")
-        .value;
-
-
-
-    let secretaria =
-        document
-        .getElementById("secretariaFiltro")
-        .value;
-
-
-
-    let url =
-        "/painel_reqs_eng?";
-
-
-
-    if(tipo){
-
-        url +=
-        "req_tipo="
-        +
-        encodeURIComponent(tipo);
-
-    }
-
-
-
-    if(secretaria){
-
-        if(tipo){
-
-            url += "&";
-
-        }
-
-
-        url +=
-        "secretaria="
-        +
-        encodeURIComponent(secretaria);
-
-    }
-
-
-
-    window.location.href=url;
-
-
-}
-
-
-
-
-
-const grafSecretaria = new Chart(
-
-document.getElementById(
-    "grafSecretaria"
-),
-
-{
-
-type:"bar",
-
-
-data:{
-
-
-labels:
-
-{{ graf_secretaria
-|map(attribute=0)
-|list
-|tojson }},
-
-
-
-datasets:[{
-
-label:
-"Requisições",
-
-
-
-data:
-
-{{ graf_secretaria
-|map(attribute=1)
-|list
-|tojson }}
-
-
-}]
-
-
-},
-
-
-options:{
-
-
-responsive:true,
-
-
-plugins:{
-
-
-legend:{
-
-
-display:false
-
-
-}
-
-
-}
-
-
-}
-
-
-}
-
-);
-
-
-
-
-
-const grafTipo = new Chart(
-
-document.getElementById(
-    "grafTipo"
-),
-
-{
-
-
-type:"doughnut",
-
-
-
-data:{
-
-
-labels:
-
-{{ graf_tipo
-|map(attribute=0)
-|list
-|tojson }},
-
-
-
-datasets:[{
-
-label:
-"Quantidade",
-
-
-data:
-
-{{ graf_tipo
-|map(attribute=1)
-|list
-|tojson }}
-
-
-}]
-
-
-},
-
-
-
-options:{
-
-
-responsive:true
-
-
-}
-
-
-}
-
-);
-
-
-
-
-
-const grafApontamentos = new Chart(
-
-document.getElementById(
-    "grafApontamentos"
-),
-
-{
-
-
-type:"bar",
-
-
-data:{
-
-
-labels:
-
-{{ ranking
-|map(attribute=0)
-|list
-|tojson }},
-
-
-
-datasets:[{
-
-label:
-"Quantidade",
-
-
-data:
-
-{{ ranking
-|map(attribute=1)
-|list
-|tojson }}
-
-
-}]
-
-
-},
-
-
-
-options:{
-
-
-indexAxis:"y",
-
-
-responsive:true,
-
-
-plugins:{
-
-
-legend:{
-
-
-display:false
-
-
-}
-
-
-}
-
-
-}
-
-
-}
-
-);
-
-
-
-
-
-// mantém os filtros selecionados
-
-window.onload=function(){
-
-
-    let params =
-        new URLSearchParams(
-            window.location.search
-        );
-
-
-
-    let tipo =
-        params.get(
-            "req_tipo"
-        );
-
-
-
-    let secretaria =
-        params.get(
-            "secretaria"
-        );
-
-
-
-    if(tipo){
-
-        document
-        .getElementById(
-            "tipoFiltro"
-        )
-        .value=tipo;
-
-    }
-
-
-
-    if(secretaria){
-
-        document
-        .getElementById(
-            "secretariaFiltro"
-        )
-        .value=secretaria;
-
-    }
-
-
-}
-
-
-
-</script>
-
-
+</div>
 """
 
-
     return render_template_string(
-
         BASE.replace(
             "{% block content %}{% endblock %}",
             html
         ),
-
-
         cards=cards,
-
-
-        total_apontamentos=
-            total_apontamentos,
-
-
-        secretarias=
-            secretarias,
-
-
-        graf_secretaria=
-            graf_secretaria,
-
-
-        graf_tipo=
-            graf_tipo,
-
-
-        ranking=
-            ranking,
-
-
-        user=
-            session["user"],
-
-
-        perfil=
-            session["perfil"]
-
+        tipos=tipos,
+        secretarias=secretarias,
+        req_tipo=req_tipo,
+        secretaria=secretaria,
+        user=session["user"],
+        perfil=session["perfil"]
     )
 
 @app.route("/requisicoes_eng/export")

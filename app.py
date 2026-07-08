@@ -14854,6 +14854,21 @@ def painel_reqs_engenharia():
         grid-template-columns:repeat(1,1fr);
     }
 }
+.chart-box {
+    background:#ffffff;
+    border:1px solid #d3e0f0;
+    border-radius:16px;
+    padding:20px;
+    margin-top:25px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
+
+.chart-box canvas {
+    max-height:350px !important;
+}
+.chart-box.large canvas {
+    height:450px !important;
+}
 </style>
 <div class="container-fluid py-4">
 
@@ -15033,7 +15048,7 @@ Apontamentos
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 
-<div class="card mt-4">
+<div class="chart-box">
 <h3>
 <i class="bi bi-graph-up"></i>
 Analisados por mês
@@ -15042,25 +15057,25 @@ Analisados por mês
 </div>
 
 
-<div class="card mt-4">
+<div class="chart-box large">
 <h3>Analisados por Secretaria</h3>
 <canvas id="grafSecretaria"></canvas>
 </div>
 
 
-<div class="card mt-4">
+<div class="chart-box">
 <h3>Notas Auditoria por Secretaria</h3>
 <canvas id="grafNotas"></canvas>
 </div>
 
 
-<div class="card mt-4">
+<div class="chart-box">
 <h3>Apontamentos por Descrição</h3>
 <canvas id="grafApDesc"></canvas>
 </div>
 
 
-<div class="card mt-4">
+<div class="chart-box">
 <h3>Apontamentos por Secretaria</h3>
 <canvas id="grafApSec"></canvas>
 </div>
@@ -15126,6 +15141,10 @@ label:'Analisados',
 data:{{graf_mes_valores|safe}},
 borderWidth:3
 }]
+},
+options:{
+    responsive:true,
+    maintainAspectRatio:false
 }
 });
 
@@ -15142,6 +15161,8 @@ data:{{secret_valores|safe}}
 }]
 },
 options:{
+responsive:true,
+maintainAspectRatio:false
 indexAxis:'y'
 }
 });
@@ -15157,6 +15178,10 @@ datasets:[{
 label:'Notas Auditoria',
 data:{{notas_valores|safe}}
 }]
+},
+options:{
+responsive:true,
+maintainAspectRatio:false
 }
 });
 
@@ -15171,6 +15196,10 @@ datasets:[{
 label:'Quantidade',
 data:{{ap_desc_valores|safe}}
 }]
+},
+options:{
+responsive:true,
+maintainAspectRatio:false
 }
 });
 
@@ -15185,6 +15214,10 @@ datasets:[{
 label:'Quantidade',
 data:{{ap_sec_valores|safe}}
 }]
+},
+options:{
+responsive:true,
+maintainAspectRatio:false
 }
 });
 </script>

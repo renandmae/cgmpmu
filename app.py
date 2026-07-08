@@ -14559,6 +14559,772 @@ window.onload = function(){
         perfil=session["perfil"]
     )
 
+@app.route("/painel_reqs_eng")
+def painel_reqs_eng():
+
+    if session['perfil'] != 'admin' and session['user'] != 'Laianne Fogaça':
+        return 'Acesso negado'
+
+
+    con = get_db()
+    cur = con.cursor()
+
+
+    req_tipo = request.args.get("req_tipo", "")
+    secretaria = request.args.get("secretaria", "")
+
+
+    filtros = """
+        WHERE r.analise = 'AP'
+    """
+
+    params = []
+
+
+    if req_tipo:
+        filtros += """
+            AND r.req_tipo = %s
+        """
+        params.append(req_tipo)
+
+
+    if secretaria:
+        filtros += """
+            AND r.secretaria = %s
+        """
+        params.append(secretaria)
+
+
+
+    # ============================
+    # CARDS
+    # ============================
+
+    sql_cards = f"""
+
+    SELECT
+
+    COUNT(DISTINCT r.chave) AS analisados,
+
+
+    COALESCE(
+        SUM(r.valor_requisicao),
+        0
+    ) AS valor_analisado,
+
+
+    COUNT(
+        DISTINCT r.na_gerada
+    )
+    FILTER(
+        WHERE r.na_gerada IS NOT NULL
+    ) AS notas_auditoria,
+
+
+    COALESCE(
+        SUM(r.valor_requisicao)
+        FILTER(
+            WHERE r.na_gerada IS NOT NULL
+        ),
+        0
+    ) AS valor_notas,
+
+
+    COUNT(DISTINCT r.chave)
+    FILTER(
+        WHERE r.na_gerada IS NOT NULL
+    ) AS reqs_notas
+
+
+    FROM requisicoes_eng r
+
+    {filtros}
+
+    """
+
+
+    cur.execute(
+        sql_cards,
+        params
+    )
+
+    cards = cur.fetchone()
+
+
+
+    # ============================
+    # TOTAL APONTAMENTOS
+    # ============================
+
+    sql_apont = f"""
+
+    SELECT
+        COUNT(rel.id)
+
+    FROM requisicoes_eng r
+
+    INNER JOIN
+    req_eng_apontamentos_rel rel
+
+    ON rel.requisicao_id = r.id
+
+
+    {filtros}
+
+    """
+
+
+    cur.execute(
+        sql_apont,
+        params
+    )
+
+
+    total_apontamentos = cur.fetchone()[0]
+
+
+
+    # ============================
+    # SECRETARIAS FILTRO
+    # ============================
+
+    cur.execute("""
+        SELECT DISTINCT secretaria
+        FROM requisicoes_eng
+        WHERE secretaria IS NOT NULL
+        ORDER BY secretaria
+    """)
+
+    secretarias = [
+        x[0]
+        for x in cur.fetchall()
+    ]
+
+
+
+    # ============================
+    # GRÁFICO SECRETARIAS
+    # ============================
+
+    sql_sec = f"""
+
+    SELECT
+
+        r.secretaria,
+
+        COUNT(DISTINCT r.chave) qtd
+
+
+    FROM requisicoes_eng r
+
+
+    {filtros}
+
+
+    GROUP BY r.secretaria
+
+    ORDER BY qtd DESC
+
+    LIMIT 10
+
+    """
+
+
+    cur.execute(
+        sql_sec,
+        params
+    )
+
+
+    graf_secretaria = cur.fetchall()
+
+
+
+    # ============================
+    # GRÁFICO TIPOS
+    # ============================
+
+    sql_tipo = f"""
+
+    SELECT
+
+        r.req_tipo,
+
+        COUNT(DISTINCT r.chave) qtd
+
+
+    FROM requisicoes_eng r
+
+
+    {filtros}
+
+
+    GROUP BY r.req_tipo
+
+
+    ORDER BY qtd DESC
+
+
+    """
+
+
+    cur.execute(
+        sql_tipo,
+        params
+    )
+
+
+    graf_tipo = cur.fetchall()
+
+
+
+    # ============================
+    # RANKING APONTAMENTOS
+    # ============================
+
+    sql_rank = f"""
+
+    SELECT
+
+        a.descricao,
+
+        COUNT(rel.id) qtd
+
+
+    FROM requisicoes_eng r
+
+
+    INNER JOIN
+    req_eng_apontamentos_rel rel
+
+    ON rel.requisicao_id=r.id
+
+
+    INNER JOIN
+    req_eng_apontamentos a
+
+    ON a.id=rel.apontamento_id
+
+
+    {filtros}
+
+
+    GROUP BY a.descricao
+
+    ORDER BY qtd DESC
+
+    LIMIT 10
+
+    """
+
+
+    cur.execute(
+        sql_rank,
+        params
+    )
+
+
+    ranking = cur.fetchall()
+
+
+
+    con.close()
+
+
+
+    html = """
+
+<style>
+
+.dashboard{
+
+padding:20px;
+
+}
+
+
+.filtros{
+
+display:flex;
+justify-content:center;
+gap:15px;
+margin-bottom:25px;
+
+}
+
+
+.filtros select{
+
+padding:10px;
+border-radius:8px;
+border:1px solid #ddd;
+font-size:14px;
+
+}
+
+
+
+.cards{
+
+display:grid;
+grid-template-columns:
+repeat(auto-fit,minmax(220px,1fr));
+
+gap:20px;
+
+}
+
+
+
+.card-ind{
+
+background:white;
+border-radius:15px;
+padding:20px;
+
+box-shadow:
+0 4px 15px rgba(0,0,0,.10);
+
+}
+
+
+
+.card-ind h1{
+
+margin:0;
+font-size:32px;
+
+}
+
+
+.card-ind span{
+
+font-size:14px;
+color:#666;
+
+}
+
+
+.icon{
+
+font-size:35px;
+
+}
+
+
+
+.graficos{
+
+margin-top:30px;
+
+display:grid;
+
+grid-template-columns:
+repeat(auto-fit,minmax(400px,1fr));
+
+gap:25px;
+
+}
+
+
+
+.box-graf{
+
+background:white;
+
+padding:20px;
+
+border-radius:15px;
+
+box-shadow:
+0 4px 15px rgba(0,0,0,.10);
+
+}
+
+
+canvas{
+
+max-height:300px;
+
+}
+
+</style>
+
+
+<div class="dashboard">
+
+
+<h2>
+🏗️ Painel Reqs. Engenharia
+</h2>
+
+
+
+<div class="filtros">
+
+
+<select onchange="filtrar()" id="tipo">
+
+<option value="">
+Todos Tipos
+</option>
+
+<option>
+CONTRATAÇÃO
+</option>
+
+<option>
+LIQUIDAÇÃO
+</option>
+
+<option>
+ADITAMENTO
+</option>
+
+
+</select>
+
+
+
+<select onchange="filtrar()" id="sec">
+
+
+<option value="">
+Todas Secretarias
+</option>
+
+
+{% for s in secretarias %}
+
+<option>
+{{s}}
+</option>
+
+{% endfor %}
+
+
+</select>
+
+
+</div>
+
+
+
+<div class="cards">
+
+
+<div class="card-ind">
+<div class="icon">✅</div>
+<h1>{{cards.analisados}}</h1>
+<span>Analisados</span>
+</div>
+
+
+<div class="card-ind">
+<div class="icon">💰</div>
+<h1>
+R$ {{ "{:,.2f}".format(cards.valor_analisado).replace(",", "X").replace(".", ",").replace("X",".") }}
+</h1>
+<span>Valor Analisado</span>
+</div>
+
+
+<div class="card-ind">
+<div class="icon">📄</div>
+<h1>{{cards.notas_auditoria}}</h1>
+<span>Notas Auditoria</span>
+</div>
+
+
+<div class="card-ind">
+<div class="icon">💵</div>
+<h1>
+R$ {{ "{:,.2f}".format(cards.valor_notas).replace(",", "X").replace(".", ",").replace("X",".") }}
+</h1>
+<span>Valor Notas</span>
+</div>
+
+
+<div class="card-ind">
+<div class="icon">📌</div>
+<h1>{{cards.reqs_notas}}</h1>
+<span>Reqs com NA</span>
+</div>
+
+
+<div class="card-ind">
+<div class="icon">📝</div>
+<h1>{{total_apontamentos}}</h1>
+<span>Total Apontamentos</span>
+</div>
+
+
+</div>
+    
+    html += """
+<div class="graficos">
+<div class="box-graf">
+<h3>
+📊 Requisições por Secretaria
+</h3>
+<canvas id="grafSecretaria"></canvas>
+</div>
+<div class="box-graf">
+<h3>
+📊 Requisições por Tipo
+</h3>
+<canvas id="grafTipo"></canvas>
+</div>
+<div class="box-graf">
+<h3>
+📝 Ranking de Apontamentos
+</h3>
+<canvas id="grafApont"></canvas>
+</div>
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+function filtrar(){
+
+    let tipo =
+        document.getElementById("tipo").value;
+
+
+    let sec =
+        document.getElementById("sec").value;
+
+
+    let params =
+        new URLSearchParams();
+
+
+    if(tipo)
+        params.set(
+            "req_tipo",
+            tipo
+        );
+
+
+    if(sec)
+        params.set(
+            "secretaria",
+            sec
+        );
+
+
+    window.location.href =
+        "/painel_reqs_eng?"
+        +
+        params.toString();
+
+}
+
+const dadosSecretaria = {
+labels:
+{{ graf_secretaria
+|map(attribute=0)
+|list
+|tojson }},
+datasets:[{
+label:
+"Quantidade",
+data:
+{{ graf_secretaria
+|map(attribute=1)
+|list
+|tojson }}
+}]
+};
+
+new Chart(
+document.getElementById(
+"grafSecretaria"
+),
+{
+type:"bar",
+data:dadosSecretaria,
+options:{
+responsive:true,
+plugins:{
+legend:{
+display:false
+}
+}
+}
+}
+);
+
+const dadosTipo = {
+labels:
+{{ graf_tipo
+|map(attribute=0)
+|list
+|tojson }},
+datasets:[{
+label:
+"Quantidade",
+
+data:
+
+{{ graf_tipo
+|map(attribute=1)
+|list
+|tojson }}
+
+}]
+
+};
+
+new Chart(
+
+document.getElementById(
+"grafTipo"
+),
+
+{
+
+type:"doughnut",
+
+
+data:dadosTipo,
+
+
+options:{
+
+responsive:true
+
+}
+
+}
+
+
+);
+
+
+
+
+
+const dadosApont = {
+
+
+labels:
+
+{{ ranking
+|map(attribute=0)
+|list
+|tojson }},
+
+
+
+datasets:[{
+
+label:
+"Apontamentos",
+
+
+data:
+
+{{ ranking
+|map(attribute=1)
+|list
+|tojson }}
+
+
+
+}]
+
+
+};
+
+
+
+new Chart(
+
+document.getElementById(
+"grafApont"
+),
+
+{
+
+type:"bar",
+
+
+data:dadosApont,
+
+
+options:{
+
+indexAxis:"y",
+
+
+responsive:true,
+
+
+plugins:{
+
+legend:{
+
+display:false
+
+}
+
+}
+
+
+}
+
+}
+
+);
+
+
+
+
+</script>
+
+
+"""
+
+
+    return render_template_string(
+
+        BASE.replace(
+            "{% block content %}{% endblock %}",
+            html
+        ),
+
+
+        cards=cards,
+
+        total_apontamentos=
+            total_apontamentos,
+
+
+        secretarias=
+            secretarias,
+
+
+        graf_secretaria=
+            graf_secretaria,
+
+
+        graf_tipo=
+            graf_tipo,
+
+
+        ranking=
+            ranking,
+
+
+        user=
+            session["user"],
+
+        perfil=
+            session["perfil"]
+
+    )
+
 @app.route("/requisicoes_eng/export")
 def requisicoes_eng_export():
 

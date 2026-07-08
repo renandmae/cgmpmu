@@ -14600,15 +14600,15 @@ def painel_reqs_engenharia():
 
     sql = f"""
         SELECT
-            COUNT(DISTINCT r.chave),
-            COALESCE(SUM(DISTINCT r.valor_requisicao),0),
-            COUNT(DISTINCT r.na_gerada) FILTER(WHERE r.na_gerada IS NOT NULL),
-            COALESCE(SUM(DISTINCT r.valor_requisicao) FILTER(WHERE r.na_gerada IS NOT NULL),0),
-            COUNT(DISTINCT r.chave) FILTER(WHERE r.na_gerada IS NOT NULL),
-            COUNT(rel.id)
+            COUNT(DISTINCT r.chave) AS analisados,
+            COALESCE(SUM(DISTINCT r.valor_requisicao),0) AS valor_analisado,
+            COUNT(DISTINCT r.na_gerada) FILTER(WHERE r.na_gerada IS NOT NULL) AS notas,
+            COALESCE(SUM(DISTINCT r.valor_requisicao) FILTER(WHERE r.na_gerada IS NOT NULL),0) AS valor_notas,
+            COUNT(DISTINCT r.chave) FILTER(WHERE r.na_gerada IS NOT NULL) AS reqs_notas,
+            COUNT(rel.id) AS apontamentos
         FROM requisicoes_eng r
         LEFT JOIN req_eng_apontamentos_rel rel
-            ON rel.requisicao_id=r.id
+            ON rel.requisicao_id = r.id
         {where}
     """
 

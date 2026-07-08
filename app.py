@@ -14616,12 +14616,12 @@ def painel_reqs_engenharia():
     dados = cur.fetchone()
 
     cards = {
-        "analisados": dados["count"] or 0,
-        "valor_analisado": dados["coalesce"] or 0,
-        "notas": dados["count_2"] or 0,
-        "valor_notas": dados["coalesce_2"] or 0,
-        "reqs_notas": dados["count_3"] or 0,
-        "apontamentos": dados["count_4"] or 0
+        "analisados": dados["analisados"] or 0,
+        "valor_analisado": dados["valor_analisado"] or 0,
+        "notas": dados["notas"] or 0,
+        "valor_notas": dados["valor_notas"] or 0,
+        "reqs_notas": dados["reqs_notas"] or 0,
+        "apontamentos": dados["apontamentos"] or 0
     }
 
     con.close()

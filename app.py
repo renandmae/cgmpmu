@@ -15073,7 +15073,7 @@ Apontamentos
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
 
 <div class="chart-box">
 <h3>
@@ -15157,6 +15157,16 @@ R$ {{ "{:,.2f}".format(t.valor_notas or 0) }}
 
 
 <script>
+Chart.register(ChartDataLabels);
+
+Chart.defaults.plugins.datalabels = {
+    color:'#000',
+    font:{
+        size:11,
+        weight:'bold'
+    },
+    formatter:(value)=>value
+};
 
 new Chart(
 document.getElementById('grafMes'),

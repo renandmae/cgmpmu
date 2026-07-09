@@ -2785,12 +2785,9 @@ from io import BytesIO
 from flask import send_file
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.utils import get_column_letter
-
 
 @app.route("/os/export/excel")
 def exportar_fichas_excel():
-
     if "user" not in session:
         return redirect("/")
 
@@ -2799,11 +2796,9 @@ def exportar_fichas_excel():
 
     cur.execute("""
         SELECT
-            o.id,
             o.codigo,
             o.resumo,
             o.item_paint,
-
             f.id AS ficha_id,
             f.nivel_risco,
             f.criterio,
@@ -2815,12 +2810,9 @@ def exportar_fichas_excel():
             f.data_monitoramento,
             f.data_proximo_monitoramento,
             f.observacao_monitoramento
-
         FROM os o
-
         LEFT JOIN ficha_auditoria f
             ON f.os_id = o.id
-
         ORDER BY o.codigo
     """)
 
@@ -2828,9 +2820,9 @@ def exportar_fichas_excel():
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Fichas Auditoria"
+    ws.title = "Analise Auditoria"
 
-    cab = [
+    cabecalho = [
         "O.S.",
         "Resumo",
         "Item Paint",
@@ -2841,27 +2833,26 @@ def exportar_fichas_excel():
         "Impacto",
         "Ação",
         "Benefícios",
-        "Recomendações",
+        "Recomendação",
+        "Status Recomendação",
         "Data Monitoramento",
         "Próximo Monitoramento",
         "Observações"
     ]
 
-    ws.append(cab)
+    ws.append(cabecalho)
 
-    azul = PatternFill(fill_type="solid", fgColor="1F4E78")
+    preenchimento = PatternFill(fill_type="solid", fgColor="1F4E78")
 
-    for c in ws[1]:
-        c.font = Font(bold=True, color="FFFFFF")
-        c.fill = azul
-        c.alignment = Alignment(horizontal="center", vertical="center")
+    for celula in ws[1]:
+        celula.font = Font(bold=True, color="FFFFFF")
+        celula.fill = preenchimento
+        celula.alignment = Alignment(horizontal="center", vertical="center")
 
     for row in dados:
-
-        recomendacoes = ""
+        recomendacoes = []
 
         if row["ficha_id"]:
-
             cur.execute("""
                 SELECT descricao, corrigido
                 FROM ficha_recomendacoes
@@ -2869,62 +2860,76 @@ def exportar_fichas_excel():
                 ORDER BY id
             """, (row["ficha_id"],))
 
-            recs = cur.fetchall()
+            recomendacoes = cur.fetchall()
 
-            recomendacoes = "\n".join(
-                f"• {r['descricao']} - {'Corrigido' if r['corrigido'] else 'Pendente'}"
-                for r in recs
-            )
+        if recomendacoes:
+            for rec in recomendacoes:
+                ws.append([
+                    row["codigo"],
+                    row["resumo"],
+                    row["item_paint"],
+                    row["nivel_risco"],
+                    row["criterio"],
+                    row["condicao"],
+                    row["causa"],
+                    row["impacto"],
+                    row["acao"],
+                    row["beneficios"],
+                    rec["descricao"],
+                    "Corrigido" if rec["corrigido"] else "Pendente",
+                    row["data_monitoramento"],
+                    row["data_proximo_monitoramento"],
+                    row["observacao_monitoramento"]
+                ])
+        else:
+            ws.append([
+                row["codigo"],
+                row["resumo"],
+                row["item_paint"],
+                row["nivel_risco"],
+                row["criterio"],
+                row["condicao"],
+                row["causa"],
+                row["impacto"],
+                row["acao"],
+                row["beneficios"],
+                "",
+                "",
+                row["data_monitoramento"],
+                row["data_proximo_monitoramento"],
+                row["observacao_monitoramento"]
+            ])
 
-        ws.append([
-            row["codigo"],
-            row["resumo"],
-            row["item_paint"],
-            row["nivel_risco"],
-            row["criterio"],
-            row["condicao"],
-            row["causa"],
-            row["impacto"],
-            row["acao"],
-            row["beneficios"],
-            recomendacoes,
-            row["data_monitoramento"],
-            row["data_proximo_monitoramento"],
-            row["observacao_monitoramento"]
-        ])
-
-    # Quebra de linha
     for linha in ws.iter_rows(min_row=2):
-        for cel in linha:
-            cel.alignment = Alignment(
+        for celula in linha:
+            celula.alignment = Alignment(
                 wrap_text=True,
                 vertical="top"
             )
 
-    # Largura das colunas
     larguras = {
-        "A": 18,
-        "B": 35,
-        "C": 22,
-        "D": 18,
-        "E": 45,
-        "F": 45,
-        "G": 45,
-        "H": 45,
-        "I": 45,
-        "J": 35,
-        "K": 60,
-        "L": 18,
-        "M": 22,
-        "N": 45,
+        "A":18,
+        "B":35,
+        "C":18,
+        "D":18,
+        "E":45,
+        "F":45,
+        "G":45,
+        "H":45,
+        "I":50,
+        "J":30,
+        "K":50,
+        "L":22,
+        "M":18,
+        "N":22,
+        "O":50
     }
 
-    for col, largura in larguras.items():
-        ws.column_dimensions[col].width = largura
+    for coluna, largura in larguras.items():
+        ws.column_dimensions[coluna].width = largura
 
-    # Altura das linhas
-    for i in range(2, ws.max_row + 1):
-        ws.row_dimensions[i].height = 90
+    for linha in range(2, ws.max_row + 1):
+        ws.row_dimensions[linha].height = 80
 
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
@@ -2937,10 +2942,11 @@ def exportar_fichas_excel():
 
     return send_file(
         arquivo,
-        download_name="Fichas_Auditoria.xlsx",
+        download_name="Analise_Fichas_Auditoria.xlsx",
         as_attachment=True,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 from docx import Document
 from flask import send_file
 import io

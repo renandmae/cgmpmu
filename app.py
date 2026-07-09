@@ -2781,112 +2781,166 @@ def os_rh():
         perfil=session['perfil']
     )
 
-from openpyxl import Workbook
+from io import BytesIO
 from flask import send_file
-import io
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
-@app.route('/os/export/excel/<int:os_id>')
-def export_excel(os_id):
+
+@app.route("/os/export/excel")
+def exportar_fichas_excel():
+
+    if "user" not in session:
+        return redirect("/")
 
     con = get_db()
     cur = con.cursor()
 
-    # OS
-    cur.execute("SELECT * FROM os WHERE id = %s", (os_id,))
-    os_data = cur.fetchone()
-
-    # FICHA
-    cur.execute("SELECT * FROM ficha_auditoria WHERE os_id = %s", (os_id,))
-    ficha = cur.fetchone()
-
-    if not ficha:
-        return "Ficha não preenchida ainda"
-
-    # RECOMENDAÇÕES
     cur.execute("""
-        SELECT * FROM ficha_recomendacoes
-        WHERE ficha_id = %s
-    """, (ficha["id"],))
-    recs = cur.fetchall()
+        SELECT
+            o.id,
+            o.codigo,
+            o.resumo,
+            o.item_paint,
+
+            f.id AS ficha_id,
+            f.nivel_risco,
+            f.criterio,
+            f.condicao,
+            f.causa,
+            f.impacto,
+            f.acao,
+            f.beneficios,
+            f.data_monitoramento,
+            f.data_proximo_monitoramento,
+            f.observacao_monitoramento
+
+        FROM os o
+
+        LEFT JOIN ficha_auditoria f
+            ON f.os_id = o.id
+
+        ORDER BY o.codigo
+    """)
+
+    dados = cur.fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Fichas Auditoria"
+
+    cab = [
+        "O.S.",
+        "Resumo",
+        "Item Paint",
+        "Nível de Risco",
+        "Critério",
+        "Condição",
+        "Causa",
+        "Impacto",
+        "Ação",
+        "Benefícios",
+        "Recomendações",
+        "Data Monitoramento",
+        "Próximo Monitoramento",
+        "Observações"
+    ]
+
+    ws.append(cab)
+
+    azul = PatternFill(fill_type="solid", fgColor="1F4E78")
+
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = azul
+        c.alignment = Alignment(horizontal="center", vertical="center")
+
+    for row in dados:
+
+        recomendacoes = ""
+
+        if row["ficha_id"]:
+
+            cur.execute("""
+                SELECT descricao, corrigido
+                FROM ficha_recomendacoes
+                WHERE ficha_id=%s
+                ORDER BY id
+            """, (row["ficha_id"],))
+
+            recs = cur.fetchall()
+
+            recomendacoes = "\n".join(
+                f"• {r['descricao']} - {'Corrigido' if r['corrigido'] else 'Pendente'}"
+                for r in recs
+            )
+
+        ws.append([
+            row["codigo"],
+            row["resumo"],
+            row["item_paint"],
+            row["nivel_risco"],
+            row["criterio"],
+            row["condicao"],
+            row["causa"],
+            row["impacto"],
+            row["acao"],
+            row["beneficios"],
+            recomendacoes,
+            row["data_monitoramento"],
+            row["data_proximo_monitoramento"],
+            row["observacao_monitoramento"]
+        ])
+
+    # Quebra de linha
+    for linha in ws.iter_rows(min_row=2):
+        for cel in linha:
+            cel.alignment = Alignment(
+                wrap_text=True,
+                vertical="top"
+            )
+
+    # Largura das colunas
+    larguras = {
+        "A": 18,
+        "B": 35,
+        "C": 22,
+        "D": 18,
+        "E": 45,
+        "F": 45,
+        "G": 45,
+        "H": 45,
+        "I": 45,
+        "J": 35,
+        "K": 60,
+        "L": 18,
+        "M": 22,
+        "N": 45,
+    }
+
+    for col, largura in larguras.items():
+        ws.column_dimensions[col].width = largura
+
+    # Altura das linhas
+    for i in range(2, ws.max_row + 1):
+        ws.row_dimensions[i].height = 90
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
 
     con.close()
 
-    wb = Workbook()
-
-    # ========================
-    # ABA 1 - FICHA
-    # ========================
-    ws = wb.active
-    ws.title = "Ficha"
-
-    ws["A1"] = "Controladoria-Geral"
-    ws["A3"] = "OS"
-    ws["B3"] = os_data["codigo"]
-
-    ws["A5"] = "Nível de Risco"
-    ws["B5"] = ficha["nivel_risco"]
-
-    # 5Cs
-    linha = 7
-    campos = [
-        ("Critério", "criterio"),
-        ("Condição", "condicao"),
-        ("Causa", "causa"),
-        ("Impacto", "impacto"),
-        ("Ação", "acao"),
-    ]
-
-    for titulo, campo in campos:
-        ws[f"A{linha}"] = titulo
-        ws[f"B{linha}"] = ficha[campo]
-        linha += 1
-
-    # Benefícios
-    ws[f"A{linha+1}"] = "Benefícios"
-    beneficios = ficha.get("beneficios") or ""
-    ws[f"B{linha+1}"] = beneficios
-
-    # Monitoramento
-    linha += 3
-    ws[f"A{linha}"] = "Requer Monitoramento"
-    ws[f"B{linha}"] = "Sim" if ficha["requer_monitoramento"] else "Não"
-
-    linha += 1
-    ws[f"A{linha}"] = "Data"
-    ws[f"B{linha}"] = str(ficha["data_monitoramento"] or "")
-
-    linha += 1
-    ws[f"A{linha}"] = "Observações"
-    ws[f"B{linha}"] = ficha["observacao_monitoramento"] or ""
-
-    # ========================
-    # ABA 2 - RECOMENDAÇÕES
-    # ========================
-    ws2 = wb.create_sheet(title="Recomendações")
-
-    ws2["A1"] = "Descrição"
-    ws2["B1"] = "Status"
-
-    linha = 2
-    for r in recs:
-        ws2[f"A{linha}"] = r["descricao"]
-        ws2[f"B{linha}"] = "Corrigido" if r["corrigido"] else "Pendente"
-        linha += 1
-
-    # ========================
-    # GERAR ARQUIVO
-    # ========================
-    file_stream = io.BytesIO()
-    wb.save(file_stream)
-    file_stream.seek(0)
+    arquivo = BytesIO()
+    wb.save(arquivo)
+    arquivo.seek(0)
 
     return send_file(
-        file_stream,
+        arquivo,
+        download_name="Fichas_Auditoria.xlsx",
         as_attachment=True,
-        download_name=f"Ficha_OS_{os_data['codigo']}.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
 from docx import Document
 from flask import send_file
 import io
@@ -3288,7 +3342,9 @@ gap:15px;
         </div>
 
         <div>
-            <a href="/os/export/excel/{os_id}" class="btn">📊 Excel</a>
+            <a href="/os/export/excel" class="btn">
+                📊 Exportar Excel
+            </a>
         </div>
     </div>
 </div>

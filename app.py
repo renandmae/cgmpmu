@@ -3092,10 +3092,10 @@ def ficha_os(os_id):
 <style>
 .card{{
 background:#fff;
-border-radius:18px;
-padding:24px;
-margin-bottom:22px;
-box-shadow:0 10px 25px rgba(0,0,0,.08);
+border-radius:16px;
+padding:18px;
+margin-bottom:16px;
+box-shadow:0 6px 18px rgba(0,0,0,.07);
 border:1px solid #eef2f7;
 }}
 
@@ -3170,18 +3170,30 @@ textarea, input {{
     margin-top:5px;
 }}
 .risco{{
-height:90px;
-display:flex;
-align-items:center;
-justify-content:center;
-font-size:36px;
-transition:.2s;
+    height:55px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:16px;
+    font-weight:700;
+    transition:.2s;
+    padding:8px;
+}}
+
+.risco b{{
+    font-size:16px;
+}}
+
+
+.risco input{{
+    display:none;
 }}
 
 .risco:hover{{
-transform:translateY(-4px);
-box-shadow:0 8px 20px rgba(0,0,0,.15);
+    transform:translateY(-3px);
+    box-shadow:0 6px 15px rgba(0,0,0,.12);
 }}
+
 .titulo-card{{
 display:flex;
 align-items:center;

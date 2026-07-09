@@ -3403,9 +3403,9 @@ function addRec(){{
         <button
         type="button"
         onclick="
-        if(confirm('Deseja excluir esta recomendação?')){
+        if(confirm('Deseja excluir esta recomendação?')){{
             this.parentNode.remove();
-        }
+        }}
         "
         style="
             background:#dc2626;
@@ -3423,7 +3423,7 @@ function addRec(){{
     document.getElementById("recs").appendChild(div)
 }}
 
-function atualizarStatus(select){
+function atualizarStatus(select){{
 let linha = select.closest(".linha-rec");
 if(select.value=="1"){
 linha.classList.add("rec-ok");
@@ -3432,9 +3432,9 @@ linha.classList.remove("rec-pendente");
 linha.classList.add("rec-pendente");
 linha.classList.remove("rec-ok");
 }
-}
+}}
 
-function filtrarRec(tipo){
+function filtrarRec(tipo){{
 
 document.querySelectorAll(".linha-rec").forEach(linha=>{
 if(tipo=="todos"){
@@ -3454,7 +3454,7 @@ linha.classList.contains("rec-pendente")
 }
 
 });
-}
+}}
 </script>
 """
     return render_template_string(

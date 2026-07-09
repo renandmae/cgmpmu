@@ -3258,6 +3258,26 @@ gap:15px;
     transition:.4s;
     font-size:13px;
 }}
+
+.risco:has(input:checked){{
+    border:3px solid #2563eb;
+    transform:translateY(-3px);
+    box-shadow:0 8px 20px rgba(37,99,235,.35);
+}}
+
+.risco:has(input:checked)::after{{
+    content:"✓";
+    position:absolute;
+    top:5px;
+    right:8px;
+    font-size:18px;
+    font-weight:bold;
+    color:#2563eb;
+}}
+
+.risco{{
+    position:relative;
+}}
 </style>
 
 <div class="card">

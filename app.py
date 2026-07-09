@@ -3076,6 +3076,13 @@ def ficha_os(os_id):
         cur.execute("SELECT * FROM ficha_recomendacoes WHERE ficha_id = %s", (ficha["id"],))
         recomendacoes = cur.fetchall()
 
+    total_rec = len(recomendacoes)
+    corrigidas = len([r for r in recomendacoes if r["corrigido"]])
+    
+    percentual_rec = 0
+    if total_rec > 0:
+        percentual_rec = int((corrigidas / total_rec) * 100)
+
     con.close()
 
     # -------------------------
@@ -3219,6 +3226,26 @@ display:grid;
 grid-template-columns:1fr 1fr;
 gap:15px;
 }}
+
+.progresso-box{{
+    margin:15px 0;
+    background:#e5e7eb;
+    border-radius:15px;
+    height:25px;
+    overflow:hidden;
+}}
+
+.progresso-barra{{
+    height:100%;
+    background:#16a34a;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:white;
+    font-weight:700;
+    transition:.4s;
+    font-size:13px;
+}}
 </style>
 
 <div class="card">
@@ -3310,6 +3337,19 @@ onclick="filtrarRec('ok')">
 Corrigidos
 </button>
 
+</div>
+
+<div>
+    <b>
+    📊 Progresso das correções:
+    {corrigidas} de {total_rec} recomendações corrigidas
+    </b>
+
+    <div class="progresso-box">
+        <div class="progresso-barra" style="width:{percentual_rec}%">
+            {percentual_rec}%
+        </div>
+    </div>
 </div>
 
 <div id="recs">

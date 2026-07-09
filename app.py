@@ -3202,23 +3202,23 @@ font-weight:600;
 cursor:pointer;
 }}
 
-.badge span{
+.badge span{{
 border-radius:30px;
 padding:12px;
 font-weight:600;
-}
+}}
 
-.badge input:checked+span{
+.badge input:checked+span{{
 background:#2563eb;
 color:white;
 box-shadow:0 5px 15px rgba(37,99,235,.35);
-}
+}}
 
-.monitor-grid{
+.monitor-grid{{
 display:grid;
 grid-template-columns:1fr 1fr;
 gap:15px;
-}
+}}
 </style>
 
 <div class="card">
@@ -3325,14 +3325,18 @@ color:{'#16a34a' if r['corrigido'] else '#dc2626'};
 
 <input name="recomendacoes[]" value="{r["descricao"]}">
 
-    <select name="rec_status[]">
+    <select name="rec_status[]" onchange="atualizarStatus(this)">
         <option value="0" {"selected" if not r["corrigido"] else ""}>Pendente</option>
         <option value="1" {"selected" if r["corrigido"] else ""}>Corrigido</option>
     </select>
 
     <button
         type="button"
-        onclick="this.parentNode.remove()"
+        onclick="
+        if(confirm('Deseja excluir esta recomendação?')){{
+            this.parentNode.remove();
+        }}
+        "
         style="
             background:#dc2626;
             color:white;
@@ -3386,7 +3390,7 @@ function addRec(){{
     const div = document.createElement("div")
     div.style.display = "flex"
     div.style.gap = "10px"
-    div.className = "linha-rec"
+    div.className = "linha-rec rec-pendente"
 
     div.innerHTML = `
     <span style="font-size:22px;color:#dc2626">
@@ -3424,36 +3428,39 @@ function addRec(){{
 }}
 
 function atualizarStatus(select){{
-let linha = select.closest(".linha-rec");
-if(select.value=="1"){
-linha.classList.add("rec-ok");
-linha.classList.remove("rec-pendente");
-}else{
-linha.classList.add("rec-pendente");
-linha.classList.remove("rec-ok");
-}
+    let linha = select.closest(".linha-rec");
+
+    if(select.value=="1"){{
+        linha.classList.add("rec-ok");
+        linha.classList.remove("rec-pendente");
+    }}else{{
+        linha.classList.add("rec-pendente");
+        linha.classList.remove("rec-ok");
+    }}
 }}
 
 function filtrarRec(tipo){{
 
-document.querySelectorAll(".linha-rec").forEach(linha=>{
-if(tipo=="todos"){
+document.querySelectorAll(".linha-rec").forEach(linha=>{{
+
+if(tipo=="todos"){{
 linha.style.display="flex";
-}
+}}
 
-if(tipo=="ok"){
-linha.style.display=
-linha.classList.contains("rec-ok") 
+if(tipo=="ok"){{
+linha.style.display =
+linha.classList.contains("rec-ok")
 ?"flex":"none";
-}
+}}
 
-if(tipo=="pendente"){
-linha.style.display=
+if(tipo=="pendente"){{
+linha.style.display =
 linha.classList.contains("rec-pendente")
 ?"flex":"none";
-}
+}}
 
-});
+}});
+
 }}
 </script>
 """

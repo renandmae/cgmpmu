@@ -3245,10 +3245,10 @@ gap:15px;
 <b>{t}</b>
 </label>
 ''' for v,t in [
-("baixo","🟢"),
-("medio","🟡"),
-("alto","🟠"),
-("extremo","🔴")
+("baixo","🟢 Baixo"),
+("medio","🟡 Médio"),
+("alto","🟠 Alto"),
+("extremo","🔴 Extremo")
 ]])}
 </div>
 </div>

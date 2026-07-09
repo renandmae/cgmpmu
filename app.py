@@ -3012,10 +3012,10 @@ def ficha_os(os_id):
             INSERT INTO ficha_auditoria (
                 os_id, nivel_risco, criterio, condicao,
                 causa, impacto, acao,
-                requer_monitoramento, data_monitoramento,
+                requer_monitoramento, data_monitoramento, data_proximo_monitoramento,
                 observacao_monitoramento, beneficios
             )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, %s)
             ON CONFLICT (os_id) DO UPDATE SET
                 nivel_risco = EXCLUDED.nivel_risco,
                 criterio = EXCLUDED.criterio,
@@ -3025,6 +3025,7 @@ def ficha_os(os_id):
                 acao = EXCLUDED.acao,
                 requer_monitoramento = EXCLUDED.requer_monitoramento,
                 data_monitoramento = EXCLUDED.data_monitoramento,
+                data_proximo_monitoramento = EXCLUDED.data_proximo_monitoramento,
                 observacao_monitoramento = EXCLUDED.observacao_monitoramento,
                 beneficios = EXCLUDED.beneficios,
                 atualizado_em = NOW()
@@ -3039,6 +3040,7 @@ def ficha_os(os_id):
             request.form.get("acao"),
             True if request.form.get("monitoramento") == "on" else False,
             request.form.get("data_monitoramento"),
+            request.form.get("data_proximo_monitoramento"),
             request.form.get("obs_monitoramento"),
             beneficios
         ))
@@ -3081,12 +3083,13 @@ def ficha_os(os_id):
     # -------------------------
     html = f"""
 <style>
-.card {{
-    background:white;
-    border-radius:14px;
-    padding:20px;
-    margin-bottom:20px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.05);
+.card{{
+background:#fff;
+border-radius:18px;
+padding:24px;
+margin-bottom:22px;
+box-shadow:0 10px 25px rgba(0,0,0,.08);
+border:1px solid #eef2f7;
 }}
 
 .titulo {{
@@ -3159,17 +3162,73 @@ textarea, input {{
     border:1px solid #ccc;
     margin-top:5px;
 }}
+.risco{{
+height:90px;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:36px;
+transition:.2s;
+}}
+
+.risco:hover{{
+transform:translateY(-4px);
+box-shadow:0 8px 20px rgba(0,0,0,.15);
+}}
+.titulo-card{{
+display:flex;
+align-items:center;
+gap:10px;
+font-size:20px;
+font-weight:700;
+margin-bottom:18px;
+color:#1f2937;
+}}
+.rec-ok{{
+background:#dcfce7;
+border-left:6px solid #16a34a;
+}}
+.rec-pendente{{
+background:#fee2e2;
+border-left:6px solid #dc2626;
+}}
+.btn-add{{
+background:#2563eb;
+color:#fff;
+border:none;
+padding:12px 18px;
+border-radius:10px;
+font-weight:600;
+cursor:pointer;
+}}
+
+.badge span{
+border-radius:30px;
+padding:12px;
+font-weight:600;
+}
+
+.badge input:checked+span{
+background:#2563eb;
+color:white;
+box-shadow:0 5px 15px rgba(37,99,235,.35);
+}
+
+.monitor-grid{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:15px;
+}
 </style>
 
 <div class="card">
     <div style="display:flex; justify-content:space-between;">
         <div>
-            <div class="titulo">Ficha - {os_data['codigo']}</div>
+            <div class="titulo">📋 Ficha de Auditoria - {os_data['codigo']}</div>
             <small>{os_data['resumo'] or ''}</small>
         </div>
 
         <div>
-            <a href="/os/export/word/{os_id}" class="btn">📄 Word</a>
             <a href="/os/export/excel/{os_id}" class="btn">📊 Excel</a>
         </div>
     </div>
@@ -3178,7 +3237,7 @@ textarea, input {{
 <form method="post">
 
 <div class="card">
-<b>Nível de Risco</b>
+<b>⚠️ Nível de Risco</b>
 <div class="grid-risco">
 {"".join([f'''
 <label class="risco {v}">
@@ -3186,16 +3245,16 @@ textarea, input {{
 <b>{t}</b>
 </label>
 ''' for v,t in [
-("baixo","Baixo"),
-("medio","Médio"),
-("alto","Alto"),
-("extremo","Extremo")
+("baixo","🟢"),
+("medio","🟡"),
+("alto","🟠"),
+("extremo","🔴")
 ]])}
 </div>
 </div>
 
 <div class="card">
-<b>5 Cs</b>
+<b>📝 5 Cs</b>
 
 <label>Critério</label>
 <textarea name="criterio">{ficha["criterio"] if ficha else ""}</textarea>
@@ -3214,7 +3273,7 @@ textarea, input {{
 </div>
 
 <div class="card">
-<b>Benefício / Resultado</b>
+<b>🎯 Benefício / Resultado</b>
 
 <div class="beneficios">
 {"".join([f'''
@@ -3230,25 +3289,73 @@ textarea, input {{
 </div>
 
 <div class="card">
-<b>Recomendações</b>
+<b>✅ Recomendações</b>
+
+<div style="margin-bottom:15px">
+
+<button type="button" class="btn-add" onclick="filtrarRec('todos')">
+Todos
+</button>
+
+<button type="button" 
+style="background:#dc2626;color:white;border:none;padding:10px;border-radius:8px"
+onclick="filtrarRec('pendente')">
+Pendentes
+</button>
+
+
+<button type="button"
+style="background:#16a34a;color:white;border:none;padding:10px;border-radius:8px"
+onclick="filtrarRec('ok')">
+Corrigidos
+</button>
+
+</div>
 
 <div id="recs">
 {"".join([f'''
-<div style="display:flex; gap:10px; margin-top:10px;">
+<div class="linha-rec {"rec-ok" if r["corrigido"] else "rec-pendente"}"
+style="display:flex; gap:10px; margin-top:10px; align-items:center;">
+   <span style="
+font-size:22px;
+color:{'#16a34a' if r['corrigido'] else '#dc2626'};
+">
+{"✔" if r["corrigido"] else "⏳"}
+</span>
+
 <input name="recomendacoes[]" value="{r["descricao"]}">
-<select name="rec_status[]">
-<option value="0" {"selected" if not r["corrigido"] else ""}>Pendente</option>
-<option value="1" {"selected" if r["corrigido"] else ""}>Corrigido</option>
-</select>
+
+    <select name="rec_status[]">
+        <option value="0" {"selected" if not r["corrigido"] else ""}>Pendente</option>
+        <option value="1" {"selected" if r["corrigido"] else ""}>Corrigido</option>
+    </select>
+
+    <button
+        type="button"
+        onclick="this.parentNode.remove()"
+        style="
+            background:#dc2626;
+            color:white;
+            border:none;
+            width:38px;
+            height:38px;
+            border-radius:8px;
+            cursor:pointer;
+            font-size:18px;
+        ">
+        🗑
+    </button>
 </div>
 ''' for r in recomendacoes])}
 </div>
 
-<button type="button" onclick="addRec()">+ Adicionar</button>
+<button class="btn-add" type="button" onclick="addRec()">
+➕ Nova recomendação
+</button>
 </div>
 
 <div class="card">
-<b>Monitoramento</b>
+<b>📅 Monitoramento</b>
 
 <label style="display:flex; align-items:center; gap:10px;">
 <input type="checkbox" name="monitoramento"
@@ -3259,6 +3366,13 @@ Requer monitoramento
 <label>Data</label>
 <input type="date" name="data_monitoramento"
 value="{ficha["data_monitoramento"] if ficha else ""}">
+
+<label>Próximo monitoramento</label>
+
+<input
+type="date"
+name="data_proximo_monitoramento"
+value="{ficha["data_proximo_monitoramento"] if ficha else ""}">
 
 <label>Observações</label>
 <textarea name="obs_monitoramento">{ficha["observacao_monitoramento"] if ficha else ""}</textarea>
@@ -3272,15 +3386,75 @@ function addRec(){{
     const div = document.createElement("div")
     div.style.display = "flex"
     div.style.gap = "10px"
+    div.className = "linha-rec"
+
     div.innerHTML = `
-        <input name="recomendacoes[]">
-        <select name="rec_status[]">
+    <span style="font-size:22px;color:#dc2626">
+    ⏳
+    </span>
+    
+    <input name="recomendacoes[]">
+    
+        <select name="rec_status[]" onchange="atualizarStatus(this)">
             <option value="0">Pendente</option>
             <option value="1">Corrigido</option>
         </select>
+    
+        <button
+        type="button"
+        onclick="
+        if(confirm('Deseja excluir esta recomendação?')){
+            this.parentNode.remove();
+        }
+        "
+        style="
+            background:#dc2626;
+            color:white;
+            border:none;
+            width:38px;
+            height:38px;
+            border-radius:8px;
+            cursor:pointer;
+            font-size:18px;
+        ">
+        🗑
+    </button>
     `
     document.getElementById("recs").appendChild(div)
 }}
+
+function atualizarStatus(select){
+let linha = select.closest(".linha-rec");
+if(select.value=="1"){
+linha.classList.add("rec-ok");
+linha.classList.remove("rec-pendente");
+}else{
+linha.classList.add("rec-pendente");
+linha.classList.remove("rec-ok");
+}
+}
+
+function filtrarRec(tipo){
+
+document.querySelectorAll(".linha-rec").forEach(linha=>{
+if(tipo=="todos"){
+linha.style.display="flex";
+}
+
+if(tipo=="ok"){
+linha.style.display=
+linha.classList.contains("rec-ok") 
+?"flex":"none";
+}
+
+if(tipo=="pendente"){
+linha.style.display=
+linha.classList.contains("rec-pendente")
+?"flex":"none";
+}
+
+});
+}
 </script>
 """
     return render_template_string(

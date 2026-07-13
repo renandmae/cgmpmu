@@ -5696,6 +5696,26 @@ Observações:
 <a class="btn" href="/relatorios">Cancelar</a>
 
 <script>
+osSelect.addEventListener("change", function () {
+
+    const selected = this.selectedOptions[0];
+
+    if (selected) {
+        itemInput.value = selected.dataset.item || "";
+    } else {
+        itemInput.value = "";
+    }
+
+});
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    if (osSelect.value) {
+        osSelect.dispatchEvent(new Event("change"));
+    }
+
+});
+
 const osSelect = document.getElementById("os_select");
 const itemInput = document.getElementById("item_paint");
 

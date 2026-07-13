@@ -4585,7 +4585,15 @@ def lancar():
     # -------------------------
     # CARREGAR OS
     # -------------------------
-    cur.execute("SELECT codigo, item_paint, resumo FROM os ORDER BY codigo")
+    cur.execute("""
+        SELECT
+            codigo,
+            item_paint,
+            resumo
+        FROM os
+        WHERE codigo <> '0.0/2026'
+        ORDER BY codigo
+    """)
     oss = cur.fetchall()
     os_pre = request.args.get("os")
 
@@ -5422,7 +5430,15 @@ def editar(hid):
     # -------------------------
     # OS
     # -------------------------
-    cur.execute("SELECT codigo, item_paint, resumo FROM os ORDER BY codigo")
+    cur.execute("""
+        SELECT
+            codigo,
+            item_paint,
+            resumo
+        FROM os
+        WHERE codigo <> '0.0/2026'
+        ORDER BY codigo
+    """)
     oss = cur.fetchall()
 
     # -------------------------

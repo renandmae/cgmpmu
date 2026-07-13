@@ -5696,6 +5696,9 @@ Observações:
 <a class="btn" href="/relatorios">Cancelar</a>
 
 <script>
+const osSelect = document.getElementById("os_select");
+const itemInput = document.getElementById("item_paint");
+
 osSelect.addEventListener("change", function () {
 
     const selected = this.selectedOptions[0];
@@ -5715,9 +5718,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
 });
-
-const osSelect = document.getElementById("os_select");
-const itemInput = document.getElementById("item_paint");
 
 function adicionar() {
     const base = document.querySelector(".registro");

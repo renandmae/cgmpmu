@@ -14177,6 +14177,16 @@ def requisicoes_eng():
     
     semanas = [r["semana"] for r in cur.fetchall()]
 
+    cur.execute("""
+        SELECT DISTINCT analise
+        FROM requisicoes_eng
+        WHERE analise IS NOT NULL
+          AND TRIM(analise) <> ''
+        ORDER BY analise
+    """)
+    
+    analises = [r["analise"] for r in cur.fetchall()]
+
     con.close()
 
     html = """
@@ -14349,6 +14359,16 @@ flex-wrap:wrap;
     {% for s in semanas %}
         <option value="{{s}}">
             {{s}}
+        </option>
+    {% endfor %}
+</select>
+
+<select id="filtroAnalise" onchange="filtrar()">
+    <option value="">Análise (todas)</option>
+
+    {% for a in analises %}
+        <option value="{{a}}">
+            {{a}}
         </option>
     {% endfor %}
 </select>
@@ -14652,6 +14672,12 @@ function filtrar(){
         .getElementById("filtroSemana")
         .value;
 
+    let analise =
+        document
+        .getElementById("filtroAnalise")
+        .value
+        .toLowerCase();
+
     document
     .querySelectorAll("#tbl tr")
     .forEach((r,i)=>{
@@ -14696,11 +14722,22 @@ function filtrar(){
             .innerText
             .startsWith(semana);
 
+        let valorAnalise =
+            r.cells[13]
+             .querySelector("select")
+             ?.value
+             .toLowerCase();
+        
+        let okAnalise =
+            !analise ||
+            valorAnalise == analise;
+
         r.style.display =
             okBusca &&
             okReq &&
             okSec &&
-            okSemana
+            okSemana &&
+            okAnalise
             ? ""
             : "none";
     });
@@ -14738,6 +14775,13 @@ function atualizarLinkExportacao(){
         "busca",
         document
         .getElementById("busca")
+        .value
+    );
+
+    p.set(
+        "analise",
+        document
+        .getElementById("filtroAnalise")
         .value
     );
 
@@ -14906,6 +14950,7 @@ window.onload = function(){
         rows=rows,
         apontamentos=apontamentos,
         semanas=semanas,
+        analises=analises,
         user=session["user"],
         perfil=session["perfil"]
     )

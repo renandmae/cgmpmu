@@ -14145,6 +14145,12 @@ def requisicoes_eng():
     con = get_db()
     cur = con.cursor()
 
+    por_pagina = 100
+    
+    pagina = request.args.get("pagina", 1, type=int)
+    
+    offset = (pagina - 1) * por_pagina
+
     # =========================
     # FUNÇÕES AUXILIARES
     # =========================
@@ -14190,13 +14196,79 @@ def requisicoes_eng():
         except:
             return ""
 
-    cur.execute("""
-        SELECT *
-        FROM requisicoes_eng
-        ORDER BY semana DESC NULLS LAST, id DESC
-    """)
+    busca = request.args.get("busca", "").strip()
+    filtro_req = request.args.get("req", "").strip()
+    filtro_secretaria = request.args.get("secretaria", "").strip()
+    filtro_semana = request.args.get("semana", "").strip()
+    filtro_analise = request.args.get("analise", "").strip()
+    where = []
+    params = []
+    
+    if busca:
+        where.append("""
+        (
+            numero_ano ILIKE %s
+            OR secretaria ILIKE %s
+            OR nome_fornecedor ILIKE %s
+            OR edital ILIKE %s
+            OR contrato ILIKE %s
+        )
+        """)
+        txt = f"%{busca}%"
+        params += [txt, txt, txt, txt, txt]
+    
+    if filtro_req:
+    
+        if filtro_req == "-":
+            where.append("(req_tipo IS NULL OR req_tipo='')")
+    
+        else:
+            where.append("req_tipo=%s")
+            params.append(filtro_req)
+    
+    if filtro_secretaria:
+        where.append("secretaria=%s")
+        params.append(filtro_secretaria)
+    
+    if filtro_semana:
+        where.append("semana=%s")
+        params.append(filtro_semana)
+    
+    if filtro_analise:
+        where.append("analise=%s")
+        params.append(filtro_analise)
+    
+    sql_where = ""
+    
+    if where:
+        sql_where = "WHERE " + " AND ".join(where)
 
+    cur.execute(f"""
+    SELECT COUNT(*)
+    FROM requisicoes_eng
+    {sql_where}
+    """, params)
+    
+    total = cur.fetchone()["count"]
+    
+    params_select = params.copy()
+
+    params_select.extend([por_pagina, offset])
+    
+    cur.execute(f"""
+    SELECT *
+    FROM requisicoes_eng
+    {sql_where}
+    ORDER BY semana DESC NULLS LAST,id DESC
+    LIMIT %s
+    OFFSET %s
+    """, params_select)
+    
     rows = cur.fetchall()
+
+    import math
+
+    total_paginas = max(1, math.ceil(total / por_pagina))
 
     # apontamentos
     cur.execute("""
@@ -14238,6 +14310,17 @@ def requisicoes_eng():
     """)
     
     semanas = [r["semana"] for r in cur.fetchall()]
+
+    cur.execute("""
+    SELECT DISTINCT secretaria
+    FROM requisicoes_eng
+    ORDER BY secretaria
+    """)
+    
+    secretarias = [
+        r["secretaria"]
+        for r in cur.fetchall()
+    ]
 
     cur.execute("""
         SELECT DISTINCT analise
@@ -14385,8 +14468,9 @@ class="btn">
 
 <input
 id="busca"
+value="{{request.args.get('busca','')}}"
 placeholder="Pesquisar..."
-onkeyup="filtrar()">
+onkeydown="if(event.key=='Enter') pesquisar()">
 
 </div>
 
@@ -14397,36 +14481,81 @@ margin-bottom:10px;
 flex-wrap:wrap;
 ">
 
-<select id="filtroReq" onchange="filtrar()">
-    <option value="">Req (todos)</option>
-    <option value="-">A CLASSIFICAR</option>
-    <option>ADITAMENTO</option>
-    <option selected>CONTRATAÇÃO</option>
-    <option>LIQUIDAÇÃO</option>
+<select id="filtroReq" onchange="pesquisar()">
+<option value=""
+{% if request.args.get("req","") == "" %}
+selected
+{% endif %}>
+Req (todos)
+</option>
+
+<option value="-"
+{% if request.args.get("req","") == "-" %}
+selected
+{% endif %}>
+A CLASSIFICAR
+</option>
+
+<option value="ADITAMENTO"
+{% if request.args.get("req")=="ADITAMENTO" %}
+selected
+{% endif %}>
+ADITAMENTO
+</option>
+
+<option value="CONTRATAÇÃO"
+{% if request.args.get("req")=="CONTRATAÇÃO" %}
+selected
+{% endif %}>
+CONTRATAÇÃO
+</option>
+
+<option value="LIQUIDAÇÃO"
+{% if request.args.get("req")=="LIQUIDAÇÃO" %}
+selected
+{% endif %}>
+LIQUIDAÇÃO
+</option>
 </select>
 
-<select id="filtroSecretaria" onchange="filtrar()">
+<select id="filtroSecretaria" onchange="pesquisar()">
     <option value="">Secretaria (todas)</option>
 
-    {% for s in rows|map(attribute='secretaria')|unique %}
+    {% for s in secretarias %}
         {% if s %}
-        <option>{{s}}</option>
+        <option
+        value="{{s}}"
+        {% if request.args.get("secretaria")==s %}
+        selected
+        {% endif %}>
+        {{s}}
+        </option>
         {% endif %}
     {% endfor %}
 </select>
 
-<select id="filtroSemana" onchange="filtrar()">
+<select id="filtroSemana" onchange="pesquisar()">
     <option value="">Todas as semanas</option>
 
     {% for s in semanas %}
-        <option value="{{s}}">
-            {{s}}
+        <option
+        value="{{s}}"
+        {% if request.args.get("semana")==s|string %}
+        selected
+        {% endif %}>
+        {{s}}
         </option>
     {% endfor %}
 </select>
 
-<select id="filtroAnalise" onchange="filtrar()">
-    <option value="">Análise (todas)</option>
+<select id="filtroAnalise" onchange="pesquisar()">
+    <option
+    value="{{a}}"
+    {% if request.args.get("analise")==a %}
+    selected
+    {% endif %}>
+    {{a}}
+    </option>
 
     {% for a in analises %}
         <option value="{{a}}">
@@ -14477,11 +14606,8 @@ R$ {{ "{:,.2f}".format(r.valor_requisicao or 0).replace(",", "X").replace(".", "
 </td>
 
 <td>{{r.status_atual}}</td>
-
 <td>{{r.natureza_despesa}}</td>
-
 <td>{{r.item_despesa}}</td>
-
 <td>{{r.item_despesa2}}</td>
 
 <td>
@@ -14647,7 +14773,39 @@ onclick="salvar({{r.id}})">
 {% endfor %}
 
 </table>
+<div style="margin-top:20px;text-align:center;">
 
+{% if pagina>1 %}
+
+<a class="btn"
+href="?pagina={{pagina-1}}
+&busca={{request.args.get('busca','')}}
+&req={{request.args.get('req','')}}
+&secretaria={{request.args.get('secretaria','')}}
+&semana={{request.args.get('semana','')}}
+&analise={{request.args.get('analise','')}}">
+◀ Anterior
+</a>
+
+{% endif %}
+
+Página {{pagina}} de {{total_paginas}}
+
+{% if pagina<total_paginas %}
+
+<a class="btn"
+href="?pagina={{pagina+1}}
+&busca={{request.args.get('busca','')}}
+&req={{request.args.get('req','')}}
+&secretaria={{request.args.get('secretaria','')}}
+&semana={{request.args.get('semana','')}}
+&analise={{request.args.get('analise','')}}">
+Próxima ▶
+</a>
+
+{% endif %}
+
+</div>
 </div>
 
 </div>
@@ -14709,149 +14867,43 @@ function trocarTipo(id){
 
 }
 
-function filtrar(){
+function pesquisar(){
 
-    let busca =
-        document
-        .getElementById("busca")
-        .value
-        .toLowerCase();
+    let p = montarParametros();
 
-    let req =
-        document
-        .getElementById("filtroReq")
-        .value
-        .toLowerCase();
+    atualizarLinkExportacao(p);
 
-    let sec =
-        document
-        .getElementById("filtroSecretaria")
-        .value
-        .toLowerCase();
+    location.href = "/requisicoes_eng?" + p.toString();
 
-    let semana =
-        document
-        .getElementById("filtroSemana")
-        .value;
-
-    let analise =
-        document
-        .getElementById("filtroAnalise")
-        .value
-        .toLowerCase();
-
-    document
-    .querySelectorAll("#tbl tr")
-    .forEach((r,i)=>{
-
-        if(i==0)
-            return;
-
-        let texto =
-            r.innerText.toLowerCase();
-
-        let okBusca =
-            texto.includes(busca);
-
-        let valorReq =
-            r.cells[9]
-             .querySelector("select")
-             ?.value
-             .toLowerCase();
-        
-        let okReq;
-        
-        if (!req) {
-            okReq = true;
-        }
-        else if (req == "-") {
-            okReq = valorReq == "";
-        }
-        else {
-            okReq = valorReq == req;
-        }
-
-        let okSec =
-            !sec ||
-            r.cells[2]
-            .innerText
-            .toLowerCase()
-            .includes(sec);
-
-        let okSemana =
-            !semana ||
-            r.cells[0]
-            .innerText
-            .startsWith(semana);
-
-        let valorAnalise =
-            r.cells[13]
-             .querySelector("select")
-             ?.value
-             .toLowerCase();
-        
-        let okAnalise =
-            !analise ||
-            valorAnalise == analise;
-
-        r.style.display =
-            okBusca &&
-            okReq &&
-            okSec &&
-            okSemana &&
-            okAnalise
-            ? ""
-            : "none";
-    });
-
-    atualizarLinkExportacao();
 }
 
-function atualizarLinkExportacao(){
+function montarParametros(){
 
-    let p =
-        new URLSearchParams();
+    let p = new URLSearchParams();
 
-    p.set(
-        "req",
-        document
-        .getElementById("filtroReq")
-        .value
-    );
+    p.set("req",
+        document.getElementById("filtroReq").value);
 
-    p.set(
-        "secretaria",
-        document
-        .getElementById("filtroSecretaria")
-        .value
-    );
+    p.set("secretaria",
+        document.getElementById("filtroSecretaria").value);
 
-    p.set(
-        "semana",
-        document
-        .getElementById("filtroSemana")
-        .value
-    );
+    p.set("semana",
+        document.getElementById("filtroSemana").value);
 
-    p.set(
-        "busca",
-        document
-        .getElementById("busca")
-        .value
-    );
+    p.set("busca",
+        document.getElementById("busca").value);
 
-    p.set(
-        "analise",
-        document
-        .getElementById("filtroAnalise")
-        .value
-    );
+    p.set("analise",
+        document.getElementById("filtroAnalise").value);
 
-    document
-        .getElementById("btnExportar")
-        .href =
-        "/requisicoes_eng/export?"
-        + p.toString();
+    return p;
+}
+
+function atualizarLinkExportacao(p){
+
+    document.getElementById("btnExportar").href =
+        "/requisicoes_eng/export?" + p.toString();
+
 }
 
 function salvar(id){
@@ -14924,6 +14976,7 @@ function salvar(id){
 
         if(r.ok){
             alert("Salvo")
+            location.reload();
         }
         else{
             alert("Erro")
@@ -14991,15 +15044,13 @@ window.onload = function(){
     document
         .querySelectorAll("[id^='req']")
         .forEach(function(x){
-
             trocarTipo(
                 x.id.replace("req","")
             );
-
         });
-
-    atualizarLinkExportacao();
-    filtrar();
+    atualizarLinkExportacao(
+        montarParametros()
+    );
 }
 </script>
 """
@@ -15013,6 +15064,10 @@ window.onload = function(){
         apontamentos=apontamentos,
         semanas=semanas,
         analises=analises,
+        secretarias=secretarias
+        pagina=pagina,
+        total_paginas=total_paginas,
+        request=request,
         user=session["user"],
         perfil=session["perfil"]
     )

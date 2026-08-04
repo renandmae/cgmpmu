@@ -14587,6 +14587,9 @@ LIQUIDAÇÃO
 <th class="col-oficio">Nº Ofício</th>
 <th class="col-na">NA</th>
 <th class="col-monitor">Monitor.</th>
+<th class="col-oficio">Of. Resp.</th>
+<th class="col-monitor">Monit. Resp.</th>
+<th class="col-monitor">Acompanhamento?</th>
 <th class="col-beneficio">Benefício</th>
 <th class="col-apont">Apontamentos</th>
 <th class="col-acao">Ação</th>
@@ -14709,6 +14712,70 @@ Não
 selected
 {% endif %}
 >
+Sim
+</option>
+
+</select>
+
+</td>
+
+<td>
+<input
+id="oficioresp{{r.id}}"
+value="{{r.oficio_resposta or ''}}">
+</td>
+
+<td>
+
+<select id="monitorresp{{r.id}}">
+
+<option value=""
+{% if not r.monitoramento_resposta %}
+selected
+{% endif %}>
+-
+</option>
+
+<option value="SIM"
+{% if r.monitoramento_resposta=="SIM" %}
+selected
+{% endif %}>
+Sim
+</option>
+
+<option value="PARCIALMENTE"
+{% if r.monitoramento_resposta=="PARCIALMENTE" %}
+selected
+{% endif %}>
+Parcialmente
+</option>
+
+<option value="NAO"
+{% if r.monitoramento_resposta=="NAO" %}
+selected
+{% endif %}>
+Não
+</option>
+
+</select>
+
+</td>
+
+<td>
+
+<select id="acomp{{r.id}}">
+
+<option value="0"
+{% if not r.acompanhamento %}
+selected
+{% endif %}>
+Não
+</option>
+
+<option value="1"
+{% if r.acompanhamento %}
+selected
+{% endif %}>
 Sim
 </option>
 
@@ -14959,6 +15026,24 @@ function salvar(id){
                     .getElementById(
                         "monitor"+id
                     ).value=="1",
+
+                oficio_resposta:
+                    document
+                        .getElementById(
+                            "oficioresp"+id
+                        ).value,
+                
+                monitoramento_resposta:
+                    document
+                        .getElementById(
+                            "monitorresp"+id
+                        ).value,
+                
+                acompanhamento:
+                    document
+                        .getElementById(
+                            "acomp"+id
+                        ).value=="1",
 
                 beneficio:
                     document
@@ -16025,6 +16110,9 @@ def req_eng_salvar(id):
             num_oficio=%s,
             na_gerada=%s,
             monitoramento=%s,
+            oficio_resposta=%s,
+            monitoramento_resposta=%s,
+            acompanhamento=%s,
             beneficio_financeiro=%s
         WHERE id=%s
     """,(
@@ -16033,6 +16121,9 @@ def req_eng_salvar(id):
         data["num_oficio"],
         data["na_gerada"],
         data["monitoramento"],
+        data["oficio_resposta"],
+        data["monitoramento_resposta"],
+        data["acompanhamento"],
         data["beneficio"] or None,
         id
     ))

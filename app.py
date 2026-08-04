@@ -14697,27 +14697,26 @@ value="{{r.na_gerada or ''}}">
 <td>
 
 <select id="monitor{{r.id}}">
+
 <option value=""
-{% if not r.monitoramento %}
+{% if r.monitoramento is none %}
 selected
 {% endif %}>
 -
 </option>
 
-<option value="0"
-{% if not r.monitoramento %}
+<option value="1"
+{% if r.monitoramento == True %}
 selected
-{% endif %}
->
-Não
+{% endif %}>
+Sim
 </option>
 
-<option value="1"
-{% if r.monitoramento %}
+<option value="0"
+{% if r.monitoramento == False %}
 selected
-{% endif %}
->
-Sim
+{% endif %}>
+Não
 </option>
 
 </select>
@@ -14771,24 +14770,24 @@ Não
 <select id="acomp{{r.id}}">
 
 <option value=""
-{% if not r.acompanhamento %}
+{% if r.acompanhamento is none %}
 selected
 {% endif %}>
 -
 </option>
 
-<option value="0"
-{% if not r.acompanhamento %}
-selected
-{% endif %}>
-Não
-</option>
-
 <option value="1"
-{% if r.acompanhamento %}
+{% if r.acompanhamento == True %}
 selected
 {% endif %}>
 Sim
+</option>
+
+<option value="0"
+{% if r.acompanhamento == False %}
+selected
+{% endif %}>
+Não
 </option>
 
 </select>

@@ -14549,19 +14549,17 @@ LIQUIDAÇÃO
 </select>
 
 <select id="filtroAnalise" onchange="pesquisar()">
-    <option
+<option value="">Análise (todas)</option>
+
+{% for a in analises %}
+<option
     value="{{a}}"
     {% if request.args.get("analise")==a %}
     selected
     {% endif %}>
     {{a}}
-    </option>
-
-    {% for a in analises %}
-        <option value="{{a}}">
-            {{a}}
-        </option>
-    {% endfor %}
+</option>
+{% endfor %}
 </select>
 
 </div>

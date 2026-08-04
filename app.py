@@ -13511,7 +13511,7 @@ def requisicoes_eng_import():
     if "user" not in session:
         return redirect("/")
 
-    if session['perfil'] != 'admin' and session['user'] != 'Laianne Fogaça':
+    if session['perfil'] != 'admin' and session['user'] not in ['Laianne Fogaça', 'Grazielle Carrijo']:
         return 'Acesso negado'
 
     msg = ""
@@ -14138,7 +14138,7 @@ window.onload = function(){
 @app.route("/requisicoes_eng")
 def requisicoes_eng():
     
-    if session['perfil'] != 'admin' and session['user'] != 'Laianne Fogaça':
+    if session['perfil'] != 'admin' and session['user'] not in ['Laianne Fogaça', 'Grazielle Carrijo']:
         return 'Acesso negado'
     
     # aqui fica paginacao se precisar, limit offset, etc
@@ -14699,6 +14699,13 @@ value="{{r.na_gerada or ''}}">
 <td>
 
 <select id="monitor{{r.id}}">
+<option value=""
+{% if not r.monitoramento %}
+selected
+{% endif %}>
+-
+</option>
+
 <option value="0"
 {% if not r.monitoramento %}
 selected
@@ -14764,6 +14771,13 @@ Não
 <td>
 
 <select id="acomp{{r.id}}">
+
+<option value=""
+{% if not r.acompanhamento %}
+selected
+{% endif %}>
+-
+</option>
 
 <option value="0"
 {% if not r.acompanhamento %}

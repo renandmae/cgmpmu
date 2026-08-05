@@ -15072,7 +15072,6 @@ function salvar(id){
 
         if(r.ok){
             alert("Salvo")
-            # tire o hashtag e comentário daqui, o location.reload serve para manter a pagina ao salvar e apertar F5. location.reload();
         }
         else{
             alert("Erro")

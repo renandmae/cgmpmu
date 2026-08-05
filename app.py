@@ -14425,7 +14425,7 @@ textarea{
 .col-na{width:90px}
 .col-monitor{width:90px}
 .col-beneficio{width:110px}
-.col-apont{width:300px}
+.col-apont{width:400px}
 .col-acao{width:80px}
 
 .auditada td{

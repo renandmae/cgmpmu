@@ -14817,6 +14817,7 @@ size="5">
 
 <option
 value="{{a.id}}"
+title="{{a.descricao}}"
 {% if a.id in r.apontamentos %}
 selected
 {% endif %}
@@ -14935,6 +14936,7 @@ function trocarTipo(id){
 
         op.value = a.id;
         op.text = a.descricao;
+        op.title = a.descricao;
 
         if(selecionados.includes(String(a.id)))
             op.selected = true;

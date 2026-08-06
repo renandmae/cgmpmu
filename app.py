@@ -4850,8 +4850,7 @@ def lancar():
     </div>
 
     <div>Atividade:
-        <select name="atividade" required>
-        </select>
+        <select id="atividade" name="atividade" required></select>
     </div>
 
     <h4>Registros de Horas</h4>
@@ -4998,6 +4997,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     osSelect.addEventListener("change", function () {
 
+        const selected = this.selectedOptions[0];
+        const codigoOS = this.value;
+
+        itemInput.value = selected ? selected.dataset.item : "";
+
         const atividade = document.getElementById("atividade");
 
         atividade.innerHTML = "";
@@ -5029,11 +5033,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 "4. Relatório Final"
             ));
         }
-
-        const selected = this.selectedOptions[0];
-        const codigoOS = this.value;
-
-        itemInput.value = selected ? selected.dataset.item : "";
 
         // requisições
         if (codigoOS === "1.4/2026" ||

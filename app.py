@@ -4016,7 +4016,7 @@ def os_edit(id):
     
     horas_plan = horas_map.get("1. Planejamento", 0)
     horas_exec = horas_map.get("2. Execução", 0)
-    horas_rp   = horas_map.get("3. Relatório", 0)
+    horas_rp   = horas_map.get("3. Relatório Preliminar", 0)
     horas_rf   = horas_map.get("4. Relatório Final", 0)
     
     total_horas = horas_plan + horas_exec + horas_rp + horas_rf
@@ -4298,7 +4298,7 @@ def os_edit(id):
 
             <label style="display:flex;align-items:center;gap:4px;">
                 <input type='checkbox' name='plan' {checked(os.get('plan'))}>
-                PLAN
+                SEM PLAN.
             </label>
         </div>
         <div class="box_horas">{h_plan}</div>
@@ -4314,7 +4314,7 @@ def os_edit(id):
 
             <label style="display:flex;align-items:center;gap:4px;">
                 <input type='checkbox' name='exec' {checked(os.get('exec'))}>
-                EXEC
+                SEM EXEC.
             </label>
         </div>
         <div class="box_horas">{h_exec}</div>
@@ -4330,7 +4330,7 @@ def os_edit(id):
 
             <label style="display:flex;align-items:center;gap:4px;">
                 <input type='checkbox' name='rp' {checked(os.get('rp'))}>
-                RP
+                SEM RP.
             </label>
         </div>
         <div class="box_horas">{h_rp}</div>
@@ -4348,7 +4348,7 @@ def os_edit(id):
 
             <label style="display:flex;align-items:center;gap:4px;">
                 <input type='checkbox' name='rf' {checked(os.get('rf'))}>
-                RF
+                SEM RF.
             </label>
         </div>
         <div class="box_horas">{h_rf}</div>
@@ -4589,7 +4589,11 @@ def lancar():
         SELECT
             codigo,
             item_paint,
-            resumo
+            resumo,
+            plan,
+            exec,
+            rp,
+            rf
         FROM os
         WHERE codigo <> '0.0/2026'
         ORDER BY codigo
@@ -4782,15 +4786,24 @@ def lancar():
 
     <div>O.S:
         <select name="os" id="os_select" required>
-            <option value=""></option>
-            {% for o in oss %}
-                <option value="{{ o.codigo }}"
-                        data-item="{{ o.item_paint }}"
-                        {% if os_pre == o.codigo %}selected{% endif %}>
-                    {{ o.codigo }}{% if o.resumo %} - {{ o.resumo }}{% endif %}
-                </option>
-            {% endfor %}
-        </select>
+        <option value=""></option>
+        {% for o in oss %}
+            <option
+                value="{{o.codigo}}"
+                data-item="{{o.item_paint}}"
+                data-plan="{{o.plan}}"
+                data-exec="{{o.exec}}"
+                data-rp="{{o.rp}}"
+                data-rf="{{o.rf}}"
+                {% if os_pre==o.codigo %}selected{% endif %}
+            >
+                {{o.codigo}}
+                {% if o.resumo %}
+                    - {{o.resumo}}
+                {% endif %}
+            </option>
+        {% endfor %}
+    </select>
     </div>
 
     <div>Item PAINT:
@@ -4838,9 +4851,6 @@ def lancar():
 
     <div>Atividade:
         <select name="atividade" required>
-            <option>1. Planejamento</option>
-            <option>2. Execução</option>
-            <option>3. Relatório</option>
         </select>
     </div>
 
@@ -4987,6 +4997,38 @@ document.addEventListener("DOMContentLoaded", function () {
     const boxConsultoria = document.getElementById("box_consultoria");
 
     osSelect.addEventListener("change", function () {
+
+        const atividade = document.getElementById("atividade");
+
+        atividade.innerHTML = "";
+        
+        if(selected.dataset.plan == "1"){
+            atividade.add(new Option(
+                "1. Planejamento",
+                "1. Planejamento"
+            ));
+        }
+        
+        if(selected.dataset.exec == "1"){
+            atividade.add(new Option(
+                "2. Execução",
+                "2. Execução"
+            ));
+        }
+        
+        if(selected.dataset.rp == "1"){
+            atividade.add(new Option(
+                "3. Relatório Preliminar",
+                "3. Relatório Preliminar"
+            ));
+        }
+        
+        if(selected.dataset.rf == "1"){
+            atividade.add(new Option(
+                "4. Relatório Final",
+                "4. Relatório Final"
+            ));
+        }
 
         const selected = this.selectedOptions[0];
         const codigoOS = this.value;
@@ -5684,7 +5726,8 @@ Atividade:
 <select name="atividade">
 <option {% if primeiro.atividade.startswith("1") %}selected{% endif %}>1. Planejamento</option>
 <option {% if primeiro.atividade.startswith("2") %}selected{% endif %}>2. Execução</option>
-<option {% if primeiro.atividade.startswith("3") %}selected{% endif %}>3. Relatório</option>
+<option {% if primeiro.atividade.startswith("3") %}selected{% endif %}>3. Relatório Preliminar</option>
+<option {% if primeiro.atividade.startswith("3") %}selected{% endif %}>4. Relatório Final</option>
 </select>
 
 <br>

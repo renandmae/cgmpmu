@@ -15,6 +15,7 @@ import psycopg2
 import psycopg2.extras
 from psycopg2 import IntegrityError
 from datetime import datetime
+from urllib.parse import quote
 
 import requests
 
@@ -3705,7 +3706,9 @@ select {
             {% endif %}"
         >
 
-            <div style="font-size:22px;">
+            <div
+                class="icone-status"
+                style="font-size:22px;">
 
                 {% if r.status == 'ATENDIDO' %}
                     ✔
@@ -3740,7 +3743,7 @@ select {
 
                 <select
                     name="prioridade[]"
-                    onchange="atualizarLinha(this)"
+                    onchange="atualizarLinha(this); atualizarPrioridade(this)"
                     class="prioridade"
                 >
 
@@ -4155,13 +4158,23 @@ function excluirRecomendacao(botao, id) {
 }
 
 
-function atualizarLinha(elemento) {
+function atualizarLinha(elemento){
 
     const linha = elemento.closest(".rec");
 
     const status = linha.querySelector(
         "select[name='status[]']"
     );
+
+    const prioridade = linha.querySelector(
+        "select[name='prioridade[]']"
+    );
+
+    const icone = linha.querySelector(".icone-status");
+
+    // -------------------------------------------------
+    // STATUS
+    // -------------------------------------------------
 
     linha.classList.remove(
         "rec-atendido",
@@ -4173,19 +4186,92 @@ function atualizarLinha(elemento) {
 
         linha.classList.add("rec-atendido");
 
+        if (icone) {
+            icone.innerHTML = "✔";
+        }
+
     }
     else if (status.value === "PARCIALMENTE") {
 
         linha.classList.add("rec-parcial");
+
+        if (icone) {
+            icone.innerHTML = "◐";
+        }
 
     }
     else {
 
         linha.classList.add("rec-nao");
 
+        if (icone) {
+            icone.innerHTML = "✖";
+        }
+    }
+
+
+    // -------------------------------------------------
+    // PRIORIDADE
+    // -------------------------------------------------
+
+    if (prioridade) {
+
+        prioridade.classList.remove(
+            "prio-baixo",
+            "prio-medio",
+            "prio-alto",
+            "prio-extremo"
+        );
+
+        switch(prioridade.value){
+
+            case "BAIXO":
+                prioridade.classList.add("prio-baixo");
+                break;
+
+            case "MÉDIO":
+                prioridade.classList.add("prio-medio");
+                break;
+
+            case "ALTO":
+                prioridade.classList.add("prio-alto");
+                break;
+
+            case "EXTREMO":
+                prioridade.classList.add("prio-extremo");
+                break;
+        }
     }
 }
 
+function atualizarPrioridade(select){
+
+    select.classList.remove(
+        "prio-baixo",
+        "prio-medio",
+        "prio-alto",
+        "prio-extremo"
+    );
+
+    switch(select.value){
+
+        case "BAIXO":
+            select.classList.add("prio-baixo");
+            break;
+
+        case "MÉDIO":
+            select.classList.add("prio-medio");
+            break;
+
+        case "ALTO":
+            select.classList.add("prio-alto");
+            break;
+
+        case "EXTREMO":
+            select.classList.add("prio-extremo");
+            break;
+    }
+}
 
 function adicionarRecomendacao() {
 
@@ -4299,6 +4385,33 @@ function adicionarRecomendacao() {
     container.appendChild(div);
 }
 
+document.addEventListener("DOMContentLoaded", function(){
+
+    document
+        .querySelectorAll(".rec")
+        .forEach(function(linha){
+
+            const status =
+                linha.querySelector(
+                    "select[name='status[]']"
+                );
+
+            const prioridade =
+                linha.querySelector(
+                    "select[name='prioridade[]']"
+                );
+
+            if(status){
+                atualizarLinha(status);
+            }
+
+            if(prioridade){
+                atualizarPrioridade(prioridade);
+            }
+
+        });
+
+});
 </script>
 
 {% endif %}

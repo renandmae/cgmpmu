@@ -3078,28 +3078,34 @@ def recomendacoes_os():
     # =========================================================
     # IDENTIFICAR O.S
     # =========================================================
-
-    os_codigo = request.args.get("os", "").strip()
-
+    
+    termo_os = request.args.get("os", "").strip()
+    
+    os_codigo = termo_os
     os_resumo = ""
-
-    if os_codigo:
+    
+    if termo_os:
+    
         cur.execute("""
-            SELECT codigo, resumo
+            SELECT
+                codigo,
+                resumo
             FROM os
             WHERE codigo ILIKE %s
                OR resumo ILIKE %s
             ORDER BY
                 CASE
-                    WHEN codigo ILIKE %s THEN 0
-                    ELSE 1
+                    WHEN codigo = %s THEN 0
+                    WHEN codigo ILIKE %s THEN 1
+                    ELSE 2
                 END,
                 codigo
             LIMIT 1
         """, (
-            f"%{os_codigo}%",
-            f"%{os_codigo}%",
-            os_codigo
+            termo_os,
+            f"%{termo_os}%",
+            termo_os,
+            f"{termo_os}%"
         ))
     
         os_encontrada = cur.fetchone()
@@ -3115,6 +3121,19 @@ def recomendacoes_os():
     if request.method == 'POST':
 
         os_codigo = request.form.get("os_codigo", "").strip()
+        os_resumo = request.form.get("os_resumo", "").strip()
+        
+        cur.execute("""
+            SELECT resumo
+            FROM os
+            WHERE codigo = %s
+            LIMIT 1
+        """, (os_codigo,))
+        
+        os_db = cur.fetchone()
+        
+        if os_db:
+            os_resumo = os_db["resumo"] or ""
 
         if not os_codigo:
             con.close()
@@ -3152,6 +3171,7 @@ def recomendacoes_os():
                 cur.execute("""
                     UPDATE recomendacoes
                     SET
+                        resumo_os=%s,
                         descricao = %s,
                         prioridade = %s,
                         status = %s,
@@ -3188,13 +3208,15 @@ def recomendacoes_os():
                 cur.execute("""
                     INSERT INTO recomendacoes (
                         os_codigo,
+                        resumo_os,
                         descricao,
                         prioridade,
                         status
                     )
-                    VALUES (%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s)
                 """, (
                     os_codigo,
+                    os_resumo,
                     descricao,
                     prioridade,
                     st
@@ -3204,31 +3226,25 @@ def recomendacoes_os():
             # CONFIGURAÇÃO DE MONITORAMENTO DA O.S
             # -------------------------------------------------
 
-            requer_monitoramento = (
-                request.form.get("monitoramento") == "on"
-            )
 
             prazo = request.form.get("prazo_monitoramento") or None
 
             cur.execute("""
                 INSERT INTO recomendacao_monitoramento_config (
                     os_codigo,
-                    requer_monitoramento,
                     prazo_monitoramento,
                     atualizado_por,
                     atualizado_em
                 )
-                VALUES (%s,%s,%s,%s,NOW())
+                VALUES (%s,%s,%s,NOW())
 
                 ON CONFLICT (os_codigo)
                 DO UPDATE SET
-                    requer_monitoramento = EXCLUDED.requer_monitoramento,
                     prazo_monitoramento = EXCLUDED.prazo_monitoramento,
                     atualizado_por = EXCLUDED.atualizado_por,
                     atualizado_em = NOW()
             """, (
                 os_codigo,
-                requer_monitoramento,
                 prazo,
                 servidor_id
             ))
@@ -3617,39 +3633,62 @@ select {
 
         <div class="os-box">
 
-            <div>
-                <label><b>O.S</b></label>
-
-                <input
-                    type="text"
-                    name="os"
-                    value="{{ os_codigo }}"
-                    placeholder="Digite a O.S ou parte do nome..."
-                    required
-                >
-                {% if os_resumo %}
-                <div style="
-                    margin-top:8px;
-                    padding:10px 12px;
-                    background:#eff6ff;
-                    border-left:4px solid #2563eb;
-                    border-radius:8px;
-                    color:#1e3a8a;
-                ">
-                    <b>O.S encontrada:</b>
-                    {{ os_codigo }} — {{ os_resumo }}
-                </div>
-                {% endif %}
-            </div>
-
-            <div style="flex:0 0 130px;">
-                <button class="btn" style="width:100%;">
-                    Consultar
-                </button>
-            </div>
-
+        <div>
+            <label><b>O.S</b></label>
+    
+            <input
+                type="text"
+                name="os"
+                value="{{ os_codigo }}"
+                placeholder="Digite o código ou o nome da O.S..."
+                required
+            >
         </div>
+    
+        <div style="flex:0 0 130px;">
+            <button
+                class="btn"
+                style="width:100%;">
+                Consultar
+            </button>
+        </div>
+    
+    </div>
+        <div style="margin-top:15px;">
 
+        <label>
+            <b>Resumo da O.S</b>
+        </label>
+    
+        <input
+            type="text"
+            name="resumo_os"
+            value="{{ os_resumo }}"
+            placeholder="Nome / descrição da O.S"
+            {% if os_resumo %}
+                readonly
+            {% endif %}
+        >
+    
+        {% if os_resumo %}
+        <div style="
+            margin-top:6px;
+            font-size:12px;
+            color:#16a34a;
+        ">
+            ✓ Resumo carregado automaticamente da tabela de O.S.
+        </div>
+        {% else %}
+        <div style="
+            margin-top:6px;
+            font-size:12px;
+            color:#64748b;
+        ">
+            O.S não localizada no cadastro. Informe manualmente o resumo.
+        </div>
+        {% endif %}
+    
+    </div>
     </form>
 
 </div>
@@ -3690,7 +3729,7 @@ select {
             </div>
 
             <div class="subtitulo">
-                O.S {{ os_codigo }}
+                <b>O.S {{ os_codigo }}</b>
                 {% if os_resumo %}
                     — {{ os_resumo }}
                 {% endif %}
@@ -4466,6 +4505,7 @@ document.addEventListener("DOMContentLoaded", function(){
             html
         ),
         os_codigo=os_codigo,
+        os_resumo=os_resumo,
         recomendacoes=recomendacoes,
         monitoramento=monitoramento,
         monitoramentos=monitoramentos,

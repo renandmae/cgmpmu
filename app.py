@@ -3081,6 +3081,33 @@ def recomendacoes_os():
 
     os_codigo = request.args.get("os", "").strip()
 
+    os_resumo = ""
+
+    if os_codigo:
+        cur.execute("""
+            SELECT codigo, resumo
+            FROM os
+            WHERE codigo ILIKE %s
+               OR resumo ILIKE %s
+            ORDER BY
+                CASE
+                    WHEN codigo ILIKE %s THEN 0
+                    ELSE 1
+                END,
+                codigo
+            LIMIT 1
+        """, (
+            f"%{os_codigo}%",
+            f"%{os_codigo}%",
+            os_codigo
+        ))
+    
+        os_encontrada = cur.fetchone()
+    
+        if os_encontrada:
+            os_codigo = os_encontrada["codigo"]
+            os_resumo = os_encontrada["resumo"] or ""
+
     # =========================================================
     # POST
     # =========================================================
@@ -3597,9 +3624,22 @@ select {
                     type="text"
                     name="os"
                     value="{{ os_codigo }}"
-                    placeholder="Ex.: 15/2024"
+                    placeholder="Digite a O.S ou parte do nome..."
                     required
                 >
+                {% if os_resumo %}
+                <div style="
+                    margin-top:8px;
+                    padding:10px 12px;
+                    background:#eff6ff;
+                    border-left:4px solid #2563eb;
+                    border-radius:8px;
+                    color:#1e3a8a;
+                ">
+                    <b>O.S encontrada:</b>
+                    {{ os_codigo }} — {{ os_resumo }}
+                </div>
+                {% endif %}
             </div>
 
             <div style="flex:0 0 130px;">
@@ -3651,6 +3691,9 @@ select {
 
             <div class="subtitulo">
                 O.S {{ os_codigo }}
+                {% if os_resumo %}
+                    — {{ os_resumo }}
+                {% endif %}
             </div>
         </div>
 

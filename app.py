@@ -3047,559 +3047,1277 @@ def export_word(os_id):
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
-@app.route('/os/ficha/<int:os_id>', methods=['GET','POST'])
-def ficha_os(os_id):
+@app.route('/recomendacoes', methods=['GET', 'POST'])
+def recomendacoes_os():
+
     if 'user' not in session:
         return redirect('/')
 
     con = get_db()
     cur = con.cursor()
 
-    cur.execute("SELECT * FROM os WHERE id = %s", (os_id,))
-    os_data = cur.fetchone()
+    # =========================================================
+    # COLABORADOR LOGADO
+    # =========================================================
 
-    if not os_data:
-        return "OS não encontrada"
+    servidor_id = session.get("user_id")
 
-    # -------------------------
-    # SALVAR
-    # -------------------------
+    cur.execute("""
+        SELECT id, nome
+        FROM colaboradores
+        WHERE id = %s
+    """, (servidor_id,))
+
+    colaborador = cur.fetchone()
+
+    if not colaborador:
+        con.close()
+        return "Colaborador não encontrado"
+
+    # =========================================================
+    # IDENTIFICAR O.S
+    # =========================================================
+
+    os_codigo = request.args.get("os", "").strip()
+
+    # =========================================================
+    # POST
+    # =========================================================
+
     if request.method == 'POST':
 
-        beneficios = ",".join(request.form.getlist("beneficios[]"))
+        os_codigo = request.form.get("os_codigo", "").strip()
 
-        cur.execute("""
-            INSERT INTO ficha_auditoria (
-                os_id, nivel_risco, criterio, condicao,
-                causa, impacto, acao,
-                requer_monitoramento, data_monitoramento, data_proximo_monitoramento,
-                observacao_monitoramento, beneficios
+        if not os_codigo:
+            con.close()
+            return "Informe o código da O.S."
+
+        acao = request.form.get("acao")
+
+        # =====================================================
+        # SALVAR RECOMENDAÇÕES
+        # =====================================================
+
+        if acao == "salvar_recomendacoes":
+
+            ids = request.form.getlist("rec_id[]")
+            descricoes = request.form.getlist("recomendacao[]")
+            prioridades = request.form.getlist("prioridade[]")
+            status = request.form.getlist("status[]")
+
+            # -------------------------------------------------
+            # Atualizar recomendações existentes
+            # -------------------------------------------------
+
+            for rec_id, descricao, prioridade, st in zip(
+                ids,
+                descricoes,
+                prioridades,
+                status
+            ):
+
+                descricao = descricao.strip()
+
+                if not descricao:
+                    continue
+
+                cur.execute("""
+                    UPDATE recomendacoes
+                    SET
+                        descricao = %s,
+                        prioridade = %s,
+                        status = %s,
+                        atualizado_em = NOW()
+                    WHERE id = %s
+                      AND os_codigo = %s
+                """, (
+                    descricao,
+                    prioridade,
+                    st,
+                    rec_id,
+                    os_codigo
+                ))
+
+            # -------------------------------------------------
+            # Novas recomendações
+            # -------------------------------------------------
+
+            novas_descricoes = request.form.getlist("nova_recomendacao[]")
+            novas_prioridades = request.form.getlist("nova_prioridade[]")
+            novos_status = request.form.getlist("novo_status[]")
+
+            for descricao, prioridade, st in zip(
+                novas_descricoes,
+                novas_prioridades,
+                novos_status
+            ):
+
+                descricao = descricao.strip()
+
+                if not descricao:
+                    continue
+
+                cur.execute("""
+                    INSERT INTO recomendacoes (
+                        os_codigo,
+                        descricao,
+                        prioridade,
+                        status
+                    )
+                    VALUES (%s,%s,%s,%s)
+                """, (
+                    os_codigo,
+                    descricao,
+                    prioridade,
+                    st
+                ))
+
+            # -------------------------------------------------
+            # CONFIGURAÇÃO DE MONITORAMENTO DA O.S
+            # -------------------------------------------------
+
+            requer_monitoramento = (
+                request.form.get("monitoramento") == "on"
             )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, %s)
-            ON CONFLICT (os_id) DO UPDATE SET
-                nivel_risco = EXCLUDED.nivel_risco,
-                criterio = EXCLUDED.criterio,
-                condicao = EXCLUDED.condicao,
-                causa = EXCLUDED.causa,
-                impacto = EXCLUDED.impacto,
-                acao = EXCLUDED.acao,
-                requer_monitoramento = EXCLUDED.requer_monitoramento,
-                data_monitoramento = EXCLUDED.data_monitoramento,
-                data_proximo_monitoramento = EXCLUDED.data_proximo_monitoramento,
-                observacao_monitoramento = EXCLUDED.observacao_monitoramento,
-                beneficios = EXCLUDED.beneficios,
-                atualizado_em = NOW()
-            RETURNING id
-        """, (
-            os_id,
-            request.form.get("nivel_risco"),
-            request.form.get("criterio"),
-            request.form.get("condicao"),
-            request.form.get("causa"),
-            request.form.get("impacto"),
-            request.form.get("acao"),
-            True if request.form.get("monitoramento") == "on" else False,
-            request.form.get("data_monitoramento"),
-            request.form.get("data_proximo_monitoramento"),
-            request.form.get("obs_monitoramento"),
-            beneficios
-        ))
 
-        ficha_id = cur.fetchone()["id"]
+            prazo = request.form.get("prazo_monitoramento") or None
 
-        cur.execute("DELETE FROM ficha_recomendacoes WHERE ficha_id = %s", (ficha_id,))
-
-        recs = request.form.getlist("recomendacoes[]")
-        status = request.form.getlist("rec_status[]")
-
-        for desc, st in zip(recs, status):
             cur.execute("""
-                INSERT INTO ficha_recomendacoes (ficha_id, descricao, corrigido)
-                VALUES (%s,%s,%s)
-            """, (ficha_id, desc, st == "1"))
+                INSERT INTO recomendacao_monitoramento_config (
+                    os_codigo,
+                    requer_monitoramento,
+                    prazo_monitoramento,
+                    atualizado_por,
+                    atualizado_em
+                )
+                VALUES (%s,%s,%s,%s,NOW())
 
-        con.commit()
-        return redirect(f"/os/ficha/{os_id}")
+                ON CONFLICT (os_codigo)
+                DO UPDATE SET
+                    requer_monitoramento = EXCLUDED.requer_monitoramento,
+                    prazo_monitoramento = EXCLUDED.prazo_monitoramento,
+                    atualizado_por = EXCLUDED.atualizado_por,
+                    atualizado_em = NOW()
+            """, (
+                os_codigo,
+                requer_monitoramento,
+                prazo,
+                servidor_id
+            ))
 
-    # -------------------------
-    # CARREGAR
-    # -------------------------
-    cur.execute("SELECT * FROM ficha_auditoria WHERE os_id = %s", (os_id,))
-    ficha = cur.fetchone()
+            con.commit()
+            con.close()
 
-    beneficios_sel = []
-    if ficha and ficha.get("beneficios"):
-        beneficios_sel = ficha["beneficios"].split(",")
+            return redirect(
+                f"/recomendacoes?os={quote(os_codigo)}"
+            )
+
+        # =====================================================
+        # EXCLUIR RECOMENDAÇÃO
+        # =====================================================
+
+        elif acao == "excluir_recomendacao":
+
+            rec_id = request.form.get("rec_id")
+
+            if rec_id:
+                cur.execute("""
+                    DELETE FROM recomendacoes
+                    WHERE id = %s
+                      AND os_codigo = %s
+                """, (
+                    rec_id,
+                    os_codigo
+                ))
+
+            con.commit()
+            con.close()
+
+            return redirect(
+                f"/recomendacoes?os={quote(os_codigo)}"
+            )
+
+        # =====================================================
+        # REGISTRAR MONITORAMENTO
+        # =====================================================
+
+        elif acao == "registrar_monitoramento":
+
+            data_monitoramento = request.form.get(
+                "data_monitoramento"
+            )
+
+            observacao = request.form.get(
+                "observacao_monitoramento"
+            )
+
+            if not data_monitoramento:
+                con.close()
+                return "Informe a data do monitoramento."
+
+            cur.execute("""
+                INSERT INTO recomendacao_monitoramentos (
+                    os_codigo,
+                    data_monitoramento,
+                    observacao,
+                    servidor_id
+                )
+                VALUES (%s,%s,%s,%s)
+            """, (
+                os_codigo,
+                data_monitoramento,
+                observacao,
+                servidor_id
+            ))
+
+            con.commit()
+            con.close()
+
+            return redirect(
+                f"/recomendacoes?os={quote(os_codigo)}"
+            )
+
+    # =========================================================
+    # CARREGAR RECOMENDAÇÕES
+    # =========================================================
 
     recomendacoes = []
-    if ficha:
-        cur.execute("SELECT * FROM ficha_recomendacoes WHERE ficha_id = %s", (ficha["id"],))
+
+    if os_codigo:
+
+        cur.execute("""
+            SELECT
+                id,
+                os_codigo,
+                descricao,
+                prioridade,
+                status,
+                criado_em,
+                atualizado_em
+            FROM recomendacoes
+            WHERE os_codigo = %s
+            ORDER BY id
+        """, (os_codigo,))
+
         recomendacoes = cur.fetchall()
 
-    total_rec = len(recomendacoes)
-    corrigidas = len([r for r in recomendacoes if r["corrigido"]])
-    
-    percentual_rec = 0
-    if total_rec > 0:
-        percentual_rec = int((corrigidas / total_rec) * 100)
+    # =========================================================
+    # CONFIGURAÇÃO DE MONITORAMENTO
+    # =========================================================
+
+    monitoramento = None
+
+    if os_codigo:
+
+        cur.execute("""
+            SELECT
+                requer_monitoramento,
+                prazo_monitoramento
+            FROM recomendacao_monitoramento_config
+            WHERE os_codigo = %s
+        """, (os_codigo,))
+
+        monitoramento = cur.fetchone()
+
+    # =========================================================
+    # HISTÓRICO DE MONITORAMENTOS
+    # =========================================================
+
+    monitoramentos = []
+
+    if os_codigo:
+
+        cur.execute("""
+            SELECT
+                rm.id,
+                rm.data_monitoramento,
+                rm.observacao,
+                rm.criado_em,
+                c.nome AS colaborador
+            FROM recomendacao_monitoramentos rm
+            LEFT JOIN colaboradores c
+                ON c.id = rm.servidor_id
+            WHERE rm.os_codigo = %s
+            ORDER BY
+                rm.data_monitoramento DESC,
+                rm.id DESC
+        """, (os_codigo,))
+
+        monitoramentos = cur.fetchall()
+
+    # =========================================================
+    # PROGRESSO
+    # =========================================================
+
+    total = len(recomendacoes)
+
+    atendidas = len([
+        r for r in recomendacoes
+        if r["status"] == "ATENDIDO"
+    ])
+
+    parcialmente = len([
+        r for r in recomendacoes
+        if r["status"] == "PARCIALMENTE"
+    ])
+
+    nao_atendidas = len([
+        r for r in recomendacoes
+        if r["status"] == "NÃO ATENDIDO"
+    ])
+
+    percentual = 0
+
+    if total > 0:
+        percentual = int(
+            (atendidas / total) * 100
+        )
 
     con.close()
 
-    # -------------------------
+    # =========================================================
     # HTML
-    # -------------------------
-    html = f"""
+    # =========================================================
+
+    html = """
 <style>
-.card{{
-background:#fff;
-border-radius:16px;
-padding:18px;
-margin-bottom:16px;
-box-shadow:0 6px 18px rgba(0,0,0,.07);
-border:1px solid #eef2f7;
-}}
 
-.titulo {{
-    font-size:22px;
-    font-weight:600;
-}}
+.card {
+    background:#fff;
+    border-radius:16px;
+    padding:20px;
+    margin-bottom:18px;
+    box-shadow:0 6px 18px rgba(0,0,0,.07);
+    border:1px solid #eef2f7;
+}
 
-.btn {{
-    background:#2563eb;
-    color:white;
-    padding:10px 14px;
-    border-radius:8px;
-    text-decoration:none;
-}}
-
-.grid-risco {{
-    display:flex;
-    gap:10px;
-}}
-
-.risco {{
-    flex:1;
-    padding:12px;
-    border-radius:10px;
-    cursor:pointer;
-    border:2px solid transparent;
-}}
-
-.baixo {{ background:#dcfce7; }}
-.medio {{ background:#fef9c3; }}
-.alto {{ background:#fee2e2; }}
-.extremo {{ background:#000; color:white; }}
-
-.beneficios {{
-    display:grid;
-    grid-template-columns: repeat(3,1fr);
-    gap:10px;
-}}
-
-.badge {{
-    background:#4f6fb5;
-    color:white;
-    padding:10px;
-    border-radius:8px;
-    text-align:center;
-    cursor:pointer;
-}}
-
-.badge input {{
-    display:none;
-}}
-
-.badge span {{
-    display:block;
-    background:#4f6fb5;
-    padding:10px;
-    border-radius:8px;
-    transition:0.2s;
-}}
-
-.badge input:checked + span {{
-    background:#1d4ed8;
-    transform:scale(1.05);
-}}
-
-textarea, input {{
-    width:100%;
-    padding:10px;
-    border-radius:8px;
-    border:1px solid #ccc;
-    margin-top:5px;
-}}
-.risco{{
-    height:55px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:16px;
+.titulo {
+    font-size:24px;
     font-weight:700;
-    transition:.2s;
+    color:#1f2937;
+}
+
+.subtitulo {
+    color:#6b7280;
+    margin-top:4px;
+}
+
+.btn {
+    background:#2563eb;
+    color:#fff;
+    border:none;
+    padding:10px 16px;
+    border-radius:9px;
+    cursor:pointer;
+    font-weight:600;
+}
+
+.btn:hover {
+    background:#1d4ed8;
+}
+
+.btn-danger {
+    background:#dc2626;
+}
+
+.btn-danger:hover {
+    background:#b91c1c;
+}
+
+.btn-monitor {
+    background:#7c3aed;
+}
+
+.btn-monitor:hover {
+    background:#6d28d9;
+}
+
+.btn-secondary {
+    background:#64748b;
+}
+
+input,
+textarea,
+select {
+    width:100%;
+    box-sizing:border-box;
+    padding:10px;
+    border:1px solid #d1d5db;
+    border-radius:8px;
+    margin-top:5px;
+}
+
+.os-box {
+    display:flex;
+    gap:10px;
+    align-items:end;
+}
+
+.os-box > div {
+    flex:1;
+}
+
+.rec {
+    display:grid;
+    grid-template-columns:40px 1fr 150px 170px 45px;
+    gap:10px;
+    align-items:center;
+    padding:12px;
+    margin-top:10px;
+    border-radius:10px;
+    border-left:6px solid #dc2626;
+    background:#fee2e2;
+}
+
+.rec-atendido {
+    background:#dcfce7;
+    border-left-color:#16a34a;
+}
+
+.rec-parcial {
+    background:#fef9c3;
+    border-left-color:#ca8a04;
+}
+
+.rec-nao {
+    background:#fee2e2;
+    border-left-color:#dc2626;
+}
+
+.prioridade {
+    font-weight:700;
+    text-align:center;
     padding:8px;
-}}
+    border-radius:8px;
+}
 
-.risco b{{
-    font-size:16px;
-}}
+.prio-baixo {
+    background:#dcfce7;
+    color:#166534;
+}
 
+.prio-medio {
+    background:#fef9c3;
+    color:#854d0e;
+}
 
-.risco input{{
-    display:none;
-}}
+.prio-alto {
+    background:#fed7aa;
+    color:#9a3412;
+}
 
-.risco:hover{{
-    transform:translateY(-3px);
-    box-shadow:0 6px 15px rgba(0,0,0,.12);
-}}
+.prio-extremo {
+    background:#111827;
+    color:#fff;
+}
 
-.titulo-card{{
-display:flex;
-align-items:center;
-gap:10px;
-font-size:20px;
-font-weight:700;
-margin-bottom:18px;
-color:#1f2937;
-}}
-.rec-ok{{
-background:#dcfce7;
-border-left:6px solid #16a34a;
-}}
-.rec-pendente{{
-background:#fee2e2;
-border-left:6px solid #dc2626;
-}}
-.btn-add{{
-background:#2563eb;
-color:#fff;
-border:none;
-padding:12px 18px;
-border-radius:10px;
-font-weight:600;
-cursor:pointer;
-}}
+.status-badge {
+    font-weight:700;
+    text-align:center;
+    padding:8px;
+    border-radius:8px;
+}
 
-.badge span{{
-border-radius:30px;
-padding:12px;
-font-weight:600;
-}}
-
-.badge input:checked+span{{
-background:#2563eb;
-color:white;
-box-shadow:0 5px 15px rgba(37,99,235,.35);
-}}
-
-.monitor-grid{{
-display:grid;
-grid-template-columns:1fr 1fr;
-gap:15px;
-}}
-
-.progresso-box{{
-    margin:15px 0;
+.progress-box {
     background:#e5e7eb;
     border-radius:15px;
-    height:25px;
+    height:28px;
     overflow:hidden;
-}}
+    margin-top:10px;
+}
 
-.progresso-barra{{
+.progress-bar {
     height:100%;
     background:#16a34a;
+    color:white;
+    font-weight:700;
     display:flex;
     align-items:center;
     justify-content:center;
-    color:white;
-    font-weight:700;
-    transition:.4s;
-    font-size:13px;
-}}
+}
 
-.risco:has(input:checked){{
-    border:3px solid #2563eb;
-    transform:translateY(-3px);
-    box-shadow:0 8px 20px rgba(37,99,235,.35);
-}}
+.monitor-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:15px;
+}
 
-.risco:has(input:checked)::after{{
-    content:"✓";
-    position:absolute;
-    top:5px;
-    right:8px;
-    font-size:18px;
-    font-weight:bold;
-    color:#2563eb;
-}}
+.monitor-history {
+    margin-top:15px;
+}
 
-.risco{{
-    position:relative;
-}}
+.monitor-item {
+    border-left:5px solid #7c3aed;
+    background:#f5f3ff;
+    padding:14px;
+    border-radius:8px;
+    margin-top:10px;
+}
+
+.modal {
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.45);
+    z-index:9999;
+    align-items:center;
+    justify-content:center;
+}
+
+.modal-content {
+    background:white;
+    width:min(600px,90%);
+    border-radius:16px;
+    padding:22px;
+    box-shadow:0 15px 40px rgba(0,0,0,.25);
+}
+
 </style>
 
+
 <div class="card">
-    <div style="display:flex; justify-content:space-between;">
-        <div>
-            <div class="titulo">📋 Ficha de Auditoria - {os_data['codigo']}</div>
-            <small>{os_data['resumo'] or ''}</small>
+
+    <div class="titulo">
+        📋 Recomendações de Auditoria
+    </div>
+
+    <div class="subtitulo">
+        Informe a O.S para consultar ou registrar as recomendações.
+    </div>
+
+    <form method="get" style="margin-top:15px;">
+
+        <div class="os-box">
+
+            <div>
+                <label><b>O.S</b></label>
+
+                <input
+                    type="text"
+                    name="os"
+                    value="{{ os_codigo }}"
+                    placeholder="Ex.: 15/2024"
+                    required
+                >
+            </div>
+
+            <div style="flex:0 0 130px;">
+                <button class="btn" style="width:100%;">
+                    Consultar
+                </button>
+            </div>
+
         </div>
 
-        <div>
-            <a href="/os/export/excel" class="btn">
-                📊 Exportar Excel
-            </a>
-        </div>
-    </div>
+    </form>
+
 </div>
+
+
+{% if os_codigo %}
 
 <form method="post">
 
-<div class="card">
-<b>⚠️ Nível de Risco</b>
-<div class="grid-risco">
-{"".join([f'''
-<label class="risco {v}">
-<input type="radio" name="nivel_risco" value="{v}" {"checked" if ficha and ficha["nivel_risco"]==v else ""}>
-<b>{t}</b>
-</label>
-''' for v,t in [
-("baixo","🟢 Baixo"),
-("medio","🟡 Médio"),
-("alto","🟠 Alto"),
-("extremo","🔴 Extremo")
-]])}
-</div>
-</div>
-
-<div class="card">
-<b>📝 5 Cs</b>
-
-<label>Critério</label>
-<textarea name="criterio">{ficha["criterio"] if ficha else ""}</textarea>
-
-<label>Condição</label>
-<textarea name="condicao">{ficha["condicao"] if ficha else ""}</textarea>
-
-<label>Causa</label>
-<textarea name="causa">{ficha["causa"] if ficha else ""}</textarea>
-
-<label>Impacto</label>
-<textarea name="impacto">{ficha["impacto"] if ficha else ""}</textarea>
-
-<label>Ação</label>
-<textarea name="acao">{ficha["acao"] if ficha else ""}</textarea>
-</div>
-
-<div class="card">
-<b>🎯 Benefício / Resultado</b>
-
-<div class="beneficios">
-{"".join([f'''
-<label class="badge">
-    <input type="checkbox" name="beneficios[]" value="{b}" {"checked" if b in beneficios_sel else ""}>
-    <span>{b}</span>
-</label>
-''' for b in [
-"Financeiro","Operacional","Eficiência","Controle","Compliance",
-"Transparência","Redução de Risco","Qualidade","Outros"
-]])}
-</div>
-</div>
-
-<div class="card">
-<b>✅ Recomendações</b>
-
-<div style="margin-bottom:15px">
-
-<button type="button" class="btn-add" onclick="filtrarRec('todos')">
-Todos
-</button>
-
-<button type="button" 
-style="background:#dc2626;color:white;border:none;padding:10px;border-radius:8px"
-onclick="filtrarRec('pendente')">
-Pendentes
-</button>
-
-
-<button type="button"
-style="background:#16a34a;color:white;border:none;padding:10px;border-radius:8px"
-onclick="filtrarRec('ok')">
-Corrigidos
-</button>
-
-</div>
-
-<div>
-    <b>
-    📊 Progresso das correções:
-    {corrigidas} de {total_rec} recomendações corrigidas
-    </b>
-
-    <div class="progresso-box">
-        <div class="progresso-barra" style="width:{percentual_rec}%">
-            {percentual_rec}%
-        </div>
-    </div>
-</div>
-
-<div id="recs">
-{"".join([f'''
-<div class="linha-rec {"rec-ok" if r["corrigido"] else "rec-pendente"}"
-style="display:flex; gap:10px; margin-top:10px; align-items:center;">
-   <span style="
-font-size:22px;
-color:{'#16a34a' if r['corrigido'] else '#dc2626'};
-">
-{"✔" if r["corrigido"] else "⏳"}
-</span>
-
-<input name="recomendacoes[]" value="{r["descricao"]}">
-
-    <select name="rec_status[]" onchange="atualizarStatus(this)">
-        <option value="0" {"selected" if not r["corrigido"] else ""}>Pendente</option>
-        <option value="1" {"selected" if r["corrigido"] else ""}>Corrigido</option>
-    </select>
-
-    <button
-        type="button"
-        onclick="
-        if(confirm('Deseja excluir esta recomendação?')){{
-            this.parentNode.remove();
-        }}
-        "
-        style="
-            background:#dc2626;
-            color:white;
-            border:none;
-            width:38px;
-            height:38px;
-            border-radius:8px;
-            cursor:pointer;
-            font-size:18px;
-        ">
-        🗑
-    </button>
-</div>
-''' for r in recomendacoes])}
-</div>
-
-<button class="btn-add" type="button" onclick="addRec()">
-➕ Nova recomendação
-</button>
-</div>
-
-<div class="card">
-<b>📅 Monitoramento</b>
-
-<label style="display:flex; align-items:center; gap:10px;">
-<input type="checkbox" name="monitoramento"
-{"checked" if ficha and ficha["requer_monitoramento"] else ""}>
-Requer monitoramento
-</label>
-
-<label>Data</label>
-<input type="date" name="data_monitoramento"
-value="{ficha["data_monitoramento"] if ficha else ""}">
-
-<label>Próximo monitoramento</label>
+<input
+    type="hidden"
+    name="os_codigo"
+    value="{{ os_codigo }}"
+>
 
 <input
-type="date"
-name="data_proximo_monitoramento"
-value="{ficha["data_proximo_monitoramento"] if ficha else ""}">
+    type="hidden"
+    name="acao"
+    value="salvar_recomendacoes"
+>
 
-<label>Observações</label>
-<textarea name="obs_monitoramento">{ficha["observacao_monitoramento"] if ficha else ""}</textarea>
+
+<!-- ===================================================== -->
+<!-- RECOMENDAÇÕES -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+    <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+    ">
+
+        <div>
+            <div class="titulo">
+                📝 Recomendações
+            </div>
+
+            <div class="subtitulo">
+                O.S {{ os_codigo }}
+            </div>
+        </div>
+
+        <button
+            type="button"
+            class="btn"
+            onclick="adicionarRecomendacao()"
+        >
+            ➕ Nova recomendação
+        </button>
+
+    </div>
+
+
+    <div style="margin-top:20px;">
+
+        <b>
+            📊 Progresso das recomendações
+        </b>
+
+        <div style="margin-top:8px;">
+            {{ atendidas }} atendidas |
+            {{ parcialmente }} parcialmente |
+            {{ nao_atendidas }} não atendidas
+        </div>
+
+        <div class="progress-box">
+
+            <div
+                class="progress-bar"
+                style="width:{{ percentual }}%"
+            >
+                {{ percentual }}%
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div id="recomendacoes">
+
+        {% for r in recomendacoes %}
+
+        <div
+            class="rec
+            {% if r.status == 'ATENDIDO' %}
+                rec-atendido
+            {% elif r.status == 'PARCIALMENTE' %}
+                rec-parcial
+            {% else %}
+                rec-nao
+            {% endif %}"
+        >
+
+            <div style="font-size:22px;">
+
+                {% if r.status == 'ATENDIDO' %}
+                    ✔
+                {% elif r.status == 'PARCIALMENTE' %}
+                    ◐
+                {% else %}
+                    ✖
+                {% endif %}
+
+            </div>
+
+
+            <div>
+
+                <input
+                    type="hidden"
+                    name="rec_id[]"
+                    value="{{ r.id }}"
+                >
+
+                <textarea
+                    name="recomendacao[]"
+                    rows="2"
+                >{{ r.descricao }}</textarea>
+
+            </div>
+
+
+            <div>
+
+                <label><b>Prioridade</b></label>
+
+                <select
+                    name="prioridade[]"
+                    onchange="atualizarLinha(this)"
+                    class="prioridade"
+                >
+
+                    <option
+                        value="BAIXO"
+                        {% if r.prioridade == 'BAIXO' %}selected{% endif %}
+                    >
+                        Baixo
+                    </option>
+
+                    <option
+                        value="MÉDIO"
+                        {% if r.prioridade == 'MÉDIO' %}selected{% endif %}
+                    >
+                        Médio
+                    </option>
+
+                    <option
+                        value="ALTO"
+                        {% if r.prioridade == 'ALTO' %}selected{% endif %}
+                    >
+                        Alto
+                    </option>
+
+                    <option
+                        value="EXTREMO"
+                        {% if r.prioridade == 'EXTREMO' %}selected{% endif %}
+                    >
+                        Extremo
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <div>
+
+                <label><b>Status</b></label>
+
+                <select
+                    name="status[]"
+                    onchange="atualizarLinha(this)"
+                >
+
+                    <option
+                        value="NÃO ATENDIDO"
+                        {% if r.status == 'NÃO ATENDIDO' %}selected{% endif %}
+                    >
+                        Não Atendido
+                    </option>
+
+                    <option
+                        value="PARCIALMENTE"
+                        {% if r.status == 'PARCIALMENTE' %}selected{% endif %}
+                    >
+                        Parcialmente
+                    </option>
+
+                    <option
+                        value="ATENDIDO"
+                        {% if r.status == 'ATENDIDO' %}selected{% endif %}
+                    >
+                        Atendido
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <div>
+
+                <button
+                    type="button"
+                    class="btn btn-danger"
+                    onclick="excluirRecomendacao(this, {{ r.id }})"
+                    title="Excluir recomendação"
+                >
+                    🗑
+                </button>
+
+            </div>
+
+        </div>
+
+        {% endfor %}
+
+    </div>
+
 </div>
 
-<button class="btn">Salvar</button>
+
+<!-- ===================================================== -->
+<!-- MONITORAMENTO -->
+<!-- ===================================================== -->
+
+<div class="card">
+
+    <div class="titulo">
+        📅 Monitoramento
+    </div>
+
+    <div class="monitor-grid" style="margin-top:15px;">
+
+        <div>
+
+            <label>
+                <b>Requer monitoramento</b>
+            </label>
+
+            <div style="
+                display:flex;
+                align-items:center;
+                gap:10px;
+                margin-top:10px;
+            ">
+
+                <input
+                    type="checkbox"
+                    name="monitoramento"
+                    style="width:auto;"
+                    {% if monitoramento and monitoramento.requer_monitoramento %}
+                        checked
+                    {% endif %}
+                >
+
+                <span>
+                    Esta O.S requer monitoramento
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <label>
+                <b>Prazo Monitoramento</b>
+            </label>
+
+            <input
+                type="date"
+                name="prazo_monitoramento"
+                value="{% if monitoramento %}{{ monitoramento.prazo_monitoramento or '' }}{% endif %}"
+            >
+
+        </div>
+
+    </div>
+
+
+    <div style="
+        display:flex;
+        gap:10px;
+        margin-top:20px;
+        flex-wrap:wrap;
+    ">
+
+        <button
+            type="button"
+            class="btn btn-monitor"
+            onclick="abrirMonitoramento()"
+        >
+            ＋ Registrar Monitoramento
+        </button>
+
+
+        <button
+            type="button"
+            class="btn btn-secondary"
+            onclick="abrirHistorico()"
+        >
+            📜 Ver monitoramentos registrados
+        </button>
+
+    </div>
+
+</div>
+
+
+<div style="
+    display:flex;
+    justify-content:flex-end;
+    margin-bottom:30px;
+">
+
+    <button class="btn">
+        💾 Salvar alterações
+    </button>
+
+</div>
+
 </form>
 
+
+<!-- ===================================================== -->
+<!-- MODAL NOVO MONITORAMENTO -->
+<!-- ===================================================== -->
+
+<div id="modalMonitoramento" class="modal">
+
+    <div class="modal-content">
+
+        <h3>
+            📅 Registrar Monitoramento
+        </h3>
+
+        <form method="post">
+
+            <input
+                type="hidden"
+                name="os_codigo"
+                value="{{ os_codigo }}"
+            >
+
+            <input
+                type="hidden"
+                name="acao"
+                value="registrar_monitoramento"
+            >
+
+            <label>
+                <b>Data do monitoramento</b>
+            </label>
+
+            <input
+                type="date"
+                name="data_monitoramento"
+                required
+            >
+
+            <label style="display:block;margin-top:12px;">
+                <b>Observações</b>
+            </label>
+
+            <textarea
+                name="observacao_monitoramento"
+                rows="6"
+                placeholder="Descreva o que foi realizado no monitoramento..."
+            ></textarea>
+
+            <div style="
+                display:flex;
+                justify-content:flex-end;
+                gap:10px;
+                margin-top:15px;
+            ">
+
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    onclick="fecharMonitoramento()"
+                >
+                    Cancelar
+                </button>
+
+                <button class="btn btn-monitor">
+                    Registrar
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- MODAL HISTÓRICO -->
+<!-- ===================================================== -->
+
+<div id="modalHistorico" class="modal">
+
+    <div class="modal-content">
+
+        <h3>
+            📜 Histórico de Monitoramentos
+        </h3>
+
+        <div class="monitor-history">
+
+            {% if monitoramentos %}
+
+                {% for m in monitoramentos %}
+
+                <div class="monitor-item">
+
+                    <div>
+                        <b>
+                            📅 {{ m.data_monitoramento.strftime('%d/%m/%Y') if m.data_monitoramento else '' }}
+                        </b>
+                    </div>
+
+                    <div style="margin-top:8px;">
+                        {{ m.observacao or 'Sem observações.' }}
+                    </div>
+
+                    <div style="
+                        margin-top:8px;
+                        color:#6b7280;
+                        font-size:13px;
+                    ">
+                        👤 Registrado por:
+                        <b>{{ m.colaborador or 'Não identificado' }}</b>
+                    </div>
+
+                </div>
+
+                {% endfor %}
+
+            {% else %}
+
+                <div style="
+                    padding:20px;
+                    text-align:center;
+                    color:#6b7280;
+                ">
+                    Nenhum monitoramento registrado.
+                </div>
+
+            {% endif %}
+
+        </div>
+
+
+        <div style="
+            display:flex;
+            justify-content:flex-end;
+            margin-top:20px;
+        ">
+
+            <button
+                type="button"
+                class="btn btn-secondary"
+                onclick="fecharHistorico()"
+            >
+                Fechar
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- FORMULÁRIO PARA EXCLUSÃO -->
+<!-- ===================================================== -->
+
+<form
+    id="formExcluir"
+    method="post"
+    style="display:none;"
+>
+
+    <input
+        type="hidden"
+        name="os_codigo"
+        value="{{ os_codigo }}"
+    >
+
+    <input
+        type="hidden"
+        name="acao"
+        value="excluir_recomendacao"
+    >
+
+    <input
+        type="hidden"
+        name="rec_id"
+        id="recIdExcluir"
+    >
+
+</form>
+
+
 <script>
-function addRec(){{
-    const div = document.createElement("div")
-    div.style.display = "flex"
-    div.style.gap = "10px"
-    div.className = "linha-rec rec-pendente"
+
+function abrirMonitoramento() {
+    document.getElementById("modalMonitoramento").style.display = "flex";
+}
+
+function fecharMonitoramento() {
+    document.getElementById("modalMonitoramento").style.display = "none";
+}
+
+function abrirHistorico() {
+    document.getElementById("modalHistorico").style.display = "flex";
+}
+
+function fecharHistorico() {
+    document.getElementById("modalHistorico").style.display = "none";
+}
+
+
+function excluirRecomendacao(botao, id) {
+
+    if (!confirm(
+        "Deseja realmente excluir esta recomendação?"
+    )) {
+        return;
+    }
+
+    document.getElementById("recIdExcluir").value = id;
+
+    document.getElementById("formExcluir").submit();
+}
+
+
+function atualizarLinha(elemento) {
+
+    const linha = elemento.closest(".rec");
+
+    const status = linha.querySelector(
+        "select[name='status[]']"
+    );
+
+    linha.classList.remove(
+        "rec-atendido",
+        "rec-parcial",
+        "rec-nao"
+    );
+
+    if (status.value === "ATENDIDO") {
+
+        linha.classList.add("rec-atendido");
+
+    }
+    else if (status.value === "PARCIALMENTE") {
+
+        linha.classList.add("rec-parcial");
+
+    }
+    else {
+
+        linha.classList.add("rec-nao");
+
+    }
+}
+
+
+function adicionarRecomendacao() {
+
+    const container =
+        document.getElementById("recomendacoes");
+
+    const div =
+        document.createElement("div");
+
+    div.className = "rec rec-nao";
 
     div.innerHTML = `
-    <span style="font-size:22px;color:#dc2626">
-    ⏳
-    </span>
-    
-    <input name="recomendacoes[]">
-    
-        <select name="rec_status[]" onchange="atualizarStatus(this)">
-            <option value="0">Pendente</option>
-            <option value="1">Corrigido</option>
-        </select>
-    
-        <button
-        type="button"
-        onclick="
-        if(confirm('Deseja excluir esta recomendação?')){{
-            this.parentNode.remove();
-        }}
-        "
-        style="
-            background:#dc2626;
-            color:white;
-            border:none;
-            width:38px;
-            height:38px;
-            border-radius:8px;
-            cursor:pointer;
-            font-size:18px;
-        ">
-        🗑
-    </button>
-    `
-    document.getElementById("recs").appendChild(div)
-}}
 
-function atualizarStatus(select){{
-    let linha = select.closest(".linha-rec");
+        <div style="font-size:22px;">
+            ✖
+        </div>
 
-    if(select.value=="1"){{
-        linha.classList.add("rec-ok");
-        linha.classList.remove("rec-pendente");
-    }}else{{
-        linha.classList.add("rec-pendente");
-        linha.classList.remove("rec-ok");
-    }}
-}}
+        <div>
 
-function filtrarRec(tipo){{
+            <input
+                type="hidden"
+                name="rec_id[]"
+                value=""
+            >
 
-document.querySelectorAll(".linha-rec").forEach(linha=>{{
+            <textarea
+                name="recomendacao[]"
+                rows="2"
+                style="display:none;"
+            ></textarea>
 
-if(tipo=="todos"){{
-linha.style.display="flex";
-}}
+            <textarea
+                name="nova_recomendacao[]"
+                rows="2"
+                placeholder="Digite a nova recomendação..."
+            ></textarea>
 
-if(tipo=="ok"){{
-linha.style.display =
-linha.classList.contains("rec-ok")
-?"flex":"none";
-}}
+        </div>
 
-if(tipo=="pendente"){{
-linha.style.display =
-linha.classList.contains("rec-pendente")
-?"flex":"none";
-}}
+        <div>
 
-}});
+            <label><b>Prioridade</b></label>
 
-}}
+            <select
+                name="prioridade[]"
+                class="prioridade"
+            >
+
+                <option value="BAIXO">
+                    Baixo
+                </option>
+
+                <option value="MÉDIO">
+                    Médio
+                </option>
+
+                <option value="ALTO">
+                    Alto
+                </option>
+
+                <option value="EXTREMO">
+                    Extremo
+                </option>
+
+            </select>
+
+            <input
+                type="hidden"
+                name="nova_prioridade[]"
+                value="BAIXO"
+            >
+
+        </div>
+
+        <div>
+
+            <label><b>Status</b></label>
+
+            <select name="novo_status[]">
+
+                <option value="NÃO ATENDIDO">
+                    Não Atendido
+                </option>
+
+                <option value="PARCIALMENTE">
+                    Parcialmente
+                </option>
+
+                <option value="ATENDIDO">
+                    Atendido
+                </option>
+
+            </select>
+
+        </div>
+
+        <div>
+
+            <button
+                type="button"
+                class="btn btn-danger"
+                onclick="this.closest('.rec').remove()"
+            >
+                🗑
+            </button>
+
+        </div>
+
+    `;
+
+    container.appendChild(div);
+}
+
 </script>
+
+{% endif %}
 """
+
     return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
+        BASE.replace(
+            "{% block content %}{% endblock %}",
+            html
+        ),
+        os_codigo=os_codigo,
+        recomendacoes=recomendacoes,
+        monitoramento=monitoramento,
+        monitoramentos=monitoramentos,
+        total=total,
+        atendidas=atendidas,
+        parcialmente=parcialmente,
+        nao_atendidas=nao_atendidas,
+        percentual=percentual,
         user=session['user'],
         perfil=session['perfil']
     )

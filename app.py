@@ -3933,10 +3933,6 @@ select {
 
         <div>
 
-            <label>
-                <b>Requer monitoramento</b>
-            </label>
-
             <div style="
                 display:flex;
                 align-items:center;
@@ -3944,25 +3940,8 @@ select {
                 margin-top:10px;
             ">
 
-                <input
-                    type="checkbox"
-                    name="monitoramento"
-                    style="width:auto;"
-                    {% if monitoramento and monitoramento.requer_monitoramento %}
-                        checked
-                    {% endif %}
-                >
-
-                <span>
-                    Esta O.S requer monitoramento
-                </span>
 
             </div>
-
-        </div>
-
-
-        <div>
 
             <label>
                 <b>Prazo Monitoramento</b>

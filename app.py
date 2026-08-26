@@ -3211,7 +3211,7 @@ def recomendacoes_os():
                         status = %s,
                         atualizado_em = NOW()
                     WHERE id = %s
-                      AND os_codigo = %s
+                      AND TRIM(os_codigo) = TRIM(%s)
                 """, (
                     os_resumo,
                     descricao,
@@ -3374,7 +3374,7 @@ def recomendacoes_os():
                 criado_em,
                 atualizado_em
             FROM recomendacoes
-            WHERE os_codigo = %s
+            WHERE TRIM(os_codigo) = TRIM(%s)
             ORDER BY id
         """, (os_codigo,))
 
@@ -3392,7 +3392,7 @@ def recomendacoes_os():
             SELECT
                 prazo_monitoramento
             FROM recomendacao_monitoramento_config
-            WHERE os_codigo = %s
+            WHERE TRIM(os_codigo) = TRIM(%s)
         """, (os_codigo,))
         
         monitoramento = cur.fetchone()
@@ -4286,11 +4286,11 @@ function atualizarLinha(elemento){
     const linha = elemento.closest(".rec");
 
     const status = linha.querySelector(
-        "select[name='status[]']"
+        "select[name='status[]'], select[name='novo_status[]']"
     );
-
+    
     const prioridade = linha.querySelector(
-        "select[name='prioridade[]']"
+        "select[name='prioridade[]'], select[name='nova_prioridade[]']"
     );
 
     const icone = linha.querySelector(".icone-status");
@@ -4408,23 +4408,14 @@ function adicionarRecomendacao() {
 
     div.innerHTML = `
 
-        <div style="font-size:22px;">
+        <div
+            class="icone-status"
+            style="font-size:22px;"
+        >
             ✖
         </div>
 
         <div>
-
-            <input
-                type="hidden"
-                name="rec_id[]"
-                value=""
-            >
-
-            <textarea
-                name="recomendacao[]"
-                rows="2"
-                style="display:none;"
-            ></textarea>
 
             <textarea
                 name="nova_recomendacao[]"
@@ -4439,8 +4430,9 @@ function adicionarRecomendacao() {
             <label><b>Prioridade</b></label>
 
             <select
-                name="prioridade[]"
-                class="prioridade"
+                name="nova_prioridade[]"
+                class="prioridade prio-baixo"
+                onchange="atualizarPrioridade(this)"
             >
 
                 <option value="BAIXO">
@@ -4461,19 +4453,16 @@ function adicionarRecomendacao() {
 
             </select>
 
-            <input
-                type="hidden"
-                name="nova_prioridade[]"
-                value="BAIXO"
-            >
-
         </div>
 
         <div>
 
             <label><b>Status</b></label>
 
-            <select name="novo_status[]">
+            <select
+                name="novo_status[]"
+                onchange="atualizarLinha(this)"
+            >
 
                 <option value="NÃO ATENDIDO">
                     Não Atendido
@@ -4506,6 +4495,22 @@ function adicionarRecomendacao() {
     `;
 
     container.appendChild(div);
+
+    // Garante que a linha recém-criada
+    // já fique com as cores corretas.
+    const prioridade =
+        div.querySelector("select[name='nova_prioridade[]']");
+
+    const status =
+        div.querySelector("select[name='novo_status[]']");
+
+    if (prioridade) {
+        atualizarPrioridade(prioridade);
+    }
+
+    if (status) {
+        atualizarLinha(status);
+    }
 }
 
 document.addEventListener("DOMContentLoaded", function(){

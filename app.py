@@ -3390,12 +3390,11 @@ def recomendacoes_os():
 
         cur.execute("""
             SELECT
-                requer_monitoramento,
                 prazo_monitoramento
             FROM recomendacao_monitoramento_config
             WHERE os_codigo = %s
         """, (os_codigo,))
-
+        
         monitoramento = cur.fetchone()
 
     # =========================================================
@@ -4541,13 +4540,10 @@ function selecionarOS(select){
 
     const valor = select.value;
 
-    if(!valor){
+    if (!valor) {
         return;
     }
 
-    document.getElementById("campoOS").value = valor;
-
-    // já carrega a O.S selecionada
     window.location.href =
         "/recomendacoes?os=" +
         encodeURIComponent(valor);
@@ -4579,6 +4575,97 @@ function selecionarOS(select){
 
 @app.route('/recomendacoes/listar')
 def listar_recomendacoes():
+
+    status_filtro = request.args.get("status", "").strip()
+    busca = request.args.get("busca", "").strip()
+
+    where = []
+    params = []
+    
+    if status_filtro:
+        where.append("r.status = %s")
+        params.append(status_filtro)
+    
+    if busca:
+        where.append("""
+            (
+                r.os_codigo ILIKE %s
+                OR r.resumo_os ILIKE %s
+                OR o.resumo ILIKE %s
+                OR o.unidade ILIKE %s
+                OR o.uo ILIKE %s
+                OR r.descricao ILIKE %s
+                OR r.status ILIKE %s
+                OR r.prioridade ILIKE %s
+            )
+        """)
+    
+        texto = f"%{busca}%"
+    
+        params.extend([
+            texto,
+            texto,
+            texto,
+            texto,
+            texto,
+            texto,
+            texto,
+            texto
+        ])
+    
+    sql_where = ""
+    
+    if where:
+        sql_where = "WHERE " + " AND ".join(where)
+
+    cur.execute(f"""
+        SELECT
+            r.id,
+            r.os_codigo,
+    
+            COALESCE(
+                NULLIF(r.resumo_os, ''),
+                o.resumo,
+                ''
+            ) AS resumo,
+    
+            COALESCE(
+                o.unidade,
+                ''
+            ) AS unidade,
+    
+            COALESCE(
+                o.uo,
+                ''
+            ) AS secretaria,
+    
+            r.descricao AS recomendacao,
+            r.status,
+            r.prioridade,
+            mc.prazo_monitoramento
+    
+        FROM recomendacoes r
+    
+        LEFT JOIN os o
+            ON o.codigo = r.os_codigo
+    
+        LEFT JOIN recomendacao_monitoramento_config mc
+            ON mc.os_codigo = r.os_codigo
+    
+        {sql_where}
+    
+        ORDER BY
+            CASE
+                WHEN r.os_codigo ~ '/[0-9]{4}$'
+                THEN split_part(r.os_codigo, '/', 2)::int
+                ELSE 0
+            END DESC,
+    
+            r.os_codigo DESC,
+            r.id ASC
+    """, params)
+    
+    rows = cur.fetchall()
 
     if 'user' not in session:
         return redirect('/')
@@ -4842,7 +4929,71 @@ tr:hover{
 
 
     <div style="overflow:auto;">
-
+        <div style="
+            display:flex;
+            gap:10px;
+            margin-bottom:18px;
+            flex-wrap:wrap;
+            align-items:center;
+        ">
+        
+            <input
+                type="text"
+                id="busca"
+                value="{{ request.args.get('busca','') }}"
+                placeholder="🔎 Pesquisar O.S, resumo, unidade, secretaria, recomendação..."
+                style="
+                    flex:1;
+                    min-width:300px;
+                    padding:10px 14px;
+                    border:1px solid #d1d5db;
+                    border-radius:9px;
+                "
+                onkeydown="if(event.key==='Enter') pesquisarTabela()"
+            >
+        
+            <select
+                id="filtroStatus"
+                onchange="pesquisarTabela()"
+                style="
+                    width:220px;
+                    padding:10px;
+                    border:1px solid #d1d5db;
+                    border-radius:9px;
+                "
+            >
+        
+                <option value=""
+                {% if not request.args.get('status') %}
+                    selected
+                {% endif %}>
+                    Todos os status
+                </option>
+        
+                <option value="ATENDIDO"
+                {% if request.args.get('status') == 'ATENDIDO' %}
+                    selected
+                {% endif %}>
+                    🟢 Atendido
+                </option>
+        
+                <option value="PARCIALMENTE"
+                {% if request.args.get('status') == 'PARCIALMENTE' %}
+                    selected
+                {% endif %}>
+                    🟡 Parcialmente
+                </option>
+        
+                <option value="NÃO ATENDIDO"
+                {% if request.args.get('status') == 'NÃO ATENDIDO' %}
+                    selected
+                {% endif %}>
+                    🔴 Não Atendido
+                </option>
+        
+            </select>
+        
+        </div>
         <table>
 
             <thead>
@@ -5124,7 +5275,29 @@ function fecharFora(e){
     }
 
 }
+function pesquisarTabela(){
 
+    const busca =
+        document.getElementById("busca").value;
+
+    const status =
+        document.getElementById("filtroStatus").value;
+
+    const params =
+        new URLSearchParams();
+
+    if(busca){
+        params.set("busca", busca);
+    }
+
+    if(status){
+        params.set("status", status);
+    }
+
+    window.location.href =
+        "/recomendacoes/listar?" +
+        params.toString();
+}
 </script>
 """
 

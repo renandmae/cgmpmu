@@ -3472,7 +3472,7 @@ def recomendacoes_os():
             FROM recomendacao_monitoramentos rm
             LEFT JOIN colaboradores c
                 ON c.id = rm.servidor_id
-            WHERE rm.os_codigo = %s
+            WHERE TRIM(rm.os_codigo) = TRIM(%s)
             ORDER BY
                 rm.data_monitoramento DESC,
                 rm.id DESC
@@ -3998,7 +3998,6 @@ function selecionarOS(select){
 
                 <select
                     name="prioridade[]"
-                    onchange="atualizarLinha(this); atualizarPrioridade(this)"
                     class="prioridade"
                 >
 
@@ -4041,7 +4040,7 @@ function selecionarOS(select){
 
                 <select
                     name="status[]"
-                    onchange="atualizarLinha(this)"
+                    class="status-recomendacao"
                 >
 
                     <option
@@ -4439,24 +4438,28 @@ function excluirRecomendacao(botao, id) {
     document.getElementById("formExcluir").submit();
 }
 
+function atualizarLinha(linha){
 
-function atualizarLinha(elemento){
-
-    const linha = elemento.closest(".rec");
+    if (!linha) {
+        return;
+    }
 
     const status = linha.querySelector(
-        "select[name='status[]'], select[name='novo_status[]']"
+        ".status-recomendacao"
     );
-    
+
     const prioridade = linha.querySelector(
-        "select[name='prioridade[]'], select[name='nova_prioridade[]']"
+        ".prioridade"
     );
 
-    const icone = linha.querySelector(".icone-status");
+    const icone = linha.querySelector(
+        ".icone-status"
+    );
 
-    // -------------------------------------------------
+
+    // =====================================================
     // STATUS
-    // -------------------------------------------------
+    // =====================================================
 
     linha.classList.remove(
         "rec-atendido",
@@ -4464,37 +4467,40 @@ function atualizarLinha(elemento){
         "rec-nao"
     );
 
-    if (status.value === "ATENDIDO") {
+    if (status) {
 
-        linha.classList.add("rec-atendido");
+        if (status.value === "ATENDIDO") {
 
-        if (icone) {
-            icone.innerHTML = "✔";
+            linha.classList.add("rec-atendido");
+
+            if (icone) {
+                icone.textContent = "✔";
+            }
+
         }
+        else if (status.value === "PARCIALMENTE") {
 
-    }
-    else if (status.value === "PARCIALMENTE") {
+            linha.classList.add("rec-parcial");
 
-        linha.classList.add("rec-parcial");
+            if (icone) {
+                icone.textContent = "◐";
+            }
 
-        if (icone) {
-            icone.innerHTML = "◐";
         }
+        else {
 
-    }
-    else {
+            linha.classList.add("rec-nao");
 
-        linha.classList.add("rec-nao");
-
-        if (icone) {
-            icone.innerHTML = "✖";
+            if (icone) {
+                icone.textContent = "✖";
+            }
         }
     }
 
 
-    // -------------------------------------------------
+    // =====================================================
     // PRIORIDADE
-    // -------------------------------------------------
+    // =====================================================
 
     if (prioridade) {
 
@@ -4505,7 +4511,7 @@ function atualizarLinha(elemento){
             "prio-extremo"
         );
 
-        switch(prioridade.value){
+        switch (prioridade.value) {
 
             case "BAIXO":
                 prioridade.classList.add("prio-baixo");
@@ -4523,35 +4529,6 @@ function atualizarLinha(elemento){
                 prioridade.classList.add("prio-extremo");
                 break;
         }
-    }
-}
-
-function atualizarPrioridade(select){
-
-    select.classList.remove(
-        "prio-baixo",
-        "prio-medio",
-        "prio-alto",
-        "prio-extremo"
-    );
-
-    switch(select.value){
-
-        case "BAIXO":
-            select.classList.add("prio-baixo");
-            break;
-
-        case "MÉDIO":
-            select.classList.add("prio-medio");
-            break;
-
-        case "ALTO":
-            select.classList.add("prio-alto");
-            break;
-
-        case "EXTREMO":
-            select.classList.add("prio-extremo");
-            break;
     }
 }
 
@@ -4591,7 +4568,6 @@ function adicionarRecomendacao() {
             <select
                 name="nova_prioridade[]"
                 class="prioridade prio-baixo"
-                onchange="atualizarPrioridade(this)"
             >
 
                 <option value="BAIXO">
@@ -4620,7 +4596,7 @@ function adicionarRecomendacao() {
 
             <select
                 name="novo_status[]"
-                onchange="atualizarLinha(this)"
+                class="status-recomendacao"
             >
 
                 <option value="NÃO ATENDIDO">
@@ -4655,49 +4631,60 @@ function adicionarRecomendacao() {
 
     container.appendChild(div);
 
-    // Garante que a linha recém-criada
-    // já fique com as cores corretas.
-    const prioridade =
-        div.querySelector("select[name='nova_prioridade[]']");
-
-    const status =
-        div.querySelector("select[name='novo_status[]']");
-
-    if (prioridade) {
-        atualizarPrioridade(prioridade);
-    }
-
-    if (status) {
-        atualizarLinha(status);
-    }
+    // Aplica as cores imediatamente
+    atualizarLinha(div);
 }
 
 document.addEventListener("DOMContentLoaded", function(){
+
+    // =====================================================
+    // CORES INICIAIS
+    // =====================================================
 
     document
         .querySelectorAll(".rec")
         .forEach(function(linha){
 
-            const status =
-                linha.querySelector(
-                    "select[name='status[]']"
-                );
-
-            const prioridade =
-                linha.querySelector(
-                    "select[name='prioridade[]']"
-                );
-
-            if(status){
-                atualizarLinha(status);
-            }
-
-            if(prioridade){
-                atualizarPrioridade(prioridade);
-            }
+            atualizarLinha(linha);
 
         });
 
+
+    // =====================================================
+    // ALTERAÇÃO DE STATUS
+    // =====================================================
+
+    document.addEventListener("change", function(event){
+
+        if (
+            event.target.matches(
+                ".status-recomendacao"
+            )
+        ) {
+
+            const linha =
+                event.target.closest(".rec");
+
+            atualizarLinha(linha);
+        }
+
+
+        // =================================================
+        // ALTERAÇÃO DE PRIORIDADE
+        // =================================================
+
+        if (
+            event.target.matches(
+                ".prioridade"
+            )
+        ) {
+
+            const linha =
+                event.target.closest(".rec");
+
+            atualizarLinha(linha);
+        }
+    });
 });
 
 function confirmarExcluirOS(){
@@ -5534,7 +5521,7 @@ def recomendacoes_monitoramentos(os_codigo):
         LEFT JOIN colaboradores c
             ON c.id = rm.servidor_id
 
-        WHERE rm.os_codigo = %s
+        WHERE TRIM(rm.os_codigo) = TRIM(%s)
 
         ORDER BY
             rm.data_monitoramento DESC,

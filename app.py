@@ -3472,7 +3472,7 @@ def recomendacoes_os():
             FROM recomendacao_monitoramentos rm
             LEFT JOIN colaboradores c
                 ON c.id = rm.servidor_id
-            WHERE TRIM(rm.os_codigo) = TRIM(%s)
+            WHERE rm.os_codigo = %s
             ORDER BY
                 rm.data_monitoramento DESC,
                 rm.id DESC
@@ -3999,6 +3999,7 @@ function selecionarOS(select){
                 <select
                     name="prioridade[]"
                     class="prioridade"
+                    onchange="atualizarLinha(this); atualizarPrioridade(this)"
                 >
 
                     <option
@@ -4041,6 +4042,7 @@ function selecionarOS(select){
                 <select
                     name="status[]"
                     class="status-recomendacao"
+                    onchange="atualizarLinha(this)"
                 >
 
                     <option
@@ -4452,23 +4454,23 @@ function excluirRecomendacao(botao, id) {
     document.getElementById("formExcluir").submit();
 }
 
-function atualizarLinha(linha){
+function atualizarLinha(elemento){
+
+    const linha = elemento.closest(".rec");
 
     if (!linha) {
         return;
     }
 
     const status = linha.querySelector(
-        ".status-recomendacao"
+        "select[name='status[]'], select[name='novo_status[]']"
     );
 
     const prioridade = linha.querySelector(
-        ".prioridade"
+        "select[name='prioridade[]'], select[name='nova_prioridade[]']"
     );
 
-    const icone = linha.querySelector(
-        ".icone-status"
-    );
+    const icone = linha.querySelector(".icone-status");
 
 
     // =====================================================
@@ -4488,7 +4490,7 @@ function atualizarLinha(linha){
             linha.classList.add("rec-atendido");
 
             if (icone) {
-                icone.textContent = "✔";
+                icone.innerHTML = "✔";
             }
 
         }
@@ -4497,7 +4499,7 @@ function atualizarLinha(linha){
             linha.classList.add("rec-parcial");
 
             if (icone) {
-                icone.textContent = "◐";
+                icone.innerHTML = "◐";
             }
 
         }
@@ -4506,7 +4508,7 @@ function atualizarLinha(linha){
             linha.classList.add("rec-nao");
 
             if (icone) {
-                icone.textContent = "✖";
+                icone.innerHTML = "✖";
             }
         }
     }
@@ -4546,10 +4548,43 @@ function atualizarLinha(linha){
     }
 }
 
+function atualizarPrioridade(select){
+
+    select.classList.remove(
+        "prio-baixo",
+        "prio-medio",
+        "prio-alto",
+        "prio-extremo"
+    );
+
+    switch(select.value){
+
+        case "BAIXO":
+            select.classList.add("prio-baixo");
+            break;
+
+        case "MÉDIO":
+            select.classList.add("prio-medio");
+            break;
+
+        case "ALTO":
+            select.classList.add("prio-alto");
+            break;
+
+        case "EXTREMO":
+            select.classList.add("prio-extremo");
+            break;
+    }
+}
+
 function adicionarRecomendacao() {
 
     const container =
         document.getElementById("recomendacoes");
+
+    if (!container) {
+        return;
+    }
 
     const div =
         document.createElement("div");
@@ -4582,6 +4617,7 @@ function adicionarRecomendacao() {
             <select
                 name="nova_prioridade[]"
                 class="prioridade prio-baixo"
+                onchange="atualizarLinha(this); atualizarPrioridade(this)"
             >
 
                 <option value="BAIXO">
@@ -4611,6 +4647,7 @@ function adicionarRecomendacao() {
             <select
                 name="novo_status[]"
                 class="status-recomendacao"
+                onchange="atualizarLinha(this)"
             >
 
                 <option value="NÃO ATENDIDO">
@@ -4645,60 +4682,52 @@ function adicionarRecomendacao() {
 
     container.appendChild(div);
 
-    // Aplica as cores imediatamente
-    atualizarLinha(div);
+    // Aplicar as cores iniciais
+    const prioridade =
+        div.querySelector(
+            "select[name='nova_prioridade[]']"
+        );
+
+    const status =
+        div.querySelector(
+            "select[name='novo_status[]']"
+        );
+
+    if (prioridade) {
+        atualizarPrioridade(prioridade);
+    }
+
+    if (status) {
+        atualizarLinha(status);
+    }
 }
 
 document.addEventListener("DOMContentLoaded", function(){
-
-    // =====================================================
-    // CORES INICIAIS
-    // =====================================================
 
     document
         .querySelectorAll(".rec")
         .forEach(function(linha){
 
-            atualizarLinha(linha);
+            const status =
+                linha.querySelector(
+                    "select[name='status[]'], select[name='novo_status[]']"
+                );
+
+            const prioridade =
+                linha.querySelector(
+                    "select[name='prioridade[]'], select[name='nova_prioridade[]']"
+                );
+
+            if (status) {
+                atualizarLinha(status);
+            }
+
+            if (prioridade) {
+                atualizarPrioridade(prioridade);
+            }
 
         });
 
-
-    // =====================================================
-    // ALTERAÇÃO DE STATUS
-    // =====================================================
-
-    document.addEventListener("change", function(event){
-
-        if (
-            event.target.matches(
-                ".status-recomendacao"
-            )
-        ) {
-
-            const linha =
-                event.target.closest(".rec");
-
-            atualizarLinha(linha);
-        }
-
-
-        // =================================================
-        // ALTERAÇÃO DE PRIORIDADE
-        // =================================================
-
-        if (
-            event.target.matches(
-                ".prioridade"
-            )
-        ) {
-
-            const linha =
-                event.target.closest(".rec");
-
-            atualizarLinha(linha);
-        }
-    });
 });
 
 function confirmarExcluirOS(){
@@ -5535,7 +5564,7 @@ def recomendacoes_monitoramentos(os_codigo):
         LEFT JOIN colaboradores c
             ON c.id = rm.servidor_id
 
-        WHERE TRIM(rm.os_codigo) = TRIM(%s)
+        WHERE rm.os_codigo = %s
 
         ORDER BY
             rm.data_monitoramento DESC,

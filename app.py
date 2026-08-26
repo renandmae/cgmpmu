@@ -3700,6 +3700,7 @@ select {
     
             <input
                 type="text"
+                id="campoOS"
                 name="os"
                 value="{{ os_codigo }}"
                 placeholder="Digite o código ou o nome da O.S..."
@@ -4588,48 +4589,53 @@ def listar_recomendacoes():
     cur.execute("""
         SELECT
             r.id,
-
+    
             r.os_codigo,
-
+    
             COALESCE(
                 NULLIF(r.resumo_os, ''),
                 o.resumo,
                 ''
             ) AS resumo,
-
+    
             COALESCE(
                 o.unidade,
                 ''
-            ) AS secretarias,
-
+            ) AS unidade,
+    
+            COALESCE(
+                o.uo,
+                ''
+            ) AS secretaria,
+    
             r.descricao AS recomendacao,
-
+    
             r.status,
-
+    
             r.prioridade,
-
+    
             mc.prazo_monitoramento
-
+    
         FROM recomendacoes r
-
+    
         LEFT JOIN os o
             ON o.codigo = r.os_codigo
-
+    
         LEFT JOIN recomendacao_monitoramento_config mc
             ON mc.os_codigo = r.os_codigo
-
+    
         ORDER BY
             CASE
                 WHEN r.os_codigo ~ '/[0-9]{4}$'
                 THEN split_part(r.os_codigo, '/', 2)::int
                 ELSE 0
             END DESC,
-
+    
             r.os_codigo DESC,
-
+    
             r.id ASC
     """)
-
+    
     rows = cur.fetchall()
 
     con.close()
@@ -4844,7 +4850,8 @@ tr:hover{
 
                     <th>O.S</th>
                     <th>Resumo</th>
-                    <th>Secretarias</th>
+                    <th>Diretoria</th>
+                    <th>Un. Audit.</th>
                     <th>Recomendação</th>
                     <th>Status</th>
                     <th>Prioridade</th>
@@ -4869,7 +4876,11 @@ tr:hover{
                     </td>
 
                     <td>
-                        {{r.secretarias or '-'}}
+                        {{r.unidade or '-'}}
+                    </td>
+                    
+                    <td>
+                        {{r.secretaria or '-'}}
                     </td>
 
                     <td>
@@ -5191,40 +5202,45 @@ def recomendacoes_export():
     cur.execute("""
         SELECT
             r.os_codigo,
-
+    
             COALESCE(
                 NULLIF(r.resumo_os, ''),
                 o.resumo,
                 ''
             ) AS resumo,
-
+    
             COALESCE(
                 o.unidade,
                 ''
-            ) AS secretarias,
-
+            ) AS unidade,
+    
+            COALESCE(
+                o.uo,
+                ''
+            ) AS secretaria,
+    
             r.descricao AS recomendacao,
             r.status,
             r.prioridade,
             mc.prazo_monitoramento
-
+    
         FROM recomendacoes r
-
+    
         LEFT JOIN os o
             ON o.codigo = r.os_codigo
-
+    
         LEFT JOIN recomendacao_monitoramento_config mc
             ON mc.os_codigo = r.os_codigo
-
+    
         ORDER BY
             CASE
                 WHEN r.os_codigo ~ '/[0-9]{4}$'
                 THEN split_part(r.os_codigo, '/', 2)::int
                 ELSE 0
             END DESC,
-
+    
             r.os_codigo DESC,
-
+    
             r.id ASC
     """)
 
@@ -5239,7 +5255,8 @@ def recomendacoes_export():
     cabecalho = [
         "O.S",
         "Resumo",
-        "Secretarias",
+        "Unidade",
+        "Secretaria",
         "Recomendação",
         "Status",
         "Prioridade",
@@ -5270,7 +5287,8 @@ def recomendacoes_export():
         ws.append([
             r["os_codigo"],
             r["resumo"] or "",
-            r["secretarias"] or "",
+            r["unidade"] or "",
+            r["secretaria"] or "",
             r["recomendacao"] or "",
             r["status"] or "",
             r["prioridade"] or "",

@@ -5395,71 +5395,159 @@ def recomendacoes_export():
         return redirect('/')
 
     import io
+
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
+    from flask import send_file
 
     con = get_db()
     cur = con.cursor()
 
-    cur.execute("""
+    # =========================================================
+    # FILTROS RECEBIDOS DA TELA
+    # =========================================================
+
+    status_filtro = request.args.get("status", "").strip()
+    busca = request.args.get("busca", "").strip()
+
+    where = []
+    params = []
+
+    # ---------------------------------------------------------
+    # FILTRO STATUS
+    # ---------------------------------------------------------
+
+    if status_filtro:
+
+        where.append("""
+            r.status = %s
+        """)
+
+        params.append(status_filtro)
+
+    # ---------------------------------------------------------
+    # PESQUISA GERAL
+    # ---------------------------------------------------------
+
+    if busca:
+
+        where.append("""
+            (
+                r.os_codigo ILIKE %s
+                OR r.resumo_os ILIKE %s
+                OR o.codigo ILIKE %s
+                OR o.resumo ILIKE %s
+                OR o.unidade ILIKE %s
+                OR o.uo ILIKE %s
+                OR r.descricao ILIKE %s
+                OR r.status ILIKE %s
+                OR r.prioridade ILIKE %s
+            )
+        """)
+
+        texto = f"%{busca}%"
+
+        params.extend([
+            texto,   # O.S da recomendação
+            texto,   # resumo salvo na recomendação
+            texto,   # código da O.S
+            texto,   # resumo da O.S
+            texto,   # unidade
+            texto,   # secretaria / uo
+            texto,   # recomendação
+            texto,   # status
+            texto    # prioridade
+        ])
+
+    # =========================================================
+    # WHERE
+    # =========================================================
+
+    sql_where = ""
+
+    if where:
+        sql_where = "WHERE " + " AND ".join(where)
+
+    # =========================================================
+    # CONSULTA
+    # =========================================================
+
+    cur.execute(f"""
         SELECT
+
             r.os_codigo,
-    
+
             COALESCE(
                 NULLIF(r.resumo_os, ''),
                 o.resumo,
                 ''
             ) AS resumo,
-    
+
             COALESCE(
                 o.unidade,
                 ''
             ) AS unidade,
-    
+
             COALESCE(
                 o.uo,
                 ''
             ) AS secretaria,
-    
+
             r.descricao AS recomendacao,
+
             r.status,
+
             r.prioridade,
+
             mc.prazo_monitoramento
-    
+
         FROM recomendacoes r
-    
+
         LEFT JOIN os o
             ON o.codigo = r.os_codigo
-    
+
         LEFT JOIN recomendacao_monitoramento_config mc
             ON mc.os_codigo = r.os_codigo
-    
+
+        {sql_where}
+
         ORDER BY
+
             CASE
                 WHEN r.os_codigo ~ '/[0-9]{4}$'
                 THEN split_part(r.os_codigo, '/', 2)::int
                 ELSE 0
             END DESC,
-    
+
             r.os_codigo DESC,
-    
+
             r.id ASC
-    """)
+
+    """, params)
 
     rows = cur.fetchall()
 
     con.close()
 
+    # =========================================================
+    # CRIAR EXCEL
+    # =========================================================
+
     wb = Workbook()
+
     ws = wb.active
     ws.title = "Recomendações"
+
+    # =========================================================
+    # CABEÇALHO
+    # =========================================================
 
     cabecalho = [
         "O.S",
         "Resumo",
-        "Unidade",
-        "Secretaria",
+        "Diretoria",
+        "Un. Audit.",
         "Recomendação",
         "Status",
         "Prioridade",
@@ -5467,6 +5555,10 @@ def recomendacoes_export():
     ]
 
     ws.append(cabecalho)
+
+    # =========================================================
+    # ESTILO CABEÇALHO
+    # =========================================================
 
     for cell in ws[1]:
 
@@ -5476,7 +5568,7 @@ def recomendacoes_export():
         )
 
         cell.fill = PatternFill(
-            "solid",
+            fill_type="solid",
             fgColor="1E3A8A"
         )
 
@@ -5485,38 +5577,144 @@ def recomendacoes_export():
             vertical="center"
         )
 
+    # =========================================================
+    # DADOS
+    # =========================================================
+
     for r in rows:
 
         ws.append([
-            r["os_codigo"],
+
+            r["os_codigo"] or "",
+
             r["resumo"] or "",
+
             r["unidade"] or "",
+
             r["secretaria"] or "",
+
             r["recomendacao"] or "",
+
             r["status"] or "",
+
             r["prioridade"] or "",
+
             (
                 r["prazo_monitoramento"].strftime("%d/%m/%Y")
                 if r["prazo_monitoramento"]
                 else ""
             )
+
         ])
 
-    larguras = [
-        16,
-        45,
-        30,
-        80,
-        20,
-        15,
-        18
-    ]
+    # =========================================================
+    # CORES DOS STATUS
+    # =========================================================
 
-    for i, largura in enumerate(larguras, start=1):
+    for row in ws.iter_rows(
+        min_row=2,
+        max_row=ws.max_row
+    ):
 
-        ws.column_dimensions[
-            get_column_letter(i)
-        ].width = largura
+        status = row[5].value
+
+        prioridade = row[6].value
+
+        # -----------------------------------------------------
+        # STATUS
+        # -----------------------------------------------------
+
+        if status == "ATENDIDO":
+
+            row[5].fill = PatternFill(
+                fill_type="solid",
+                fgColor="DCFCE7"
+            )
+
+            row[5].font = Font(
+                bold=True,
+                color="166534"
+            )
+
+        elif status == "PARCIALMENTE":
+
+            row[5].fill = PatternFill(
+                fill_type="solid",
+                fgColor="FEF9C3"
+            )
+
+            row[5].font = Font(
+                bold=True,
+                color="854D0E"
+            )
+
+        elif status == "NÃO ATENDIDO":
+
+            row[5].fill = PatternFill(
+                fill_type="solid",
+                fgColor="FEE2E2"
+            )
+
+            row[5].font = Font(
+                bold=True,
+                color="991B1B"
+            )
+
+        # -----------------------------------------------------
+        # PRIORIDADE
+        # -----------------------------------------------------
+
+        if prioridade == "BAIXO":
+
+            row[6].fill = PatternFill(
+                fill_type="solid",
+                fgColor="DCFCE7"
+            )
+
+            row[6].font = Font(
+                bold=True,
+                color="166534"
+            )
+
+        elif prioridade == "MÉDIO":
+
+            row[6].fill = PatternFill(
+                fill_type="solid",
+                fgColor="FEF9C3"
+            )
+
+            row[6].font = Font(
+                bold=True,
+                color="854D0E"
+            )
+
+        elif prioridade == "ALTO":
+
+            row[6].fill = PatternFill(
+                fill_type="solid",
+                fgColor="FED7AA"
+            )
+
+            row[6].font = Font(
+                bold=True,
+                color="9A3412"
+            )
+
+        elif prioridade == "EXTREMO":
+
+            row[6].fill = PatternFill(
+                fill_type="solid",
+                fgColor="111827"
+            )
+
+            row[6].font = Font(
+                bold=True,
+                color="FFFFFF"
+            )
+
+    # =========================================================
+    # ALINHAMENTO
+    # =========================================================
 
     for row in ws.iter_rows():
 
@@ -5527,7 +5725,55 @@ def recomendacoes_export():
                 wrap_text=True
             )
 
+    # =========================================================
+    # LARGURAS
+    # =========================================================
+
+    larguras = [
+        16,   # O.S
+        45,   # Resumo
+        25,   # Diretoria
+        20,   # Un. Audit.
+        80,   # Recomendação
+        20,   # Status
+        15,   # Prioridade
+        18    # Data Prazo
+    ]
+
+    for i, largura in enumerate(
+        larguras,
+        start=1
+    ):
+
+        ws.column_dimensions[
+            get_column_letter(i)
+        ].width = largura
+
+    # =========================================================
+    # CONGELAR CABEÇALHO
+    # =========================================================
+
     ws.freeze_panes = "A2"
+
+    # =========================================================
+    # FILTRO AUTOMÁTICO DO EXCEL
+    # =========================================================
+
+    if ws.max_row >= 2:
+
+        ws.auto_filter.ref = (
+            f"A1:H{ws.max_row}"
+        )
+
+    # =========================================================
+    # ALTURA DO CABEÇALHO
+    # =========================================================
+
+    ws.row_dimensions[1].height = 25
+
+    # =========================================================
+    # GERAR ARQUIVO
+    # =========================================================
 
     arquivo = io.BytesIO()
 
@@ -5535,10 +5781,47 @@ def recomendacoes_export():
 
     arquivo.seek(0)
 
+    # =========================================================
+    # NOME DO ARQUIVO
+    # =========================================================
+
+    nome_arquivo = "recomendacoes_auditoria"
+
+    if status_filtro:
+
+        nome_arquivo += (
+            "_" +
+            status_filtro
+            .lower()
+            .replace(" ", "_")
+            .replace("ã", "a")
+            .replace("ç", "c")
+        )
+
+    if busca:
+
+        nome_busca = (
+            busca
+            .replace(" ", "_")
+            .replace("/", "-")
+        )
+
+        nome_arquivo += "_" + nome_busca
+
+    nome_arquivo += ".xlsx"
+
+    # =========================================================
+    # DOWNLOAD
+    # =========================================================
+
     return send_file(
+
         arquivo,
+
         as_attachment=True,
-        download_name="recomendacoes_auditoria.xlsx",
+
+        download_name=nome_arquivo,
+
         mimetype=(
             "application/vnd.openxmlformats-officedocument."
             "spreadsheetml.sheet"

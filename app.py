@@ -3081,75 +3081,38 @@ def recomendacoes_os():
     
     termo_os = request.args.get("os", "").strip()
     
-    os_codigo = ""
+    os_codigo = termo_os
     os_resumo = ""
     
     if termo_os:
     
-        # -----------------------------------------------------
-        # PRIMEIRO: verificar se a O.S. já possui recomendações
-        # -----------------------------------------------------
-    
         cur.execute("""
             SELECT
-                os_codigo,
-                COALESCE(MAX(NULLIF(resumo_os, '')), '') AS resumo
-            FROM recomendacoes
-            WHERE TRIM(os_codigo) = TRIM(%s)
-            GROUP BY os_codigo
+                codigo,
+                resumo
+            FROM os
+            WHERE codigo ILIKE %s
+               OR resumo ILIKE %s
+            ORDER BY
+                CASE
+                    WHEN codigo = %s THEN 0
+                    WHEN codigo ILIKE %s THEN 1
+                    ELSE 2
+                END,
+                codigo
             LIMIT 1
-        """, (termo_os,))
+        """, (
+            termo_os,
+            f"%{termo_os}%",
+            termo_os,
+            f"{termo_os}%"
+        ))
     
-        os_recomendacao = cur.fetchone()
+        os_encontrada = cur.fetchone()
     
-        if os_recomendacao:
-    
-            os_codigo = os_recomendacao["os_codigo"]
-            os_resumo = os_recomendacao["resumo"] or ""
-    
-        else:
-    
-            # -------------------------------------------------
-            # SE NÃO TEM RECOMENDAÇÃO, PROCURAR NA TABELA OS
-            # -------------------------------------------------
-    
-            cur.execute("""
-                SELECT
-                    codigo,
-                    resumo
-                FROM os
-                WHERE TRIM(codigo) ILIKE TRIM(%s)
-                   OR resumo ILIKE %s
-                ORDER BY
-                    CASE
-                        WHEN TRIM(codigo) = TRIM(%s) THEN 0
-                        WHEN TRIM(codigo) ILIKE TRIM(%s) THEN 1
-                        ELSE 2
-                    END,
-                    codigo
-                LIMIT 1
-            """, (
-                termo_os,
-                f"%{termo_os}%",
-                termo_os,
-                f"{termo_os}%"
-            ))
-    
-            os_encontrada = cur.fetchone()
-    
-            if os_encontrada:
-    
-                os_codigo = os_encontrada["codigo"]
-                os_resumo = os_encontrada["resumo"] or ""
-    
-            else:
-    
-                # -------------------------------------------------
-                # MESMO QUE NÃO EXISTA NA TABELA OS,
-                # MANTÉM O CÓDIGO INFORMADO
-                # -------------------------------------------------
-    
-                os_codigo = termo_os
+        if os_encontrada:
+            os_codigo = os_encontrada["codigo"]
+            os_resumo = os_encontrada["resumo"] or ""
 
     # =========================================================
     # O.S. JÁ CADASTRADAS NAS RECOMENDAÇÕES
@@ -3211,74 +3174,6 @@ def recomendacoes_os():
             return "Informe o código da O.S."
 
         acao = request.form.get("acao")
-
-        # =====================================================
-        # EXCLUIR TODA A O.S.
-        # =====================================================
-        
-        if acao == "excluir_os_recomendacoes":
-        
-            if not os_codigo:
-                con.close()
-                return "O.S. não informada."
-        
-            # -------------------------------------------------
-            # Primeiro apagar o histórico de monitoramentos
-            # -------------------------------------------------
-        
-            cur.execute("""
-                DELETE FROM recomendacao_monitoramentos
-                WHERE TRIM(os_codigo) = TRIM(%s)
-            """, (os_codigo,))
-        
-            # -------------------------------------------------
-            # Apagar configuração de monitoramento
-            # -------------------------------------------------
-        
-            cur.execute("""
-                DELETE FROM recomendacao_monitoramento_config
-                WHERE TRIM(os_codigo) = TRIM(%s)
-            """, (os_codigo,))
-        
-            # -------------------------------------------------
-            # Apagar todas as recomendações
-            # -------------------------------------------------
-        
-            cur.execute("""
-                DELETE FROM recomendacoes
-                WHERE TRIM(os_codigo) = TRIM(%s)
-            """, (os_codigo,))
-        
-            con.commit()
-            con.close()
-        
-            return redirect("/recomendacoes")
-
-        # =====================================================
-        # EXCLUIR UM MONITORAMENTO
-        # =====================================================
-        
-        elif acao == "excluir_monitoramento":
-        
-            monitoramento_id = request.form.get("monitoramento_id")
-        
-            if monitoramento_id:
-        
-                cur.execute("""
-                    DELETE FROM recomendacao_monitoramentos
-                    WHERE id = %s
-                      AND TRIM(os_codigo) = TRIM(%s)
-                """, (
-                    monitoramento_id,
-                    os_codigo
-                ))
-        
-            con.commit()
-            con.close()
-        
-            return redirect(
-                f"/recomendacoes?os={quote(os_codigo)}"
-            )
 
         # =====================================================
         # SALVAR RECOMENDAÇÕES
@@ -3408,7 +3303,7 @@ def recomendacoes_os():
                 cur.execute("""
                     DELETE FROM recomendacoes
                     WHERE id = %s
-                      AND TRIM(os_codigo) = TRIM(%s)
+                      AND os_codigo = %s
                 """, (
                     rec_id,
                     os_codigo
@@ -3760,57 +3655,12 @@ select {
 
 <div class="card">
 
-    <div style="
-        display:flex;
-        justify-content:space-between;
-        align-items:flex-start;
-        gap:15px;
-    ">
+    <div class="titulo">
+        📋 Recomendações de Auditoria
+    </div>
 
-        <div>
-
-            <div class="titulo">
-                📋 Recomendações de Auditoria
-            </div>
-
-            <div class="subtitulo">
-                Informe a O.S para consultar ou registrar as recomendações.
-            </div>
-
-        </div>
-
-        {% if os_codigo %}
-
-        <form
-            method="post"
-            onsubmit="return confirmarExcluirOS();"
-            style="margin:0;"
-        >
-
-            <input
-                type="hidden"
-                name="os_codigo"
-                value="{{ os_codigo }}"
-            >
-
-            <input
-                type="hidden"
-                name="acao"
-                value="excluir_os_recomendacoes"
-            >
-
-            <button
-                type="submit"
-                class="btn btn-danger"
-                title="Excluir todas as recomendações e monitoramentos desta O.S."
-            >
-                🗑 Excluir O.S.
-            </button>
-
-        </form>
-
-        {% endif %}
-
+    <div class="subtitulo">
+        Informe a O.S para consultar ou registrar as recomendações.
     </div>
 
     <form method="get" style="margin-top:15px;">
@@ -3832,7 +3682,6 @@ select {
             {% for o in os_cadastradas %}
             <option
                 value="{{o.os_codigo}}"
-                {% if o.os_codigo|trim == os_codigo|trim %}selected{% endif %}
             >
                 {{o.os_codigo}}
                 {% if o.resumo %}
@@ -4308,76 +4157,12 @@ select {
                 {% for m in monitoramentos %}
 
                 <div class="monitor-item">
-                    <div style="
-                        display:flex;
-                        justify-content:space-between;
-                        align-items:flex-start;
-                        gap:10px;
-                    ">
-                
-                        <div>
-                
-                            <b>
-                                📅
-                                {{ m.data_monitoramento.strftime('%d/%m/%Y') if m.data_monitoramento else '' }}
-                            </b>
-                
-                        </div>
-                
-                        <form
-                            method="post"
-                            onsubmit="return confirmarExcluirMonitoramento();"
-                            style="margin:0;"
-                        >
-                
-                            <input
-                                type="hidden"
-                                name="os_codigo"
-                                value="{{ os_codigo }}"
-                            >
-                
-                            <input
-                                type="hidden"
-                                name="acao"
-                                value="excluir_monitoramento"
-                            >
-                
-                            <input
-                                type="hidden"
-                                name="monitoramento_id"
-                                value="{{ m.id }}"
-                            >
-                
-                            <button
-                                type="submit"
-                                class="btn btn-danger"
-                                style="
-                                    padding:6px 10px;
-                                    font-size:13px;
-                                "
-                                title="Excluir este monitoramento"
-                            >
-                                🗑
-                            </button>
-                
-                        </form>
-                
+
+                    <div>
+                        <b>
+                            📅 {{ m.data_monitoramento.strftime('%d/%m/%Y') if m.data_monitoramento else '' }}
+                        </b>
                     </div>
-                
-                    <div style="margin-top:8px;">
-                        {{ m.observacao or 'Sem observações.' }}
-                    </div>
-                
-                    <div style="
-                        margin-top:8px;
-                        color:#6b7280;
-                        font-size:13px;
-                    ">
-                        👤 Registrado por:
-                        <b>{{ m.colaborador or 'Não identificado' }}</b>
-                    </div>
-                
-                </div>
 
                     <div style="margin-top:8px;">
                         {{ m.observacao or 'Sem observações.' }}
@@ -4767,29 +4552,6 @@ function selecionarOS(select){
     window.location.href =
         "/recomendacoes?os=" +
         encodeURIComponent(valor);
-}
-
-function confirmarExcluirOS() {
-
-    return confirm(
-        "ATENÇÃO!\n\n" +
-        "Você está prestes a excluir TODOS os dados desta O.S.\n\n" +
-        "Serão apagados:\n" +
-        "• Todas as recomendações\n" +
-        "• Todos os monitoramentos registrados\n" +
-        "• A configuração de prazo de monitoramento\n\n" +
-        "Essa operação não poderá ser desfeita.\n\n" +
-        "Deseja realmente continuar?"
-    );
-}
-
-
-function confirmarExcluirMonitoramento() {
-
-    return confirm(
-        "Deseja realmente excluir este monitoramento?\n\n" +
-        "Somente este registro será apagado."
-    );
 }
 </script>
 

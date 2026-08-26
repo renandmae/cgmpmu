@@ -3078,14 +3078,14 @@ def recomendacoes_os():
     # =========================================================
     # IDENTIFICAR O.S
     # =========================================================
-    
+
     termo_os = request.args.get("os", "").strip()
-    
+
     os_codigo = termo_os
     os_resumo = ""
-    
+
     if termo_os:
-    
+
         cur.execute("""
             SELECT
                 codigo,
@@ -3107,9 +3107,9 @@ def recomendacoes_os():
             termo_os,
             f"{termo_os}%"
         ))
-    
+
         os_encontrada = cur.fetchone()
-    
+
         if os_encontrada:
             os_codigo = os_encontrada["codigo"]
             os_resumo = os_encontrada["resumo"] or ""
@@ -3117,35 +3117,35 @@ def recomendacoes_os():
     # =========================================================
     # O.S. JÁ CADASTRADAS NAS RECOMENDAÇÕES
     # =========================================================
-    
+
     cur.execute("""
         SELECT
             r.os_codigo,
-    
+
             COALESCE(
                 NULLIF(MAX(r.resumo_os), ''),
                 MAX(o.resumo),
                 ''
             ) AS resumo,
-    
+
             CASE
                 WHEN r.os_codigo ~ '/[0-9]{4}$'
                 THEN split_part(r.os_codigo, '/', 2)::int
                 ELSE 0
             END AS ano
-    
+
         FROM recomendacoes r
-    
+
         LEFT JOIN os o
             ON o.codigo = r.os_codigo
-    
+
         GROUP BY r.os_codigo
-    
+
         ORDER BY
             ano DESC,
             r.os_codigo DESC
     """)
-    
+
     os_cadastradas = cur.fetchall()
 
     # =========================================================
@@ -3156,16 +3156,16 @@ def recomendacoes_os():
 
         os_codigo = request.form.get("os_codigo", "").strip()
         os_resumo = request.form.get("os_resumo", "").strip()
-        
+
         cur.execute("""
             SELECT resumo
             FROM os
             WHERE codigo = %s
             LIMIT 1
         """, (os_codigo,))
-        
+
         os_db = cur.fetchone()
-        
+
         if os_db:
             os_resumo = os_db["resumo"] or ""
 
@@ -3181,22 +3181,31 @@ def recomendacoes_os():
 
         if acao == "excluir_monitoramento_os":
 
-            # Apagar histórico de monitoramentos
+            # -------------------------------------------------
+            # Apagar todos os monitoramentos
+            # -------------------------------------------------
+
             cur.execute("""
                 DELETE FROM recomendacao_monitoramentos
-                WHERE TRIM(os_codigo) = TRIM(%s)
+                WHERE os_codigo = %s
             """, (os_codigo,))
 
+            # -------------------------------------------------
             # Apagar configuração de monitoramento
+            # -------------------------------------------------
+
             cur.execute("""
                 DELETE FROM recomendacao_monitoramento_config
-                WHERE TRIM(os_codigo) = TRIM(%s)
+                WHERE os_codigo = %s
             """, (os_codigo,))
 
+            # -------------------------------------------------
             # Apagar todas as recomendações
+            # -------------------------------------------------
+
             cur.execute("""
                 DELETE FROM recomendacoes
-                WHERE TRIM(os_codigo) = TRIM(%s)
+                WHERE os_codigo = %s
             """, (os_codigo,))
 
             con.commit()
@@ -3234,13 +3243,13 @@ def recomendacoes_os():
                 cur.execute("""
                     UPDATE recomendacoes
                     SET
-                        resumo_os=%s,
+                        resumo_os = %s,
                         descricao = %s,
                         prioridade = %s,
                         status = %s,
                         atualizado_em = NOW()
                     WHERE id = %s
-                      AND TRIM(os_codigo) = TRIM(%s)
+                      AND os_codigo = %s
                 """, (
                     os_resumo,
                     descricao,
@@ -3254,9 +3263,17 @@ def recomendacoes_os():
             # Novas recomendações
             # -------------------------------------------------
 
-            novas_descricoes = request.form.getlist("nova_recomendacao[]")
-            novas_prioridades = request.form.getlist("nova_prioridade[]")
-            novos_status = request.form.getlist("novo_status[]")
+            novas_descricoes = request.form.getlist(
+                "nova_recomendacao[]"
+            )
+
+            novas_prioridades = request.form.getlist(
+                "nova_prioridade[]"
+            )
+
+            novos_status = request.form.getlist(
+                "novo_status[]"
+            )
 
             for descricao, prioridade, st in zip(
                 novas_descricoes,
@@ -3290,8 +3307,9 @@ def recomendacoes_os():
             # CONFIGURAÇÃO DE MONITORAMENTO DA O.S
             # -------------------------------------------------
 
-
-            prazo = request.form.get("prazo_monitoramento") or None
+            prazo = request.form.get(
+                "prazo_monitoramento"
+            ) or None
 
             cur.execute("""
                 INSERT INTO recomendacao_monitoramento_config (
@@ -3335,7 +3353,7 @@ def recomendacoes_os():
                 cur.execute("""
                     DELETE FROM recomendacao_monitoramentos
                     WHERE id = %s
-                      AND TRIM(os_codigo) = TRIM(%s)
+                      AND os_codigo = %s
                 """, (
                     monitoramento_id,
                     os_codigo
@@ -3357,10 +3375,11 @@ def recomendacoes_os():
             rec_id = request.form.get("rec_id")
 
             if rec_id:
+
                 cur.execute("""
                     DELETE FROM recomendacoes
                     WHERE id = %s
-                      AND TRIM(os_codigo) = TRIM(%s)
+                      AND os_codigo = %s
                 """, (
                     rec_id,
                     os_codigo
@@ -3388,7 +3407,9 @@ def recomendacoes_os():
             )
 
             if not data_monitoramento:
+
                 con.close()
+
                 return "Informe a data do monitoramento."
 
             cur.execute("""
@@ -3451,7 +3472,7 @@ def recomendacoes_os():
             FROM recomendacao_monitoramento_config
             WHERE TRIM(os_codigo) = TRIM(%s)
         """, (os_codigo,))
-        
+
         monitoramento = cur.fetchone()
 
     # =========================================================
@@ -3470,9 +3491,12 @@ def recomendacoes_os():
                 rm.criado_em,
                 c.nome AS colaborador
             FROM recomendacao_monitoramentos rm
+
             LEFT JOIN colaboradores c
                 ON c.id = rm.servidor_id
+
             WHERE rm.os_codigo = %s
+
             ORDER BY
                 rm.data_monitoramento DESC,
                 rm.id DESC
@@ -3504,6 +3528,7 @@ def recomendacoes_os():
     percentual = 0
 
     if total > 0:
+
         percentual = int(
             (atendidas / total) * 100
         )
@@ -3710,6 +3735,10 @@ select {
 </style>
 
 
+<!-- ===================================================== -->
+<!-- CABEÇALHO / SELEÇÃO DA O.S. -->
+<!-- ===================================================== -->
+
 <div class="card">
 
     <div style="
@@ -3756,7 +3785,7 @@ select {
                 class="btn btn-danger"
                 title="Excluir todos os dados desta O.S"
             >
-                🗑 Excluir monitoramento
+                🗑 Zerar O.S.
             </button>
 
         </form>
@@ -3765,428 +3794,491 @@ select {
 
     </div>
 
-    <form method="get" style="margin-top:15px;">
-    
+
+    <form
+        method="get"
+        style="margin-top:15px;"
+    >
+
         <div style="margin-bottom:15px;">
 
-        <label>
-            <b>O.S. já cadastradas</b>
-        </label>
-        
-        <select
-            id="osCadastrada"
-            onchange="selecionarOS(this)"
-        >
-    
-            <option value="">
-                Selecione uma O.S...
-            </option>
-            {% for o in os_cadastradas %}
-            <option
-                value="{{o.os_codigo}}"
+            <label>
+                <b>O.S. já cadastradas</b>
+            </label>
+
+            <select
+                id="osCadastrada"
+                onchange="selecionarOS(this)"
             >
-                {{o.os_codigo}}
-                {% if o.resumo %}
-                    - {{o.resumo}}
-                {% endif %}
-            </option>
-            {% endfor %}
-        </select>
-    </div>
-        
+
+                <option value="">
+                    Selecione uma O.S...
+                </option>
+
+                {% for o in os_cadastradas %}
+
+                <option
+                    value="{{o.os_codigo}}"
+                >
+                    {{o.os_codigo}}
+
+                    {% if o.resumo %}
+                        - {{o.resumo}}
+                    {% endif %}
+
+                </option>
+
+                {% endfor %}
+
+            </select>
+
+        </div>
+
+
         <div class="os-box">
 
-        <div>
-            <label><b>O.S</b></label>
-    
-            <input
-                type="text"
-                id="campoOS"
-                name="os"
-                value="{{ os_codigo }}"
-                placeholder="Digite o código ou o nome da O.S..."
-                required
-            >
-        </div>
-    
-        <div style="flex:0 0 130px;">
-            <button
-                class="btn"
-                style="width:100%;">
-                Consultar
-            </button>
-        </div>
-    
-    </div>
-        <div style="margin-top:15px;">
-
-        <label>
-            <b>Resumo da O.S</b>
-        </label>
-    
-        <input
-            type="text"
-            name="resumo_os"
-            value="{{ os_resumo }}"
-            placeholder="Nome / descrição da O.S"
-            {% if os_resumo %}
-                readonly
-            {% endif %}
-        >
-    
-        {% if os_resumo %}
-        <div style="
-            margin-top:6px;
-            font-size:12px;
-            color:#16a34a;
-        ">
-            ✓ Resumo carregado automaticamente da tabela de O.S.
-        </div>
-        {% else %}
-        <div style="
-            margin-top:6px;
-            font-size:12px;
-            color:#64748b;
-        ">
-            O.S não localizada no cadastro. Informe manualmente o resumo.
-        </div>
-        {% endif %}
-    
-    </div>
-    </form>
-
-</div>
-<script>
-function selecionarOS(select){
-    const valor = select.value;
-    if (!valor) {
-        return;
-    }
-    window.location.href =
-        "/recomendacoes?os=" +
-        encodeURIComponent(valor);
-}
-</script>
-{% if os_codigo %}
-
-<form method="post">
-
-<input
-    type="hidden"
-    name="os_codigo"
-    value="{{ os_codigo }}"
->
-
-<input
-    type="hidden"
-    name="acao"
-    value="salvar_recomendacoes"
->
-
-
-<!-- ===================================================== -->
-<!-- RECOMENDAÇÕES -->
-<!-- ===================================================== -->
-
-<div class="card">
-
-    <div style="
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-    ">
-
-        <div>
-            <div class="titulo">
-                📝 Recomendações
-            </div>
-
-            <div class="subtitulo">
-                <b>O.S {{ os_codigo }}</b>
-                {% if os_resumo %}
-                    — {{ os_resumo }}
-                {% endif %}
-            </div>
-        </div>
-
-        <button
-            type="button"
-            class="btn"
-            onclick="adicionarRecomendacao()"
-        >
-            ➕ Nova recomendação
-        </button>
-
-    </div>
-
-
-    <div style="margin-top:20px;">
-
-        <b>
-            📊 Progresso das recomendações
-        </b>
-
-        <div style="margin-top:8px;">
-            {{ atendidas }} atendidas |
-            {{ parcialmente }} parcialmente |
-            {{ nao_atendidas }} não atendidas
-        </div>
-
-        <div class="progress-box">
-
-            <div
-                class="progress-bar"
-                style="width:{{ percentual }}%"
-            >
-                {{ percentual }}%
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <div id="recomendacoes">
-
-        {% for r in recomendacoes %}
-
-        <div
-            class="rec
-            {% if r.status == 'ATENDIDO' %}
-                rec-atendido
-            {% elif r.status == 'PARCIALMENTE' %}
-                rec-parcial
-            {% else %}
-                rec-nao
-            {% endif %}"
-        >
-
-            <div
-                class="icone-status"
-                style="font-size:22px;">
-
-                {% if r.status == 'ATENDIDO' %}
-                    ✔
-                {% elif r.status == 'PARCIALMENTE' %}
-                    ◐
-                {% else %}
-                    ✖
-                {% endif %}
-
-            </div>
-
-
             <div>
+
+                <label>
+                    <b>O.S</b>
+                </label>
 
                 <input
-                    type="hidden"
-                    name="rec_id[]"
-                    value="{{ r.id }}"
+                    type="text"
+                    id="campoOS"
+                    name="os"
+                    value="{{ os_codigo }}"
+                    placeholder="Digite o código ou o nome da O.S..."
+                    required
                 >
-
-                <textarea
-                    name="recomendacao[]"
-                    rows="2"
-                >{{ r.descricao }}</textarea>
 
             </div>
 
 
-            <div>
-
-                <label><b>Prioridade</b></label>
-
-                <select
-                    name="prioridade[]"
-                    class="prioridade"
-                    onchange="atualizarLinha(this); atualizarPrioridade(this)"
-                >
-
-                    <option
-                        value="BAIXO"
-                        {% if r.prioridade == 'BAIXO' %}selected{% endif %}
-                    >
-                        Baixo
-                    </option>
-
-                    <option
-                        value="MÉDIO"
-                        {% if r.prioridade == 'MÉDIO' %}selected{% endif %}
-                    >
-                        Médio
-                    </option>
-
-                    <option
-                        value="ALTO"
-                        {% if r.prioridade == 'ALTO' %}selected{% endif %}
-                    >
-                        Alto
-                    </option>
-
-                    <option
-                        value="EXTREMO"
-                        {% if r.prioridade == 'EXTREMO' %}selected{% endif %}
-                    >
-                        Extremo
-                    </option>
-
-                </select>
-
-            </div>
-
-
-            <div>
-
-                <label><b>Status</b></label>
-
-                <select
-                    name="status[]"
-                    class="status-recomendacao"
-                    onchange="atualizarLinha(this)"
-                >
-
-                    <option
-                        value="NÃO ATENDIDO"
-                        {% if r.status == 'NÃO ATENDIDO' %}selected{% endif %}
-                    >
-                        Não Atendido
-                    </option>
-
-                    <option
-                        value="PARCIALMENTE"
-                        {% if r.status == 'PARCIALMENTE' %}selected{% endif %}
-                    >
-                        Parcialmente
-                    </option>
-
-                    <option
-                        value="ATENDIDO"
-                        {% if r.status == 'ATENDIDO' %}selected{% endif %}
-                    >
-                        Atendido
-                    </option>
-
-                </select>
-
-            </div>
-
-
-            <div>
+            <div style="flex:0 0 130px;">
 
                 <button
-                    type="button"
-                    class="btn btn-danger"
-                    onclick="excluirRecomendacao(this, {{ r.id }})"
-                    title="Excluir recomendação"
+                    class="btn"
+                    style="width:100%;"
                 >
-                    🗑
+                    Consultar
                 </button>
 
             </div>
 
         </div>
 
-        {% endfor %}
 
-    </div>
+        <div style="margin-top:15px;">
+
+            <label>
+                <b>Resumo da O.S</b>
+            </label>
+
+            <input
+                type="text"
+                name="resumo_os"
+                value="{{ os_resumo }}"
+                placeholder="Nome / descrição da O.S"
+
+                {% if os_resumo %}
+                    readonly
+                {% endif %}
+            >
+
+            {% if os_resumo %}
+
+            <div style="
+                margin-top:6px;
+                font-size:12px;
+                color:#16a34a;
+            ">
+                ✓ Resumo carregado automaticamente da tabela de O.S.
+            </div>
+
+            {% else %}
+
+            <div style="
+                margin-top:6px;
+                font-size:12px;
+                color:#64748b;
+            ">
+                O.S não localizada no cadastro. Informe manualmente o resumo.
+            </div>
+
+            {% endif %}
+
+        </div>
+
+    </form>
 
 </div>
 
 
+<script>
+
+function selecionarOS(select){
+
+    const valor = select.value;
+
+    if (!valor) {
+        return;
+    }
+
+    window.location.href =
+        "/recomendacoes?os=" +
+        encodeURIComponent(valor);
+}
+
+</script>
+
+
+{% if os_codigo %}
+
 <!-- ===================================================== -->
-<!-- MONITORAMENTO -->
+<!-- FORMULÁRIO PRINCIPAL -->
+<!-- SOMENTE RECOMENDAÇÕES + PRAZO -->
 <!-- ===================================================== -->
 
-<div class="card">
+<form method="post">
 
-    <div class="titulo">
-        📅 Monitoramento
-    </div>
+    <input
+        type="hidden"
+        name="os_codigo"
+        value="{{ os_codigo }}"
+    >
 
-    <div class="monitor-grid" style="margin-top:15px;">
+    <input
+        type="hidden"
+        name="acao"
+        value="salvar_recomendacoes"
+    >
 
-        <div>
 
-            <div style="
-                display:flex;
-                align-items:center;
-                gap:10px;
-                margin-top:10px;
-            ">
+    <!-- ================================================= -->
+    <!-- RECOMENDAÇÕES -->
+    <!-- ================================================= -->
 
+    <div class="card">
+
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+        ">
+
+            <div>
+
+                <div class="titulo">
+                    📝 Recomendações
+                </div>
+
+                <div class="subtitulo">
+
+                    <b>
+                        O.S {{ os_codigo }}
+                    </b>
+
+                    {% if os_resumo %}
+                        — {{ os_resumo }}
+                    {% endif %}
+
+                </div>
 
             </div>
 
-            <label>
-                <b>Prazo Monitoramento</b>
-            </label>
 
-            <input
-                type="date"
-                name="prazo_monitoramento"
-                value="{% if monitoramento %}{{ monitoramento.prazo_monitoramento or '' }}{% endif %}"
+            <button
+                type="button"
+                class="btn"
+                onclick="adicionarRecomendacao()"
             >
+                ➕ Nova recomendação
+            </button>
+
+        </div>
+
+
+        <div style="margin-top:20px;">
+
+            <b>
+                📊 Progresso das recomendações
+            </b>
+
+            <div style="margin-top:8px;">
+
+                {{ atendidas }} atendidas |
+                {{ parcialmente }} parcialmente |
+                {{ nao_atendidas }} não atendidas
+
+            </div>
+
+
+            <div class="progress-box">
+
+                <div
+                    class="progress-bar"
+                    style="width:{{ percentual }}%"
+                >
+                    {{ percentual }}%
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div id="recomendacoes">
+
+            {% for r in recomendacoes %}
+
+            <div
+                class="rec
+                {% if r.status == 'ATENDIDO' %}
+                    rec-atendido
+                {% elif r.status == 'PARCIALMENTE' %}
+                    rec-parcial
+                {% else %}
+                    rec-nao
+                {% endif %}"
+            >
+
+                <div
+                    class="icone-status"
+                    style="font-size:22px;"
+                >
+
+                    {% if r.status == 'ATENDIDO' %}
+                        ✔
+                    {% elif r.status == 'PARCIALMENTE' %}
+                        ◐
+                    {% else %}
+                        ✖
+                    {% endif %}
+
+                </div>
+
+
+                <div>
+
+                    <input
+                        type="hidden"
+                        name="rec_id[]"
+                        value="{{ r.id }}"
+                    >
+
+                    <textarea
+                        name="recomendacao[]"
+                        rows="2"
+                    >{{ r.descricao }}</textarea>
+
+                </div>
+
+
+                <div>
+
+                    <label>
+                        <b>Prioridade</b>
+                    </label>
+
+                    <select
+                        name="prioridade[]"
+                        onchange="atualizarLinha(this); atualizarPrioridade(this)"
+                        class="prioridade"
+                    >
+
+                        <option
+                            value="BAIXO"
+                            {% if r.prioridade == 'BAIXO' %}selected{% endif %}
+                        >
+                            Baixo
+                        </option>
+
+                        <option
+                            value="MÉDIO"
+                            {% if r.prioridade == 'MÉDIO' %}selected{% endif %}
+                        >
+                            Médio
+                        </option>
+
+                        <option
+                            value="ALTO"
+                            {% if r.prioridade == 'ALTO' %}selected{% endif %}
+                        >
+                            Alto
+                        </option>
+
+                        <option
+                            value="EXTREMO"
+                            {% if r.prioridade == 'EXTREMO' %}selected{% endif %}
+                        >
+                            Extremo
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div>
+
+                    <label>
+                        <b>Status</b>
+                    </label>
+
+                    <select
+                        name="status[]"
+                        onchange="atualizarLinha(this)"
+                    >
+
+                        <option
+                            value="NÃO ATENDIDO"
+                            {% if r.status == 'NÃO ATENDIDO' %}selected{% endif %}
+                        >
+                            Não Atendido
+                        </option>
+
+                        <option
+                            value="PARCIALMENTE"
+                            {% if r.status == 'PARCIALMENTE' %}selected{% endif %}
+                        >
+                            Parcialmente
+                        </option>
+
+                        <option
+                            value="ATENDIDO"
+                            {% if r.status == 'ATENDIDO' %}selected{% endif %}
+                        >
+                            Atendido
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div>
+
+                    <button
+                        type="button"
+                        class="btn btn-danger"
+                        onclick="excluirRecomendacao(this, {{ r.id }})"
+                        title="Excluir recomendação"
+                    >
+                        🗑
+                    </button>
+
+                </div>
+
+            </div>
+
+            {% endfor %}
 
         </div>
 
     </div>
 
 
-    <div style="
-        display:flex;
-        gap:10px;
-        margin-top:20px;
-        flex-wrap:wrap;
-    ">
+    <!-- ================================================= -->
+    <!-- MONITORAMENTO -->
+    <!-- ================================================= -->
 
-        <button
-            type="button"
-            class="btn btn-monitor"
-            onclick="abrirMonitoramento()"
+    <div class="card">
+
+        <div class="titulo">
+            📅 Monitoramento
+        </div>
+
+
+        <div
+            class="monitor-grid"
+            style="margin-top:15px;"
         >
-            ＋ Registrar Monitoramento
-        </button>
+
+            <div>
+
+                <label>
+                    <b>Prazo Monitoramento</b>
+                </label>
+
+                <input
+                    type="date"
+                    name="prazo_monitoramento"
+                    value="{% if monitoramento %}{{ monitoramento.prazo_monitoramento or '' }}{% endif %}"
+                >
+
+            </div>
+
+        </div>
 
 
-        <button
-            type="button"
-            class="btn btn-secondary"
-            onclick="abrirHistorico()"
-        >
-            📜 Ver monitoramentos registrados
-        </button>
+        <div style="
+            display:flex;
+            gap:10px;
+            margin-top:20px;
+            flex-wrap:wrap;
+        ">
+
+            <button
+                type="button"
+                class="btn btn-monitor"
+                onclick="abrirMonitoramento()"
+            >
+                ＋ Registrar Monitoramento
+            </button>
+
+
+            <button
+                type="button"
+                class="btn btn-secondary"
+                onclick="abrirHistorico()"
+            >
+                📜 Ver monitoramentos registrados
+            </button>
+
+        </div>
 
     </div>
 
-</div>
 
+    <!-- ================================================= -->
+    <!-- SALVAR -->
+    <!-- ================================================= -->
 
-<div style="
-    display:flex;
-    justify-content:flex-end;
-    margin-bottom:30px;
-">
+    <div style="
+        display:flex;
+        justify-content:flex-end;
+        margin-bottom:30px;
+    ">
 
-    <button class="btn">
-        💾 Salvar alterações
-    </button>
+        <button
+            type="submit"
+            class="btn"
+        >
+            💾 Salvar alterações
+        </button>
 
-</div>
+    </div>
 
 </form>
 
 
 <!-- ===================================================== -->
 <!-- MODAL NOVO MONITORAMENTO -->
+<!-- FORA DO FORM PRINCIPAL -->
 <!-- ===================================================== -->
 
-<div id="modalMonitoramento" class="modal">
+<div
+    id="modalMonitoramento"
+    class="modal"
+>
 
     <div class="modal-content">
 
         <h3>
             📅 Registrar Monitoramento
         </h3>
+
 
         <form method="post">
 
@@ -4202,6 +4294,7 @@ function selecionarOS(select){
                 value="registrar_monitoramento"
             >
 
+
             <label>
                 <b>Data do monitoramento</b>
             </label>
@@ -4212,7 +4305,13 @@ function selecionarOS(select){
                 required
             >
 
-            <label style="display:block;margin-top:12px;">
+
+            <label
+                style="
+                    display:block;
+                    margin-top:12px;
+                "
+            >
                 <b>Observações</b>
             </label>
 
@@ -4221,6 +4320,7 @@ function selecionarOS(select){
                 rows="6"
                 placeholder="Descreva o que foi realizado no monitoramento..."
             ></textarea>
+
 
             <div style="
                 display:flex;
@@ -4237,7 +4337,11 @@ function selecionarOS(select){
                     Cancelar
                 </button>
 
-                <button class="btn btn-monitor">
+
+                <button
+                    type="submit"
+                    class="btn btn-monitor"
+                >
                     Registrar
                 </button>
 
@@ -4254,13 +4358,17 @@ function selecionarOS(select){
 <!-- MODAL HISTÓRICO -->
 <!-- ===================================================== -->
 
-<div id="modalHistorico" class="modal">
+<div
+    id="modalHistorico"
+    class="modal"
+>
 
     <div class="modal-content">
 
         <h3>
             📜 Histórico de Monitoramentos
         </h3>
+
 
         <div class="monitor-history">
 
@@ -4269,44 +4377,47 @@ function selecionarOS(select){
                 {% for m in monitoramentos %}
 
                 <div class="monitor-item">
-                
+
                     <div style="
                         display:flex;
                         justify-content:space-between;
                         align-items:center;
                         gap:10px;
                     ">
-                
+
                         <div>
+
                             <b>
                                 📅
                                 {{ m.data_monitoramento.strftime('%d/%m/%Y') if m.data_monitoramento else '' }}
                             </b>
+
                         </div>
-                
+
+
                         <form
                             method="post"
                             style="margin:0;"
                         >
-                
+
                             <input
                                 type="hidden"
                                 name="os_codigo"
                                 value="{{ os_codigo }}"
                             >
-                
+
                             <input
                                 type="hidden"
                                 name="acao"
                                 value="excluir_monitoramento"
                             >
-                
+
                             <input
                                 type="hidden"
                                 name="monitoramento_id"
                                 value="{{ m.id }}"
                             >
-                
+
                             <button
                                 type="submit"
                                 class="btn btn-danger"
@@ -4315,26 +4426,37 @@ function selecionarOS(select){
                                     font-size:13px;
                                 "
                                 title="Excluir este monitoramento"
-                                onclick="return confirmarExcluirMonitoramento();"
+                                onclick="
+                                    return confirmarExcluirMonitoramento();
+                                "
                             >
                                 🗑
                             </button>
-                
+
                         </form>
-                
+
                     </div>
 
+
                     <div style="margin-top:8px;">
+
                         {{ m.observacao or 'Sem observações.' }}
+
                     </div>
+
 
                     <div style="
                         margin-top:8px;
                         color:#6b7280;
                         font-size:13px;
                     ">
+
                         👤 Registrado por:
-                        <b>{{ m.colaborador or 'Não identificado' }}</b>
+
+                        <b>
+                            {{ m.colaborador or 'Não identificado' }}
+                        </b>
+
                     </div>
 
                 </div>
@@ -4378,7 +4500,7 @@ function selecionarOS(select){
 
 
 <!-- ===================================================== -->
-<!-- FORMULÁRIO PARA EXCLUSÃO -->
+<!-- FORMULÁRIO PARA EXCLUSÃO DE RECOMENDAÇÃO -->
 <!-- ===================================================== -->
 
 <form
@@ -4410,36 +4532,62 @@ function selecionarOS(select){
 
 <script>
 
+
+// =========================================================
+// MONITORAMENTO
+// =========================================================
+
 function abrirMonitoramento() {
-    document.getElementById("modalMonitoramento").style.display = "flex";
-}
-
-function fecharMonitoramento() {
-    document.getElementById("modalMonitoramento").style.display = "none";
-}
-
-document.addEventListener("click", function(event){
 
     const modal =
         document.getElementById("modalMonitoramento");
 
-    if (
-        modal &&
-        event.target === modal
-    ) {
-        fecharMonitoramento();
+    if (modal) {
+        modal.style.display = "flex";
     }
+}
 
-});
+
+function fecharMonitoramento() {
+
+    const modal =
+        document.getElementById("modalMonitoramento");
+
+    if (modal) {
+        modal.style.display = "none";
+    }
+}
+
+
+// =========================================================
+// HISTÓRICO
+// =========================================================
 
 function abrirHistorico() {
-    document.getElementById("modalHistorico").style.display = "flex";
+
+    const modal =
+        document.getElementById("modalHistorico");
+
+    if (modal) {
+        modal.style.display = "flex";
+    }
 }
+
 
 function fecharHistorico() {
-    document.getElementById("modalHistorico").style.display = "none";
+
+    const modal =
+        document.getElementById("modalHistorico");
+
+    if (modal) {
+        modal.style.display = "none";
+    }
 }
 
+
+// =========================================================
+// EXCLUIR RECOMENDAÇÃO
+// =========================================================
 
 function excluirRecomendacao(botao, id) {
 
@@ -4449,28 +4597,46 @@ function excluirRecomendacao(botao, id) {
         return;
     }
 
-    document.getElementById("recIdExcluir").value = id;
+    document.getElementById(
+        "recIdExcluir"
+    ).value = id;
 
-    document.getElementById("formExcluir").submit();
+    document.getElementById(
+        "formExcluir"
+    ).submit();
 }
+
+
+// =========================================================
+// CORES
+// =========================================================
 
 function atualizarLinha(elemento){
 
-    const linha = elemento.closest(".rec");
+    const linha =
+        elemento.closest(".rec");
 
     if (!linha) {
         return;
     }
 
-    const status = linha.querySelector(
-        "select[name='status[]'], select[name='novo_status[]']"
-    );
 
-    const prioridade = linha.querySelector(
-        "select[name='prioridade[]'], select[name='nova_prioridade[]']"
-    );
+    const status =
+        linha.querySelector(
+            "select[name='status[]'], select[name='novo_status[]']"
+        );
 
-    const icone = linha.querySelector(".icone-status");
+
+    const prioridade =
+        linha.querySelector(
+            "select[name='prioridade[]'], select[name='nova_prioridade[]']"
+        );
+
+
+    const icone =
+        linha.querySelector(
+            ".icone-status"
+        );
 
 
     // =====================================================
@@ -4483,34 +4649,45 @@ function atualizarLinha(elemento){
         "rec-nao"
     );
 
+
     if (status) {
 
         if (status.value === "ATENDIDO") {
 
-            linha.classList.add("rec-atendido");
+            linha.classList.add(
+                "rec-atendido"
+            );
 
             if (icone) {
                 icone.innerHTML = "✔";
             }
 
         }
+
         else if (status.value === "PARCIALMENTE") {
 
-            linha.classList.add("rec-parcial");
+            linha.classList.add(
+                "rec-parcial"
+            );
 
             if (icone) {
                 icone.innerHTML = "◐";
             }
 
         }
+
         else {
 
-            linha.classList.add("rec-nao");
+            linha.classList.add(
+                "rec-nao"
+            );
 
             if (icone) {
                 icone.innerHTML = "✖";
             }
+
         }
+
     }
 
 
@@ -4527,26 +4704,54 @@ function atualizarLinha(elemento){
             "prio-extremo"
         );
 
-        switch (prioridade.value) {
+
+        switch(prioridade.value){
 
             case "BAIXO":
-                prioridade.classList.add("prio-baixo");
+
+                prioridade.classList.add(
+                    "prio-baixo"
+                );
+
                 break;
+
 
             case "MÉDIO":
-                prioridade.classList.add("prio-medio");
+
+                prioridade.classList.add(
+                    "prio-medio"
+                );
+
                 break;
+
 
             case "ALTO":
-                prioridade.classList.add("prio-alto");
+
+                prioridade.classList.add(
+                    "prio-alto"
+                );
+
                 break;
 
+
             case "EXTREMO":
-                prioridade.classList.add("prio-extremo");
+
+                prioridade.classList.add(
+                    "prio-extremo"
+                );
+
                 break;
+
         }
+
     }
+
 }
+
+
+// =========================================================
+// PRIORIDADE
+// =========================================================
 
 function atualizarPrioridade(select){
 
@@ -4557,39 +4762,75 @@ function atualizarPrioridade(select){
         "prio-extremo"
     );
 
+
     switch(select.value){
 
         case "BAIXO":
-            select.classList.add("prio-baixo");
+
+            select.classList.add(
+                "prio-baixo"
+            );
+
             break;
+
 
         case "MÉDIO":
-            select.classList.add("prio-medio");
+
+            select.classList.add(
+                "prio-medio"
+            );
+
             break;
+
 
         case "ALTO":
-            select.classList.add("prio-alto");
+
+            select.classList.add(
+                "prio-alto"
+            );
+
             break;
 
+
         case "EXTREMO":
-            select.classList.add("prio-extremo");
+
+            select.classList.add(
+                "prio-extremo"
+            );
+
             break;
+
     }
+
 }
+
+
+// =========================================================
+// NOVA RECOMENDAÇÃO
+// =========================================================
 
 function adicionarRecomendacao() {
 
     const container =
-        document.getElementById("recomendacoes");
+        document.getElementById(
+            "recomendacoes"
+        );
+
 
     if (!container) {
         return;
     }
 
-    const div =
-        document.createElement("div");
 
-    div.className = "rec rec-nao";
+    const div =
+        document.createElement(
+            "div"
+        );
+
+
+    div.className =
+        "rec rec-nao";
+
 
     div.innerHTML = `
 
@@ -4599,6 +4840,7 @@ function adicionarRecomendacao() {
         >
             ✖
         </div>
+
 
         <div>
 
@@ -4610,9 +4852,13 @@ function adicionarRecomendacao() {
 
         </div>
 
+
         <div>
 
-            <label><b>Prioridade</b></label>
+            <label>
+                <b>Prioridade</b>
+            </label>
+
 
             <select
                 name="nova_prioridade[]"
@@ -4640,13 +4886,16 @@ function adicionarRecomendacao() {
 
         </div>
 
+
         <div>
 
-            <label><b>Status</b></label>
+            <label>
+                <b>Status</b>
+            </label>
+
 
             <select
                 name="novo_status[]"
-                class="status-recomendacao"
                 onchange="atualizarLinha(this)"
             >
 
@@ -4666,6 +4915,7 @@ function adicionarRecomendacao() {
 
         </div>
 
+
         <div>
 
             <button
@@ -4680,77 +4930,140 @@ function adicionarRecomendacao() {
 
     `;
 
-    container.appendChild(div);
 
-    // Aplicar as cores iniciais
+    container.appendChild(
+        div
+    );
+
+
     const prioridade =
         div.querySelector(
             "select[name='nova_prioridade[]']"
         );
+
 
     const status =
         div.querySelector(
             "select[name='novo_status[]']"
         );
 
+
     if (prioridade) {
-        atualizarPrioridade(prioridade);
+
+        atualizarPrioridade(
+            prioridade
+        );
+
     }
+
 
     if (status) {
-        atualizarLinha(status);
+
+        atualizarLinha(
+            status
+        );
+
     }
+
 }
 
-document.addEventListener("DOMContentLoaded", function(){
 
-    document
-        .querySelectorAll(".rec")
-        .forEach(function(linha){
+// =========================================================
+// CORES INICIAIS
+// =========================================================
 
-            const status =
-                linha.querySelector(
-                    "select[name='status[]'], select[name='novo_status[]']"
-                );
+document.addEventListener(
+    "DOMContentLoaded",
+    function(){
 
-            const prioridade =
-                linha.querySelector(
-                    "select[name='prioridade[]'], select[name='nova_prioridade[]']"
-                );
+        document
+            .querySelectorAll(".rec")
+            .forEach(
+                function(linha){
 
-            if (status) {
-                atualizarLinha(status);
-            }
+                    const status =
+                        linha.querySelector(
+                            "select[name='status[]']"
+                        );
 
-            if (prioridade) {
-                atualizarPrioridade(prioridade);
-            }
 
-        });
+                    const prioridade =
+                        linha.querySelector(
+                            "select[name='prioridade[]']"
+                        );
 
-});
+
+                    if (status) {
+
+                        atualizarLinha(
+                            status
+                        );
+
+                    }
+
+
+                    if (prioridade) {
+
+                        atualizarPrioridade(
+                            prioridade
+                        );
+
+                    }
+
+                }
+            );
+
+    }
+);
+
+
+// =========================================================
+// CONFIRMAR EXCLUSÃO DE TODA A O.S.
+// =========================================================
 
 function confirmarExcluirOS(){
 
     return confirm(
+
         "ATENÇÃO!\n\n" +
+
         "Você está prestes a apagar TODOS os dados desta O.S.\n\n" +
+
         "Serão excluídos:\n" +
+
         "• Todas as recomendações\n" +
+
         "• Todos os monitoramentos registrados\n" +
+
         "• O prazo de monitoramento\n\n" +
+
         "A O.S será deixada do zero.\n\n" +
+
         "Essa operação não poderá ser desfeita.\n\n" +
+
         "Deseja realmente continuar?"
+
     );
+
 }
+
+
+// =========================================================
+// CONFIRMAR EXCLUSÃO DE UM MONITORAMENTO
+// =========================================================
+
 function confirmarExcluirMonitoramento(){
 
     return confirm(
+
         "Deseja realmente excluir este monitoramento?\n\n" +
+
         "A data e a observação deste registro serão apagadas."
+
     );
+
 }
+
 </script>
 
 {% endif %}

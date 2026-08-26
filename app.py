@@ -3360,7 +3360,7 @@ def recomendacoes_os():
                 cur.execute("""
                     DELETE FROM recomendacoes
                     WHERE id = %s
-                      AND os_codigo = %s
+                      AND TRIM(os_codigo) = TRIM(%s)
                 """, (
                     rec_id,
                     os_codigo
@@ -4285,7 +4285,6 @@ function selecionarOS(select){
                         <form
                             method="post"
                             style="margin:0;"
-                            onsubmit="return confirmarExcluirMonitoramento();"
                         >
                 
                             <input
@@ -4314,6 +4313,7 @@ function selecionarOS(select){
                                     font-size:13px;
                                 "
                                 title="Excluir este monitoramento"
+                                onclick="return confirmarExcluirMonitoramento();"
                             >
                                 🗑
                             </button>
@@ -4415,6 +4415,20 @@ function abrirMonitoramento() {
 function fecharMonitoramento() {
     document.getElementById("modalMonitoramento").style.display = "none";
 }
+
+document.addEventListener("click", function(event){
+
+    const modal =
+        document.getElementById("modalMonitoramento");
+
+    if (
+        modal &&
+        event.target === modal
+    ) {
+        fecharMonitoramento();
+    }
+
+});
 
 function abrirHistorico() {
     document.getElementById("modalHistorico").style.display = "flex";

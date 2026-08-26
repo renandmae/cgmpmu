@@ -4576,21 +4576,37 @@ function selecionarOS(select){
 @app.route('/recomendacoes/listar')
 def listar_recomendacoes():
 
+    if 'user' not in session:
+        return redirect('/')
+
+    # =========================================================
+    # CONEXÃO
+    # =========================================================
+
+    con = get_db()
+    cur = con.cursor()
+
+    # =========================================================
+    # FILTROS
+    # =========================================================
+
     status_filtro = request.args.get("status", "").strip()
     busca = request.args.get("busca", "").strip()
 
     where = []
     params = []
-    
+
     if status_filtro:
         where.append("r.status = %s")
         params.append(status_filtro)
-    
+
     if busca:
+
         where.append("""
             (
                 r.os_codigo ILIKE %s
                 OR r.resumo_os ILIKE %s
+                OR o.codigo ILIKE %s
                 OR o.resumo ILIKE %s
                 OR o.unidade ILIKE %s
                 OR o.uo ILIKE %s
@@ -4599,133 +4615,84 @@ def listar_recomendacoes():
                 OR r.prioridade ILIKE %s
             )
         """)
-    
+
         texto = f"%{busca}%"
-    
+
         params.extend([
-            texto,
-            texto,
-            texto,
-            texto,
-            texto,
-            texto,
-            texto,
-            texto
+            texto,  # os_codigo
+            texto,  # resumo_os
+            texto,  # codigo da os
+            texto,  # resumo da os
+            texto,  # unidade
+            texto,  # uo / secretaria
+            texto,  # recomendacao
+            texto,  # status
+            texto   # prioridade
         ])
-    
+
     sql_where = ""
-    
+
     if where:
         sql_where = "WHERE " + " AND ".join(where)
+
+    # =========================================================
+    # CONSULTA
+    # =========================================================
 
     cur.execute(f"""
         SELECT
             r.id,
             r.os_codigo,
-    
+
             COALESCE(
                 NULLIF(r.resumo_os, ''),
                 o.resumo,
                 ''
             ) AS resumo,
-    
+
             COALESCE(
                 o.unidade,
                 ''
             ) AS unidade,
-    
+
             COALESCE(
                 o.uo,
                 ''
             ) AS secretaria,
-    
+
             r.descricao AS recomendacao,
             r.status,
             r.prioridade,
             mc.prazo_monitoramento
-    
+
         FROM recomendacoes r
-    
+
         LEFT JOIN os o
             ON o.codigo = r.os_codigo
-    
+
         LEFT JOIN recomendacao_monitoramento_config mc
             ON mc.os_codigo = r.os_codigo
-    
+
         {sql_where}
-    
+
         ORDER BY
             CASE
                 WHEN r.os_codigo ~ '/[0-9]{4}$'
                 THEN split_part(r.os_codigo, '/', 2)::int
                 ELSE 0
             END DESC,
-    
+
             r.os_codigo DESC,
             r.id ASC
     """, params)
-    
-    rows = cur.fetchall()
 
-    if 'user' not in session:
-        return redirect('/')
-
-    con = get_db()
-    cur = con.cursor()
-
-    cur.execute("""
-        SELECT
-            r.id,
-    
-            r.os_codigo,
-    
-            COALESCE(
-                NULLIF(r.resumo_os, ''),
-                o.resumo,
-                ''
-            ) AS resumo,
-    
-            COALESCE(
-                o.unidade,
-                ''
-            ) AS unidade,
-    
-            COALESCE(
-                o.uo,
-                ''
-            ) AS secretaria,
-    
-            r.descricao AS recomendacao,
-    
-            r.status,
-    
-            r.prioridade,
-    
-            mc.prazo_monitoramento
-    
-        FROM recomendacoes r
-    
-        LEFT JOIN os o
-            ON o.codigo = r.os_codigo
-    
-        LEFT JOIN recomendacao_monitoramento_config mc
-            ON mc.os_codigo = r.os_codigo
-    
-        ORDER BY
-            CASE
-                WHEN r.os_codigo ~ '/[0-9]{4}$'
-                THEN split_part(r.os_codigo, '/', 2)::int
-                ELSE 0
-            END DESC,
-    
-            r.os_codigo DESC,
-    
-            r.id ASC
-    """)
-    
     rows = cur.fetchall()
 
     con.close()
+
+    # =========================================================
+    # HTML
+    # =========================================================
 
     html = """
 <style>
@@ -4886,6 +4853,29 @@ tr:hover{
     margin-bottom:10px;
 }
 
+.filtro-box{
+    display:flex;
+    gap:10px;
+    margin-bottom:18px;
+    flex-wrap:wrap;
+    align-items:center;
+}
+
+.filtro-box input{
+    flex:1;
+    min-width:300px;
+    padding:10px 14px;
+    border:1px solid #d1d5db;
+    border-radius:9px;
+}
+
+.filtro-box select{
+    width:220px;
+    padding:10px;
+    border:1px solid #d1d5db;
+    border-radius:9px;
+}
+
 </style>
 
 
@@ -4917,6 +4907,7 @@ tr:hover{
             </a>
 
             <a
+                id="btnExcel"
                 href="/recomendacoes/export"
                 class="btn btn-green"
             >
@@ -4928,77 +4919,77 @@ tr:hover{
     </div>
 
 
-    <div style="overflow:auto;">
-        <div style="
-            display:flex;
-            gap:10px;
-            margin-bottom:18px;
-            flex-wrap:wrap;
-            align-items:center;
-        ">
-        
-            <input
-                type="text"
-                id="busca"
-                value="{{ request.args.get('busca','') }}"
-                placeholder="🔎 Pesquisar O.S, resumo, unidade, secretaria, recomendação..."
-                style="
-                    flex:1;
-                    min-width:300px;
-                    padding:10px 14px;
-                    border:1px solid #d1d5db;
-                    border-radius:9px;
-                "
-                onkeydown="if(event.key==='Enter') pesquisarTabela()"
-            >
-        
-            <select
-                id="filtroStatus"
-                onchange="pesquisarTabela()"
-                style="
-                    width:220px;
-                    padding:10px;
-                    border:1px solid #d1d5db;
-                    border-radius:9px;
-                "
-            >
-        
-                <option value=""
+    <!-- ================================================= -->
+    <!-- FILTROS -->
+    <!-- ================================================= -->
+
+    <div class="filtro-box">
+
+        <input
+            type="text"
+            id="busca"
+            value="{{ request.args.get('busca','') }}"
+            placeholder="🔎 Pesquisar O.S, resumo, diretoria, unidade, secretaria, recomendação..."
+            onkeydown="if(event.key==='Enter') pesquisarTabela()"
+        >
+
+        <select
+            id="filtroStatus"
+            onchange="pesquisarTabela()"
+        >
+
+            <option
+                value=""
                 {% if not request.args.get('status') %}
                     selected
-                {% endif %}>
-                    Todos os status
-                </option>
-        
-                <option value="ATENDIDO"
+                {% endif %}
+            >
+                Todos os status
+            </option>
+
+            <option
+                value="ATENDIDO"
                 {% if request.args.get('status') == 'ATENDIDO' %}
                     selected
-                {% endif %}>
-                    🟢 Atendido
-                </option>
-        
-                <option value="PARCIALMENTE"
+                {% endif %}
+            >
+                🟢 Atendido
+            </option>
+
+            <option
+                value="PARCIALMENTE"
                 {% if request.args.get('status') == 'PARCIALMENTE' %}
                     selected
-                {% endif %}>
-                    🟡 Parcialmente
-                </option>
-        
-                <option value="NÃO ATENDIDO"
+                {% endif %}
+            >
+                🟡 Parcialmente
+            </option>
+
+            <option
+                value="NÃO ATENDIDO"
                 {% if request.args.get('status') == 'NÃO ATENDIDO' %}
                     selected
-                {% endif %}>
-                    🔴 Não Atendido
-                </option>
-        
-            </select>
-        
-        </div>
+                {% endif %}
+            >
+                🔴 Não Atendido
+            </option>
+
+        </select>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- TABELA -->
+    <!-- ================================================= -->
+
+    <div style="overflow:auto;">
+
         <table>
 
             <thead>
-                <tr>
 
+                <tr>
                     <th>O.S</th>
                     <th>Resumo</th>
                     <th>Diretoria</th>
@@ -5008,8 +4999,8 @@ tr:hover{
                     <th>Prioridade</th>
                     <th>Prazo</th>
                     <th style="width:60px;">Ação</th>
-
                 </tr>
+
             </thead>
 
             <tbody>
@@ -5019,23 +5010,23 @@ tr:hover{
                 <tr>
 
                     <td>
-                        <b>{{r.os_codigo}}</b>
+                        <b>{{ r.os_codigo }}</b>
                     </td>
 
                     <td>
-                        {{r.resumo or '-'}}
+                        {{ r.resumo or '-' }}
                     </td>
 
                     <td>
-                        {{r.unidade or '-'}}
-                    </td>
-                    
-                    <td>
-                        {{r.secretaria or '-'}}
+                        {{ r.unidade or '-' }}
                     </td>
 
                     <td>
-                        {{r.recomendacao}}
+                        {{ r.secretaria or '-' }}
+                    </td>
+
+                    <td>
+                        {{ r.recomendacao }}
                     </td>
 
                     <td>
@@ -5095,7 +5086,7 @@ tr:hover{
                     <td>
 
                         {% if r.prazo_monitoramento %}
-                            {{r.prazo_monitoramento.strftime('%d/%m/%Y')}}
+                            {{ r.prazo_monitoramento.strftime('%d/%m/%Y') }}
                         {% else %}
                             -
                         {% endif %}
@@ -5106,7 +5097,7 @@ tr:hover{
 
                         <button
                             class="btn-monitor"
-                            onclick="abrirMonitoramento('{{r.os_codigo|e}}')"
+                            onclick="abrirMonitoramento('{{ r.os_codigo|e }}')"
                             title="Ver monitoramentos da O.S"
                         >
                             +
@@ -5126,6 +5117,10 @@ tr:hover{
 
 </div>
 
+
+<!-- ===================================================== -->
+<!-- MODAL -->
+<!-- ===================================================== -->
 
 <div
     id="modalMonitoramento"
@@ -5164,6 +5159,56 @@ tr:hover{
 
 
 <script>
+
+function pesquisarTabela(){
+
+    const busca =
+        document.getElementById("busca").value;
+
+    const status =
+        document.getElementById("filtroStatus").value;
+
+    const params =
+        new URLSearchParams();
+
+    if(busca){
+        params.set("busca", busca);
+    }
+
+    if(status){
+        params.set("status", status);
+    }
+
+    window.location.href =
+        "/recomendacoes/listar?" +
+        params.toString();
+}
+
+
+function atualizarExcel(){
+
+    const params =
+        new URLSearchParams();
+
+    const busca =
+        document.getElementById("busca").value;
+
+    const status =
+        document.getElementById("filtroStatus").value;
+
+    if(busca){
+        params.set("busca", busca);
+    }
+
+    if(status){
+        params.set("status", status);
+    }
+
+    document.getElementById("btnExcel").href =
+        "/recomendacoes/export?" +
+        params.toString();
+}
+
 
 function abrirMonitoramento(os){
 
@@ -5211,9 +5256,7 @@ function abrirMonitoramento(os){
                 <div class="monitor-item">
 
                     <div>
-                        <b>
-                            📅 ${m.data}
-                        </b>
+                        <b>📅 ${m.data}</b>
                     </div>
 
                     <div style="
@@ -5275,29 +5318,15 @@ function fecharFora(e){
     }
 
 }
-function pesquisarTabela(){
 
-    const busca =
-        document.getElementById("busca").value;
 
-    const status =
-        document.getElementById("filtroStatus").value;
-
-    const params =
-        new URLSearchParams();
-
-    if(busca){
-        params.set("busca", busca);
+document.addEventListener(
+    "DOMContentLoaded",
+    function(){
+        atualizarExcel();
     }
+);
 
-    if(status){
-        params.set("status", status);
-    }
-
-    window.location.href =
-        "/recomendacoes/listar?" +
-        params.toString();
-}
 </script>
 """
 
@@ -5307,8 +5336,9 @@ function pesquisarTabela(){
             html
         ),
         rows=rows,
-        user=session["user"],
-        perfil=session["perfil"]
+        request=request,
+        user=session['user'],
+        perfil=session['perfil']
     )
 
 @app.route('/recomendacoes/monitoramentos/<path:os_codigo>')

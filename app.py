@@ -3115,6 +3115,40 @@ def recomendacoes_os():
             os_resumo = os_encontrada["resumo"] or ""
 
     # =========================================================
+    # O.S. JÁ CADASTRADAS NAS RECOMENDAÇÕES
+    # =========================================================
+    
+    cur.execute("""
+        SELECT
+            r.os_codigo,
+    
+            COALESCE(
+                NULLIF(MAX(r.resumo_os), ''),
+                MAX(o.resumo),
+                ''
+            ) AS resumo,
+    
+            CASE
+                WHEN r.os_codigo ~ '/[0-9]{4}$'
+                THEN split_part(r.os_codigo, '/', 2)::int
+                ELSE 0
+            END AS ano
+    
+        FROM recomendacoes r
+    
+        LEFT JOIN os o
+            ON o.codigo = r.os_codigo
+    
+        GROUP BY r.os_codigo
+    
+        ORDER BY
+            ano DESC,
+            r.os_codigo DESC
+    """)
+    
+    os_cadastradas = cur.fetchall()
+
+    # =========================================================
     # POST
     # =========================================================
 
@@ -3179,6 +3213,7 @@ def recomendacoes_os():
                     WHERE id = %s
                       AND os_codigo = %s
                 """, (
+                    os_resumo,
                     descricao,
                     prioridade,
                     st,
@@ -3630,7 +3665,34 @@ select {
     </div>
 
     <form method="get" style="margin-top:15px;">
+    
+        <div style="margin-bottom:15px;">
 
+        <label>
+            <b>O.S. já cadastradas</b>
+        </label>
+        
+        <select
+            id="osCadastrada"
+            onchange="selecionarOS(this)"
+        >
+    
+            <option value="">
+                Selecione uma O.S...
+            </option>
+            {% for o in os_cadastradas %}
+            <option
+                value="{{o.os_codigo}}"
+            >
+                {{o.os_codigo}}
+                {% if o.resumo %}
+                    - {{o.resumo}}
+                {% endif %}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+        
         <div class="os-box">
 
         <div>
@@ -4473,6 +4535,22 @@ document.addEventListener("DOMContentLoaded", function(){
         });
 
 });
+
+function selecionarOS(select){
+
+    const valor = select.value;
+
+    if(!valor){
+        return;
+    }
+
+    document.getElementById("campoOS").value = valor;
+
+    // já carrega a O.S selecionada
+    window.location.href =
+        "/recomendacoes?os=" +
+        encodeURIComponent(valor);
+}
 </script>
 
 {% endif %}
@@ -4485,6 +4563,7 @@ document.addEventListener("DOMContentLoaded", function(){
         ),
         os_codigo=os_codigo,
         os_resumo=os_resumo,
+        os_cadastradas=os_cadastradas,
         recomendacoes=recomendacoes,
         monitoramento=monitoramento,
         monitoramentos=monitoramentos,
@@ -4495,6 +4574,754 @@ document.addEventListener("DOMContentLoaded", function(){
         percentual=percentual,
         user=session['user'],
         perfil=session['perfil']
+    )
+
+@app.route('/recomendacoes/listar')
+def listar_recomendacoes():
+
+    if 'user' not in session:
+        return redirect('/')
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT
+            r.id,
+
+            r.os_codigo,
+
+            COALESCE(
+                NULLIF(r.resumo_os, ''),
+                o.resumo,
+                ''
+            ) AS resumo,
+
+            COALESCE(
+                o.unidade,
+                ''
+            ) AS secretarias,
+
+            r.descricao AS recomendacao,
+
+            r.status,
+
+            r.prioridade,
+
+            mc.prazo_monitoramento
+
+        FROM recomendacoes r
+
+        LEFT JOIN os o
+            ON o.codigo = r.os_codigo
+
+        LEFT JOIN recomendacao_monitoramento_config mc
+            ON mc.os_codigo = r.os_codigo
+
+        ORDER BY
+            CASE
+                WHEN r.os_codigo ~ '/[0-9]{4}$'
+                THEN split_part(r.os_codigo, '/', 2)::int
+                ELSE 0
+            END DESC,
+
+            r.os_codigo DESC,
+
+            r.id ASC
+    """)
+
+    rows = cur.fetchall()
+
+    con.close()
+
+    html = """
+<style>
+
+.lista-card{
+    background:white;
+    border-radius:16px;
+    padding:20px;
+    box-shadow:0 6px 20px rgba(0,0,0,.08);
+}
+
+.lista-topo{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:15px;
+    margin-bottom:20px;
+    flex-wrap:wrap;
+}
+
+.lista-titulo{
+    font-size:24px;
+    font-weight:700;
+    color:#1f2937;
+}
+
+.btn{
+    border:none;
+    padding:10px 15px;
+    border-radius:9px;
+    text-decoration:none;
+    cursor:pointer;
+    font-weight:600;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+}
+
+.btn-blue{
+    background:#2563eb;
+    color:white !important;
+}
+
+.btn-green{
+    background:#16a34a;
+    color:white !important;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+
+th{
+    background:#1e3a8a;
+    color:white;
+    padding:11px;
+    font-size:13px;
+    text-align:left;
+}
+
+td{
+    padding:10px;
+    border-bottom:1px solid #e5e7eb;
+    font-size:13px;
+    vertical-align:middle;
+}
+
+tr:hover{
+    background:#f8fafc;
+}
+
+.status{
+    padding:6px 10px;
+    border-radius:20px;
+    font-weight:700;
+    display:inline-block;
+}
+
+.status-atendido{
+    background:#dcfce7;
+    color:#166534;
+}
+
+.status-parcial{
+    background:#fef9c3;
+    color:#854d0e;
+}
+
+.status-nao{
+    background:#fee2e2;
+    color:#991b1b;
+}
+
+.prioridade{
+    padding:6px 10px;
+    border-radius:20px;
+    font-weight:700;
+    display:inline-block;
+}
+
+.prio-baixo{
+    background:#dcfce7;
+    color:#166534;
+}
+
+.prio-medio{
+    background:#fef9c3;
+    color:#854d0e;
+}
+
+.prio-alto{
+    background:#fed7aa;
+    color:#9a3412;
+}
+
+.prio-extremo{
+    background:#111827;
+    color:white;
+}
+
+.btn-monitor{
+    width:36px;
+    height:36px;
+    border:none;
+    border-radius:50%;
+    background:#7c3aed;
+    color:white;
+    cursor:pointer;
+    font-size:18px;
+}
+
+.modal{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.5);
+    z-index:99999;
+    align-items:center;
+    justify-content:center;
+}
+
+.modal-box{
+    background:white;
+    width:min(700px,92%);
+    max-height:80vh;
+    overflow:auto;
+    border-radius:16px;
+    padding:22px;
+    box-shadow:0 20px 50px rgba(0,0,0,.3);
+}
+
+.monitor-item{
+    background:#f5f3ff;
+    border-left:5px solid #7c3aed;
+    border-radius:8px;
+    padding:14px;
+    margin-bottom:10px;
+}
+
+</style>
+
+
+<div class="lista-card">
+
+    <div class="lista-topo">
+
+        <div>
+            <div class="lista-titulo">
+                📋 Recomendações de Auditoria
+            </div>
+
+            <div style="color:#64748b;margin-top:5px;">
+                Todas as recomendações cadastradas
+            </div>
+        </div>
+
+        <div style="
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+        ">
+
+            <a
+                href="/recomendacoes"
+                class="btn btn-blue"
+            >
+                ➕ Nova / Consultar
+            </a>
+
+            <a
+                href="/recomendacoes/export"
+                class="btn btn-green"
+            >
+                📊 Excel
+            </a>
+
+        </div>
+
+    </div>
+
+
+    <div style="overflow:auto;">
+
+        <table>
+
+            <thead>
+                <tr>
+
+                    <th>O.S</th>
+                    <th>Resumo</th>
+                    <th>Secretarias</th>
+                    <th>Recomendação</th>
+                    <th>Status</th>
+                    <th>Prioridade</th>
+                    <th>Prazo</th>
+                    <th style="width:60px;">Ação</th>
+
+                </tr>
+            </thead>
+
+            <tbody>
+
+            {% for r in rows %}
+
+                <tr>
+
+                    <td>
+                        <b>{{r.os_codigo}}</b>
+                    </td>
+
+                    <td>
+                        {{r.resumo or '-'}}
+                    </td>
+
+                    <td>
+                        {{r.secretarias or '-'}}
+                    </td>
+
+                    <td>
+                        {{r.recomendacao}}
+                    </td>
+
+                    <td>
+
+                        {% if r.status == 'ATENDIDO' %}
+
+                            <span class="status status-atendido">
+                                ✓ Atendido
+                            </span>
+
+                        {% elif r.status == 'PARCIALMENTE' %}
+
+                            <span class="status status-parcial">
+                                ◐ Parcialmente
+                            </span>
+
+                        {% else %}
+
+                            <span class="status status-nao">
+                                ✕ Não Atendido
+                            </span>
+
+                        {% endif %}
+
+                    </td>
+
+                    <td>
+
+                        {% if r.prioridade == 'BAIXO' %}
+
+                            <span class="prioridade prio-baixo">
+                                Baixo
+                            </span>
+
+                        {% elif r.prioridade == 'MÉDIO' %}
+
+                            <span class="prioridade prio-medio">
+                                Médio
+                            </span>
+
+                        {% elif r.prioridade == 'ALTO' %}
+
+                            <span class="prioridade prio-alto">
+                                Alto
+                            </span>
+
+                        {% else %}
+
+                            <span class="prioridade prio-extremo">
+                                Extremo
+                            </span>
+
+                        {% endif %}
+
+                    </td>
+
+                    <td>
+
+                        {% if r.prazo_monitoramento %}
+                            {{r.prazo_monitoramento.strftime('%d/%m/%Y')}}
+                        {% else %}
+                            -
+                        {% endif %}
+
+                    </td>
+
+                    <td style="text-align:center;">
+
+                        <button
+                            class="btn-monitor"
+                            onclick="abrirMonitoramento('{{r.os_codigo|e}}')"
+                            title="Ver monitoramentos da O.S"
+                        >
+                            +
+                        </button>
+
+                    </td>
+
+                </tr>
+
+            {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+
+<div
+    id="modalMonitoramento"
+    class="modal"
+    onclick="fecharFora(event)"
+>
+
+    <div class="modal-box">
+
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+        ">
+
+            <h3>
+                📅 Histórico de Monitoramentos
+            </h3>
+
+            <button
+                class="btn btn-blue"
+                onclick="fecharMonitoramento()"
+            >
+                Fechar
+            </button>
+
+        </div>
+
+        <div id="conteudoMonitoramento">
+            Carregando...
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+function abrirMonitoramento(os){
+
+    const modal =
+        document.getElementById(
+            "modalMonitoramento"
+        );
+
+    const conteudo =
+        document.getElementById(
+            "conteudoMonitoramento"
+        );
+
+    modal.style.display = "flex";
+
+    conteudo.innerHTML =
+        "Carregando...";
+
+    fetch(
+        "/recomendacoes/monitoramentos/" +
+        encodeURIComponent(os)
+    )
+    .then(r => r.json())
+    .then(dados => {
+
+        if(!dados.length){
+
+            conteudo.innerHTML = `
+                <div style="
+                    padding:25px;
+                    text-align:center;
+                    color:#64748b;
+                ">
+                    Nenhum monitoramento registrado
+                    para esta O.S.
+                </div>
+            `;
+
+            return;
+        }
+
+        conteudo.innerHTML =
+            dados.map(m => `
+
+                <div class="monitor-item">
+
+                    <div>
+                        <b>
+                            📅 ${m.data}
+                        </b>
+                    </div>
+
+                    <div style="
+                        margin-top:8px;
+                        white-space:pre-wrap;
+                    ">
+                        ${m.observacao || "Sem observações."}
+                    </div>
+
+                    <div style="
+                        margin-top:8px;
+                        font-size:13px;
+                        color:#64748b;
+                    ">
+                        👤 Registrado por:
+                        <b>
+                            ${m.colaborador || "Não identificado"}
+                        </b>
+                    </div>
+
+                </div>
+
+            `).join("");
+
+    })
+    .catch(() => {
+
+        conteudo.innerHTML = `
+            <div style="
+                color:#dc2626;
+                padding:20px;
+            ">
+                Erro ao carregar os monitoramentos.
+            </div>
+        `;
+
+    });
+}
+
+
+function fecharMonitoramento(){
+
+    document.getElementById(
+        "modalMonitoramento"
+    ).style.display = "none";
+
+}
+
+
+function fecharFora(e){
+
+    if(
+        e.target ===
+        document.getElementById(
+            "modalMonitoramento"
+        )
+    ){
+        fecharMonitoramento();
+    }
+
+}
+
+</script>
+"""
+
+    return render_template_string(
+        BASE.replace(
+            "{% block content %}{% endblock %}",
+            html
+        ),
+        rows=rows,
+        user=session["user"],
+        perfil=session["perfil"]
+    )
+
+@app.route('/recomendacoes/monitoramentos/<path:os_codigo>')
+def recomendacoes_monitoramentos(os_codigo):
+
+    if 'user' not in session:
+        return jsonify([])
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT
+            rm.data_monitoramento,
+            rm.observacao,
+            c.nome AS colaborador
+
+        FROM recomendacao_monitoramentos rm
+
+        LEFT JOIN colaboradores c
+            ON c.id = rm.servidor_id
+
+        WHERE rm.os_codigo = %s
+
+        ORDER BY
+            rm.data_monitoramento DESC,
+            rm.id DESC
+    """, (os_codigo,))
+
+    rows = cur.fetchall()
+
+    con.close()
+
+    resultado = []
+
+    for r in rows:
+
+        resultado.append({
+            "data": (
+                r["data_monitoramento"].strftime("%d/%m/%Y")
+                if r["data_monitoramento"]
+                else ""
+            ),
+            "observacao": r["observacao"] or "",
+            "colaborador": r["colaborador"] or ""
+        })
+
+    return jsonify(resultado)
+
+@app.route('/recomendacoes/export')
+def recomendacoes_export():
+
+    if 'user' not in session:
+        return redirect('/')
+
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT
+            r.os_codigo,
+
+            COALESCE(
+                NULLIF(r.resumo_os, ''),
+                o.resumo,
+                ''
+            ) AS resumo,
+
+            COALESCE(
+                o.unidade,
+                ''
+            ) AS secretarias,
+
+            r.descricao AS recomendacao,
+            r.status,
+            r.prioridade,
+            mc.prazo_monitoramento
+
+        FROM recomendacoes r
+
+        LEFT JOIN os o
+            ON o.codigo = r.os_codigo
+
+        LEFT JOIN recomendacao_monitoramento_config mc
+            ON mc.os_codigo = r.os_codigo
+
+        ORDER BY
+            CASE
+                WHEN r.os_codigo ~ '/[0-9]{4}$'
+                THEN split_part(r.os_codigo, '/', 2)::int
+                ELSE 0
+            END DESC,
+
+            r.os_codigo DESC,
+
+            r.id ASC
+    """)
+
+    rows = cur.fetchall()
+
+    con.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Recomendações"
+
+    cabecalho = [
+        "O.S",
+        "Resumo",
+        "Secretarias",
+        "Recomendação",
+        "Status",
+        "Prioridade",
+        "Data Prazo"
+    ]
+
+    ws.append(cabecalho)
+
+    for cell in ws[1]:
+
+        cell.font = Font(
+            bold=True,
+            color="FFFFFF"
+        )
+
+        cell.fill = PatternFill(
+            "solid",
+            fgColor="1E3A8A"
+        )
+
+        cell.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
+
+    for r in rows:
+
+        ws.append([
+            r["os_codigo"],
+            r["resumo"] or "",
+            r["secretarias"] or "",
+            r["recomendacao"] or "",
+            r["status"] or "",
+            r["prioridade"] or "",
+            (
+                r["prazo_monitoramento"].strftime("%d/%m/%Y")
+                if r["prazo_monitoramento"]
+                else ""
+            )
+        ])
+
+    larguras = [
+        16,
+        45,
+        30,
+        80,
+        20,
+        15,
+        18
+    ]
+
+    for i, largura in enumerate(larguras, start=1):
+
+        ws.column_dimensions[
+            get_column_letter(i)
+        ].width = largura
+
+    for row in ws.iter_rows():
+
+        for cell in row:
+
+            cell.alignment = Alignment(
+                vertical="top",
+                wrap_text=True
+            )
+
+    ws.freeze_panes = "A2"
+
+    arquivo = io.BytesIO()
+
+    wb.save(arquivo)
+
+    arquivo.seek(0)
+
+    return send_file(
+        arquivo,
+        as_attachment=True,
+        download_name="recomendacoes_auditoria.xlsx",
+        mimetype=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        )
     )
 
 @app.route('/os/delete/<int:id>')

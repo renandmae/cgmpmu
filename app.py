@@ -3760,6 +3760,21 @@ select {
 
         </div>
 
+        <script>
+        function selecionarOS(select) {
+        
+            const valor = select.value;
+        
+            if (!valor) {
+                return;
+            }
+        
+            window.location.href =
+                "/recomendacoes?os=" +
+                encodeURIComponent(valor);
+        }
+        </script>
+
         {% if os_codigo %}
 
         <form
@@ -3819,6 +3834,7 @@ select {
 
                 <option
                     value="{{o.os_codigo}}"
+                    {% if o.os_codigo == os_codigo %}selected{% endif %}
                 >
                     {{o.os_codigo}}
 
@@ -4514,69 +4530,69 @@ select {
 <script>
 
 function abrirMonitoramento() {
-    var modal = document.getElementById("modalMonitoramento");
 
-    if (modal) {
-        modal.style.display = "flex";
+    const modal =
+        document.getElementById("modalMonitoramento");
+
+    if (!modal) {
+        return;
     }
+
+    modal.style.display = "flex";
 }
 
 
 function fecharMonitoramento() {
-    var modal = document.getElementById("modalMonitoramento");
 
-    if (modal) {
-        modal.style.display = "none";
+    const modal =
+        document.getElementById("modalMonitoramento");
+
+    if (!modal) {
+        return;
     }
+
+    modal.style.display = "none";
 }
 
 
 function abrirHistorico() {
-    var modal = document.getElementById("modalHistorico");
 
-    if (modal) {
-        modal.style.display = "flex";
+    const modal =
+        document.getElementById("modalHistorico");
+
+    if (!modal) {
+        return;
     }
+
+    modal.style.display = "flex";
 }
 
 
 function fecharHistorico() {
-    var modal = document.getElementById("modalHistorico");
 
-    if (modal) {
-        modal.style.display = "none";
-    }
-}
+    const modal =
+        document.getElementById("modalHistorico");
 
-
-function selecionarOS(select) {
-
-    var valor = select.value;
-
-    if (!valor) {
+    if (!modal) {
         return;
     }
 
-    window.location.href =
-        "/recomendacoes?os=" +
-        encodeURIComponent(valor);
+    modal.style.display = "none";
 }
 
 
 function excluirRecomendacao(botao, id) {
 
-    var confirma = window.confirm(
-        "Deseja realmente excluir esta recomendacao?"
-    );
-
-    if (!confirma) {
+    if (!confirm(
+        "Deseja realmente excluir esta recomendação?"
+    )) {
         return;
     }
 
-    var campo =
+    const campo =
         document.getElementById("recIdExcluir");
 
-    var formulario =
+    const formulario =
         document.getElementById("formExcluir");
 
     if (!campo || !formulario) {
@@ -4602,19 +4618,20 @@ function atualizarPrioridade(select) {
         "prio-extremo"
     );
 
+
     if (select.value === "BAIXO") {
         select.classList.add("prio-baixo");
     }
 
-    if (select.value === "MÉDIO") {
+    else if (select.value === "MÉDIO") {
         select.classList.add("prio-medio");
     }
 
-    if (select.value === "ALTO") {
+    else if (select.value === "ALTO") {
         select.classList.add("prio-alto");
     }
 
-    if (select.value === "EXTREMO") {
+    else if (select.value === "EXTREMO") {
         select.classList.add("prio-extremo");
     }
 }
@@ -4626,23 +4643,27 @@ function atualizarLinha(elemento) {
         return;
     }
 
-    var linha = elemento.closest(".rec");
+    const linha =
+        elemento.closest(".rec");
 
     if (!linha) {
         return;
     }
 
-    var status =
+
+    const status =
         linha.querySelector(
             "select[name='status[]'], select[name='novo_status[]']"
         );
 
-    var prioridade =
+
+    const prioridade =
         linha.querySelector(
             "select[name='prioridade[]'], select[name='nova_prioridade[]']"
         );
 
-    var icone =
+
+    const icone =
         linha.querySelector(".icone-status");
 
 
@@ -4662,7 +4683,9 @@ function atualizarLinha(elemento) {
             if (icone) {
                 icone.textContent = "✔";
             }
+
         }
+
         else if (status.value === "PARCIALMENTE") {
 
             linha.classList.add("rec-parcial");
@@ -4670,7 +4693,9 @@ function atualizarLinha(elemento) {
             if (icone) {
                 icone.textContent = "◐";
             }
+
         }
+
         else {
 
             linha.classList.add("rec-nao");
@@ -4678,7 +4703,9 @@ function atualizarLinha(elemento) {
             if (icone) {
                 icone.textContent = "✖";
             }
+
         }
+
     }
 
 
@@ -4690,7 +4717,7 @@ function atualizarLinha(elemento) {
 
 function adicionarRecomendacao() {
 
-    var container =
+    const container =
         document.getElementById("recomendacoes");
 
     if (!container) {
@@ -4698,117 +4725,286 @@ function adicionarRecomendacao() {
     }
 
 
-    var div =
+    const div =
         document.createElement("div");
 
-    div.className =
-        "rec rec-nao";
+    div.className = "rec rec-nao";
 
 
-    var html = "";
+    const icone =
+        document.createElement("div");
 
-    html += '<div class="icone-status" style="font-size:22px;">';
-    html += "✖";
-    html += "</div>";
+    icone.className = "icone-status";
 
-    html += "<div>";
+    icone.style.fontSize = "22px";
 
-    html += '<textarea ';
-    html += 'name="nova_recomendacao[]" ';
-    html += 'rows="2" ';
-    html += 'placeholder="Digite a nova recomendacao..."';
-    html += "></textarea>";
-
-    html += "</div>";
-
-    html += "<div>";
-
-    html += "<label><b>Prioridade</b></label>";
-
-    html += '<select ';
-    html += 'name="nova_prioridade[]" ';
-    html += 'class="prioridade prio-baixo" ';
-    html += 'onchange="atualizarLinha(this); atualizarPrioridade(this)"';
-    html += ">";
-
-    html += '<option value="BAIXO">Baixo</option>';
-    html += '<option value="MÉDIO">Médio</option>';
-    html += '<option value="ALTO">Alto</option>';
-    html += '<option value="EXTREMO">Extremo</option>';
-
-    html += "</select>";
-
-    html += "</div>";
-
-    html += "<div>";
-
-    html += "<label><b>Status</b></label>";
-
-    html += '<select ';
-    html += 'name="novo_status[]" ';
-    html += 'onchange="atualizarLinha(this)"';
-    html += ">";
-
-    html += '<option value="NÃO ATENDIDO">Não Atendido</option>';
-    html += '<option value="PARCIALMENTE">Parcialmente</option>';
-    html += '<option value="ATENDIDO">Atendido</option>';
-
-    html += "</select>";
-
-    html += "</div>";
-
-    html += "<div>";
-
-    html += '<button ';
-    html += 'type="button" ';
-    html += 'class="btn btn-danger" ';
-    html += 'onclick="this.closest(\'.rec\').remove()"';
-    html += ">";
-
-    html += "🗑";
-
-    html += "</button>";
-
-    html += "</div>";
+    icone.textContent = "✖";
 
 
-    div.innerHTML = html;
-
-    container.appendChild(div);
-
-
-    var status =
-        div.querySelector(
-            "select[name='novo_status[]']"
-        );
-
-    var prioridade =
-        div.querySelector(
-            "select[name='nova_prioridade[]']"
-        );
+    const blocoDescricao =
+        document.createElement("div");
 
 
-    if (status) {
-        atualizarLinha(status);
-    }
+    const textarea =
+        document.createElement("textarea");
 
-    if (prioridade) {
-        atualizarPrioridade(prioridade);
-    }
+    textarea.name =
+        "nova_recomendacao[]";
+
+    textarea.rows = 2;
+
+    textarea.placeholder =
+        "Digite a nova recomendação...";
+
+
+    blocoDescricao.appendChild(
+        textarea
+    );
+
+
+    const blocoPrioridade =
+        document.createElement("div");
+
+
+    const labelPrioridade =
+        document.createElement("label");
+
+    labelPrioridade.innerHTML =
+        "<b>Prioridade</b>";
+
+
+    const selectPrioridade =
+        document.createElement("select");
+
+    selectPrioridade.name =
+        "nova_prioridade[]";
+
+    selectPrioridade.className =
+        "prioridade prio-baixo";
+
+
+    const opBaixo =
+        document.createElement("option");
+
+    opBaixo.value = "BAIXO";
+    opBaixo.textContent = "Baixo";
+
+
+    const opMedio =
+        document.createElement("option");
+
+    opMedio.value = "MÉDIO";
+    opMedio.textContent = "Médio";
+
+
+    const opAlto =
+        document.createElement("option");
+
+    opAlto.value = "ALTO";
+    opAlto.textContent = "Alto";
+
+
+    const opExtremo =
+        document.createElement("option");
+
+    opExtremo.value = "EXTREMO";
+    opExtremo.textContent = "Extremo";
+
+
+    selectPrioridade.appendChild(opBaixo);
+    selectPrioridade.appendChild(opMedio);
+    selectPrioridade.appendChild(opAlto);
+    selectPrioridade.appendChild(opExtremo);
+
+
+    selectPrioridade.addEventListener(
+        "change",
+        function() {
+
+            atualizarLinha(
+                selectPrioridade
+            );
+
+            atualizarPrioridade(
+                selectPrioridade
+            );
+        }
+    );
+
+
+    blocoPrioridade.appendChild(
+        labelPrioridade
+    );
+
+    blocoPrioridade.appendChild(
+        selectPrioridade
+    );
+
+
+    const blocoStatus =
+        document.createElement("div");
+
+
+    const labelStatus =
+        document.createElement("label");
+
+    labelStatus.innerHTML =
+        "<b>Status</b>";
+
+
+    const selectStatus =
+        document.createElement("select");
+
+    selectStatus.name =
+        "novo_status[]";
+
+
+    const opNaoAtendido =
+        document.createElement("option");
+
+    opNaoAtendido.value =
+        "NÃO ATENDIDO";
+
+    opNaoAtendido.textContent =
+        "Não Atendido";
+
+
+    const opParcial =
+        document.createElement("option");
+
+    opParcial.value =
+        "PARCIALMENTE";
+
+    opParcial.textContent =
+        "Parcialmente";
+
+
+    const opAtendido =
+        document.createElement("option");
+
+    opAtendido.value =
+        "ATENDIDO";
+
+    opAtendido.textContent =
+        "Atendido";
+
+
+    selectStatus.appendChild(
+        opNaoAtendido
+    );
+
+    selectStatus.appendChild(
+        opParcial
+    );
+
+    selectStatus.appendChild(
+        opAtendido
+    );
+
+
+    selectStatus.addEventListener(
+        "change",
+        function() {
+
+            atualizarLinha(
+                selectStatus
+            );
+        }
+    );
+
+
+    blocoStatus.appendChild(
+        labelStatus
+    );
+
+    blocoStatus.appendChild(
+        selectStatus
+    );
+
+
+    const blocoExcluir =
+        document.createElement("div");
+
+
+    const botaoExcluir =
+        document.createElement("button");
+
+    botaoExcluir.type =
+        "button";
+
+    botaoExcluir.className =
+        "btn btn-danger";
+
+    botaoExcluir.textContent =
+        "🗑";
+
+
+    botaoExcluir.title =
+        "Excluir recomendação";
+
+
+    botaoExcluir.addEventListener(
+        "click",
+        function() {
+
+            div.remove();
+
+        }
+    );
+
+
+    blocoExcluir.appendChild(
+        botaoExcluir
+    );
+
+
+    div.appendChild(
+        icone
+    );
+
+    div.appendChild(
+        blocoDescricao
+    );
+
+    div.appendChild(
+        blocoPrioridade
+    );
+
+    div.appendChild(
+        blocoStatus
+    );
+
+    div.appendChild(
+        blocoExcluir
+    );
+
+
+    container.appendChild(
+        div
+    );
+
+
+    atualizarLinha(
+        selectStatus
+    );
+
+    atualizarPrioridade(
+        selectPrioridade
+    );
 }
 
 
 function confirmarExcluirOS() {
 
-    return window.confirm(
-        "ATENCAO!\n\n" +
-        "Voce esta prestes a apagar TODOS os dados desta O.S.\n\n" +
-        "Serão excluidos:\n" +
-        "• Todas as recomendacoes\n" +
+    return confirm(
+        "ATENÇÃO!\n\n" +
+        "Você está prestes a apagar TODOS os dados desta O.S.\n\n" +
+        "Serão excluídos:\n" +
+        "• Todas as recomendações\n" +
         "• Todos os monitoramentos registrados\n" +
         "• O prazo de monitoramento\n\n" +
-        "A O.S sera deixada do zero.\n\n" +
-        "Essa operacao nao podera ser desfeita.\n\n" +
+        "A O.S será deixada do zero.\n\n" +
+        "Essa operação não poderá ser desfeita.\n\n" +
         "Deseja realmente continuar?"
     );
 }
@@ -4816,9 +5012,9 @@ function confirmarExcluirOS() {
 
 function confirmarExcluirMonitoramento() {
 
-    return window.confirm(
+    return confirm(
         "Deseja realmente excluir este monitoramento?\n\n" +
-        "A data e a observacao deste registro serao apagadas."
+        "A data e a observação deste registro serão apagadas."
     );
 }
 
@@ -4827,38 +5023,44 @@ document.addEventListener(
     "DOMContentLoaded",
     function() {
 
-        var linhas =
-            document.querySelectorAll(".rec");
+        document
+            .querySelectorAll(".rec")
+            .forEach(
+                function(linha) {
+
+                    const status =
+                        linha.querySelector(
+                            "select[name='status[]']"
+                        );
+
+                    const prioridade =
+                        linha.querySelector(
+                            "select[name='prioridade[]']"
+                        );
 
 
-        linhas.forEach(
-            function(linha) {
+                    if (status) {
 
-                var status =
-                    linha.querySelector(
-                        "select[name='status[]']"
-                    );
+                        atualizarLinha(
+                            status
+                        );
 
-                var prioridade =
-                    linha.querySelector(
-                        "select[name='prioridade[]']"
-                    );
+                    }
 
 
-                if (status) {
-                    atualizarLinha(status);
+                    if (prioridade) {
+
+                        atualizarPrioridade(
+                            prioridade
+                        );
+
+                    }
+
                 }
+            );
 
 
-                if (prioridade) {
-                    atualizarPrioridade(prioridade);
-                }
-
-            }
-        );
-
-
-        var modalMonitoramento =
+        const modalMonitoramento =
             document.getElementById(
                 "modalMonitoramento"
             );
@@ -4879,10 +5081,11 @@ document.addEventListener(
 
                 }
             );
+
         }
 
 
-        var modalHistorico =
+        const modalHistorico =
             document.getElementById(
                 "modalHistorico"
             );
@@ -4903,14 +5106,10 @@ document.addEventListener(
 
                 }
             );
+
         }
 
     }
-);
-
-
-console.log(
-    "JS RECOMENDACOES CARREGADO"
 );
 
 </script>

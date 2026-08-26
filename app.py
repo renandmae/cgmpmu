@@ -3176,6 +3176,35 @@ def recomendacoes_os():
         acao = request.form.get("acao")
 
         # =====================================================
+        # EXCLUIR TODOS OS DADOS DA O.S.
+        # =====================================================
+
+        if acao == "excluir_monitoramento_os":
+
+            # Apagar histórico de monitoramentos
+            cur.execute("""
+                DELETE FROM recomendacao_monitoramentos
+                WHERE TRIM(os_codigo) = TRIM(%s)
+            """, (os_codigo,))
+
+            # Apagar configuração de monitoramento
+            cur.execute("""
+                DELETE FROM recomendacao_monitoramento_config
+                WHERE TRIM(os_codigo) = TRIM(%s)
+            """, (os_codigo,))
+
+            # Apagar todas as recomendações
+            cur.execute("""
+                DELETE FROM recomendacoes
+                WHERE TRIM(os_codigo) = TRIM(%s)
+            """, (os_codigo,))
+
+            con.commit()
+            con.close()
+
+            return redirect("/recomendacoes")
+
+        # =====================================================
         # SALVAR RECOMENDAÇÕES
         # =====================================================
 
@@ -3283,6 +3312,34 @@ def recomendacoes_os():
                 prazo,
                 servidor_id
             ))
+
+            con.commit()
+            con.close()
+
+            return redirect(
+                f"/recomendacoes?os={quote(os_codigo)}"
+            )
+
+        # =====================================================
+        # EXCLUIR UM MONITORAMENTO
+        # =====================================================
+
+        elif acao == "excluir_monitoramento":
+
+            monitoramento_id = request.form.get(
+                "monitoramento_id"
+            )
+
+            if monitoramento_id:
+
+                cur.execute("""
+                    DELETE FROM recomendacao_monitoramentos
+                    WHERE id = %s
+                      AND TRIM(os_codigo) = TRIM(%s)
+                """, (
+                    monitoramento_id,
+                    os_codigo
+                ))
 
             con.commit()
             con.close()
@@ -3655,12 +3712,57 @@ select {
 
 <div class="card">
 
-    <div class="titulo">
-        📋 Recomendações de Auditoria
-    </div>
+    <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:15px;
+    ">
 
-    <div class="subtitulo">
-        Informe a O.S para consultar ou registrar as recomendações.
+        <div>
+
+            <div class="titulo">
+                📋 Recomendações de Auditoria
+            </div>
+
+            <div class="subtitulo">
+                Informe a O.S para consultar ou registrar as recomendações.
+            </div>
+
+        </div>
+
+        {% if os_codigo %}
+
+        <form
+            method="post"
+            style="margin:0;"
+            onsubmit="return confirmarExcluirOS();"
+        >
+
+            <input
+                type="hidden"
+                name="os_codigo"
+                value="{{ os_codigo }}"
+            >
+
+            <input
+                type="hidden"
+                name="acao"
+                value="excluir_monitoramento_os"
+            >
+
+            <button
+                type="submit"
+                class="btn btn-danger"
+                title="Excluir todos os dados desta O.S"
+            >
+                🗑 Excluir monitoramento
+            </button>
+
+        </form>
+
+        {% endif %}
+
     </div>
 
     <form method="get" style="margin-top:15px;">
@@ -3754,8 +3856,17 @@ select {
     </form>
 
 </div>
-
-
+<script>
+function selecionarOS(select){
+    const valor = select.value;
+    if (!valor) {
+        return;
+    }
+    window.location.href =
+        "/recomendacoes?os=" +
+        encodeURIComponent(valor);
+}
+</script>
 {% if os_codigo %}
 
 <form method="post">
@@ -4157,11 +4268,59 @@ select {
                 {% for m in monitoramentos %}
 
                 <div class="monitor-item">
-
-                    <div>
-                        <b>
-                            📅 {{ m.data_monitoramento.strftime('%d/%m/%Y') if m.data_monitoramento else '' }}
-                        </b>
+                
+                    <div style="
+                        display:flex;
+                        justify-content:space-between;
+                        align-items:center;
+                        gap:10px;
+                    ">
+                
+                        <div>
+                            <b>
+                                📅
+                                {{ m.data_monitoramento.strftime('%d/%m/%Y') if m.data_monitoramento else '' }}
+                            </b>
+                        </div>
+                
+                        <form
+                            method="post"
+                            style="margin:0;"
+                            onsubmit="return confirmarExcluirMonitoramento();"
+                        >
+                
+                            <input
+                                type="hidden"
+                                name="os_codigo"
+                                value="{{ os_codigo }}"
+                            >
+                
+                            <input
+                                type="hidden"
+                                name="acao"
+                                value="excluir_monitoramento"
+                            >
+                
+                            <input
+                                type="hidden"
+                                name="monitoramento_id"
+                                value="{{ m.id }}"
+                            >
+                
+                            <button
+                                type="submit"
+                                class="btn btn-danger"
+                                style="
+                                    padding:6px 10px;
+                                    font-size:13px;
+                                "
+                                title="Excluir este monitoramento"
+                            >
+                                🗑
+                            </button>
+                
+                        </form>
+                
                     </div>
 
                     <div style="margin-top:8px;">
@@ -4541,17 +4700,26 @@ document.addEventListener("DOMContentLoaded", function(){
 
 });
 
-function selecionarOS(select){
+function confirmarExcluirOS(){
 
-    const valor = select.value;
+    return confirm(
+        "ATENÇÃO!\n\n" +
+        "Você está prestes a apagar TODOS os dados desta O.S.\n\n" +
+        "Serão excluídos:\n" +
+        "• Todas as recomendações\n" +
+        "• Todos os monitoramentos registrados\n" +
+        "• O prazo de monitoramento\n\n" +
+        "A O.S será deixada do zero.\n\n" +
+        "Essa operação não poderá ser desfeita.\n\n" +
+        "Deseja realmente continuar?"
+    );
+}
+function confirmarExcluirMonitoramento(){
 
-    if (!valor) {
-        return;
-    }
-
-    window.location.href =
-        "/recomendacoes?os=" +
-        encodeURIComponent(valor);
+    return confirm(
+        "Deseja realmente excluir este monitoramento?\n\n" +
+        "A data e a observação deste registro serão apagadas."
+    );
 }
 </script>
 

@@ -4993,29 +4993,24 @@ function adicionarRecomendacao() {
     );
 }
 
-
-function confirmarExcluirOS() {
+function confirmarExcluirOS(){
 
     return confirm(
-        "ATENÇÃO!\n\n" +
-        "Você está prestes a apagar TODOS os dados desta O.S.\n\n" +
-        "Serão excluídos:\n" +
-        "• Todas as recomendações\n" +
-        "• Todos os monitoramentos registrados\n" +
-        "• O prazo de monitoramento\n\n" +
-        "A O.S será deixada do zero.\n\n" +
-        "Essa operação não poderá ser desfeita.\n\n" +
-        "Deseja realmente continuar?"
+        "ATENÇÃO! Você está prestes a apagar TODOS os dados desta O.S. " +
+        "Serão excluídas todas as recomendações, todos os monitoramentos " +
+        "e o prazo de monitoramento. A O.S será deixada do zero. " +
+        "Essa operação não poderá ser desfeita. Deseja realmente continuar?"
     );
+
 }
 
-
-function confirmarExcluirMonitoramento() {
+function confirmarExcluirMonitoramento(){
 
     return confirm(
-        "Deseja realmente excluir este monitoramento?\n\n" +
+        "Deseja realmente excluir este monitoramento? " +
         "A data e a observação deste registro serão apagadas."
     );
+
 }
 
 

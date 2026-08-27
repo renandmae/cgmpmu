@@ -3092,12 +3092,12 @@ def recomendacoes_os():
     # =========================================================
 
     termo_os = request.args.get("os", "").strip()
-
+    # Recupera também o resumo digitado manualmente
+    os_resumo = request.args.get("resumo_os", "").strip()
     os_codigo = termo_os
-    os_resumo = ""
-
+    
     if termo_os:
-
+    
         cur.execute("""
             SELECT
                 codigo,
@@ -3119,12 +3119,18 @@ def recomendacoes_os():
             termo_os,
             f"{termo_os}%"
         ))
-
+    
         os_encontrada = cur.fetchone()
-
+    
         if os_encontrada:
+    
             os_codigo = os_encontrada["codigo"]
-            os_resumo = os_encontrada["resumo"] or ""
+    
+            # Se a O.S. possuir resumo no cadastro,
+            # ele tem prioridade.
+            # Se estiver vazio, mantém o resumo manual digitado.
+            if os_encontrada["resumo"]:
+                os_resumo = os_encontrada["resumo"]
 
     # =========================================================
     # O.S. JÁ CADASTRADAS NAS RECOMENDAÇÕES

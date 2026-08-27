@@ -3256,14 +3256,8 @@ def recomendacoes_os():
                     f"secretaria[{rec_id}][]"
                 )
             
-                coordenadores = request.form.getlist(
-                    f"coordenador[{rec_id}][]"
-                )
-            
                 secretaria = ", ".join(secretarias)
-            
-                coordenador = ", ".join(coordenadores)
-            
+                
                 cur.execute("""
                     UPDATE recomendacoes
                     SET
@@ -3272,7 +3266,6 @@ def recomendacoes_os():
                         prioridade = %s,
                         status = %s,
                         secretaria = %s,
-                        coordenador = %s,
                         atualizado_em = NOW()
                     WHERE id = %s
                       AND os_codigo = %s
@@ -3282,7 +3275,6 @@ def recomendacoes_os():
                     prioridade,
                     st,
                     secretaria,
-                    coordenador,
                     rec_id,
                     os_codigo
                 ))
@@ -3320,14 +3312,8 @@ def recomendacoes_os():
                     f"nova_secretaria[{i}][]"
                 )
             
-                coordenadores = request.form.getlist(
-                    f"nova_coordenador[{i}][]"
-                )
-            
                 secretaria = ", ".join(secretarias)
-            
-                coordenador = ", ".join(coordenadores)
-            
+                    
                 cur.execute("""
                     INSERT INTO recomendacoes (
                         os_codigo,
@@ -3335,18 +3321,16 @@ def recomendacoes_os():
                         descricao,
                         prioridade,
                         status,
-                        secretaria,
-                        coordenador
+                        secretaria
                     )
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s)
                 """, (
                     os_codigo,
                     os_resumo,
                     descricao,
                     prioridade,
                     st,
-                    secretaria,
-                    coordenador
+                    secretaria
                 ))
 
             # -------------------------------------------------

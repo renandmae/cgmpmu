@@ -3092,9 +3092,9 @@ def recomendacoes_os():
     # =========================================================
 
     termo_os = request.args.get("os", "").strip()
-    # Recupera também o resumo digitado manualmente
-    os_resumo = request.args.get("resumo_os", "").strip()
+
     os_codigo = termo_os
+    os_resumo = request.args.get("resumo_os", "").strip()
     
     if termo_os:
     
@@ -3126,11 +3126,27 @@ def recomendacoes_os():
     
             os_codigo = os_encontrada["codigo"]
     
-            # Se a O.S. possuir resumo no cadastro,
-            # ele tem prioridade.
-            # Se estiver vazio, mantém o resumo manual digitado.
+            # Resumo oficial da tabela OS tem prioridade
             if os_encontrada["resumo"]:
                 os_resumo = os_encontrada["resumo"]
+    
+            # Se a OS existe mas o resumo oficial está vazio,
+            # buscar o resumo manual já salvo em recomendações.
+            else:
+                cur.execute("""
+                    SELECT resumo_os
+                    FROM recomendacoes
+                    WHERE TRIM(os_codigo) = TRIM(%s)
+                      AND resumo_os IS NOT NULL
+                      AND TRIM(resumo_os) <> ''
+                    ORDER BY id DESC
+                    LIMIT 1
+                """, (os_codigo,))
+    
+                resumo_manual = cur.fetchone()
+    
+                if resumo_manual:
+                    os_resumo = resumo_manual["resumo_os"]
 
     # =========================================================
     # O.S. JÁ CADASTRADAS NAS RECOMENDAÇÕES
@@ -3138,32 +3154,47 @@ def recomendacoes_os():
 
     cur.execute("""
         SELECT
-            r.os_codigo,
-
+            x.os_codigo,
+    
             COALESCE(
-                NULLIF(MAX(r.resumo_os), ''),
-                MAX(o.resumo),
+                NULLIF(x.resumo_recomendacao, ''),
+                o.resumo,
                 ''
             ) AS resumo,
-
+    
             CASE
-                WHEN r.os_codigo ~ '/[0-9]{4}$'
-                THEN split_part(r.os_codigo, '/', 2)::int
+                WHEN x.os_codigo ~ '/[0-9]{4}$'
+                THEN split_part(x.os_codigo, '/', 2)::int
                 ELSE 0
             END AS ano
-
-        FROM recomendacoes r
-
+    
+        FROM (
+    
+            /* O.S. que possuem recomendações */
+            SELECT
+                r.os_codigo,
+                MAX(r.resumo_os) AS resumo_recomendacao
+            FROM recomendacoes r
+            GROUP BY r.os_codigo
+    
+            UNION
+    
+            /* O.S. que possuem somente monitoramento */
+            SELECT
+                mc.os_codigo,
+                NULL AS resumo_recomendacao
+            FROM recomendacao_monitoramento_config mc
+    
+        ) x
+    
         LEFT JOIN os o
-            ON o.codigo = r.os_codigo
-
-        GROUP BY r.os_codigo
-
+            ON o.codigo = x.os_codigo
+    
         ORDER BY
             ano DESC,
-            r.os_codigo DESC
+            x.os_codigo DESC
     """)
-
+    
     os_cadastradas = cur.fetchall()
 
     # =========================================================

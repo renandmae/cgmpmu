@@ -3241,25 +3241,29 @@ def recomendacoes_os():
             # -------------------------------------------------
 
             for rec_id, descricao, prioridade, st in zip(
-                secretarias = request.form.getlist(
-                    f"secretaria[{rec_id}][]"
-                )
-                coordenadores = request.form.getlist(
-                    f"coordenador[{rec_id}][]"
-                )
-                secretaria = ", ".join(secretarias)
-                coordenador = ", ".join(coordenadores)
                 ids,
                 descricoes,
                 prioridades,
                 status
             ):
-
+            
                 descricao = descricao.strip()
-
+            
                 if not descricao:
                     continue
-
+            
+                secretarias = request.form.getlist(
+                    f"secretaria[{rec_id}][]"
+                )
+            
+                coordenadores = request.form.getlist(
+                    f"coordenador[{rec_id}][]"
+                )
+            
+                secretaria = ", ".join(secretarias)
+            
+                coordenador = ", ".join(coordenadores)
+            
                 cur.execute("""
                     UPDATE recomendacoes
                     SET
@@ -4931,6 +4935,7 @@ function atualizarLinha(elemento) {
     }
 }
 
+let indiceNovaRecomendacao = 0;
 function adicionarRecomendacao() {
 
     const container =
@@ -4939,7 +4944,7 @@ function adicionarRecomendacao() {
     if (!container) {
         return;
     }
-
+    const indice = indiceNovaRecomendacao++;
     const div =
         document.createElement("div");
 
@@ -5168,7 +5173,7 @@ function adicionarRecomendacao() {
         document.createElement("select");
 
     selectSecretaria.name =
-        "nova_secretaria[]";
+        "nova_secretaria[" + indice + "][]";
 
     selectSecretaria.multiple = true;
 
@@ -5254,7 +5259,7 @@ function adicionarRecomendacao() {
         document.createElement("select");
 
     selectCoordenador.name =
-        "novo_coordenador[]";
+        "novo_coordenador[" + indice + "][]";
 
     selectCoordenador.multiple = true;
 

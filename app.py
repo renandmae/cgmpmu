@@ -3357,18 +3357,26 @@ def recomendacoes_os():
                 "prazo_monitoramento"
             ) or None
 
+            coordenadores = request.form.getlist(
+                "coordenador_monitoramento[]"
+            )
+            
+            coordenador = ", ".join(coordenadores)
+
             cur.execute("""
                 INSERT INTO recomendacao_monitoramento_config (
                     os_codigo,
                     prazo_monitoramento,
+                    coordenador,
                     atualizado_por,
                     atualizado_em
                 )
-                VALUES (%s,%s,%s,NOW())
+                VALUES (%s,%s,%s,%s,NOW())
 
                 ON CONFLICT (os_codigo)
                 DO UPDATE SET
                     prazo_monitoramento = EXCLUDED.prazo_monitoramento,
+                    coordenador = EXCLUDED.coordenador,
                     atualizado_por = EXCLUDED.atualizado_por,
                     atualizado_em = NOW()
             """, (
@@ -3496,7 +3504,6 @@ def recomendacoes_os():
                 prioridade,
                 status,
                 secretaria,
-                coordenador,
                 criado_em,
                 atualizado_em
             FROM recomendacoes
@@ -3973,7 +3980,38 @@ select {
             {% endif %}
 
         </div>
-
+        
+        <div style="margin-top:15px;">
+        <label for="coordenadorMonitoramento">
+            <b>Coordenador do Monitoramento</b>
+        </label>
+    
+        <select
+            id="coordenadorMonitoramento"
+            name="coordenador_monitoramento[]"
+            multiple
+            size="5"
+        >
+    
+            {% for c in colaboradores %}
+    
+            <option value="{{ c.nome }}">
+                {{ c.nome }}
+            </option>
+    
+            {% endfor %}
+    
+        </select>
+    
+        <div style="
+            margin-top:6px;
+            font-size:12px;
+            color:#64748b;
+        ">
+            Selecione um ou mais coordenadores responsáveis pelo monitoramento.
+        </div>
+    
+    </div>
     </form>
 
 </div>
@@ -4338,36 +4376,7 @@ select {
                     </select>
                 
                 </div>
-
-                <div>
-
-                    <label>
-                        <b>Coordenador</b>
-                    </label>
-                
-                    {% set coordenadores_selecionados = (r.coordenador or '').split(',') %}
-                
-                    <select
-                        name="coordenador[{{ r.id }}][]"
-                        multiple
-                        size="5"
-                    >
-                
-                        {% for c in colaboradores %}
-                
-                        <option
-                            value="{{ c.nome }}"
-                            {% if c.nome in coordenadores_selecionados %}selected{% endif %}
-                        >
-                            {{ c.nome }}
-                        </option>
-                
-                        {% endfor %}
-                
-                    </select>
-                
-                </div>
-                    
+    
                 <div>
 
                     <button
@@ -4944,11 +4953,15 @@ function adicionarRecomendacao() {
     if (!container) {
         return;
     }
-    const indice = indiceNovaRecomendacao++;
+
+    const indice =
+        indiceNovaRecomendacao++;
+
     const div =
         document.createElement("div");
 
-    div.className = "rec rec-nao";
+    div.className =
+        "rec rec-nao";
 
 
     // =====================================================
@@ -4958,11 +4971,14 @@ function adicionarRecomendacao() {
     const icone =
         document.createElement("div");
 
-    icone.className = "icone-status";
+    icone.className =
+        "icone-status";
 
-    icone.style.fontSize = "22px";
+    icone.style.fontSize =
+        "22px";
 
-    icone.textContent = "✖";
+    icone.textContent =
+        "✖";
 
 
     // =====================================================
@@ -4978,7 +4994,8 @@ function adicionarRecomendacao() {
     textarea.name =
         "nova_recomendacao[]";
 
-    textarea.rows = 2;
+    textarea.rows =
+        2;
 
     textarea.placeholder =
         "Digite a nova recomendação...";
@@ -5014,35 +5031,58 @@ function adicionarRecomendacao() {
     const opBaixo =
         document.createElement("option");
 
-    opBaixo.value = "BAIXO";
-    opBaixo.textContent = "Baixo";
+    opBaixo.value =
+        "BAIXO";
+
+    opBaixo.textContent =
+        "Baixo";
 
 
     const opMedio =
         document.createElement("option");
 
-    opMedio.value = "MÉDIO";
-    opMedio.textContent = "Médio";
+    opMedio.value =
+        "MÉDIO";
+
+    opMedio.textContent =
+        "Médio";
 
 
     const opAlto =
         document.createElement("option");
 
-    opAlto.value = "ALTO";
-    opAlto.textContent = "Alto";
+    opAlto.value =
+        "ALTO";
+
+    opAlto.textContent =
+        "Alto";
 
 
     const opExtremo =
         document.createElement("option");
 
-    opExtremo.value = "EXTREMO";
-    opExtremo.textContent = "Extremo";
+    opExtremo.value =
+        "EXTREMO";
+
+    opExtremo.textContent =
+        "Extremo";
 
 
-    selectPrioridade.appendChild(opBaixo);
-    selectPrioridade.appendChild(opMedio);
-    selectPrioridade.appendChild(opAlto);
-    selectPrioridade.appendChild(opExtremo);
+    selectPrioridade.appendChild(
+        opBaixo
+    );
+
+    selectPrioridade.appendChild(
+        opMedio
+    );
+
+    selectPrioridade.appendChild(
+        opAlto
+    );
+
+    selectPrioridade.appendChild(
+        opExtremo
+    );
 
 
     selectPrioridade.addEventListener(
@@ -5175,9 +5215,11 @@ function adicionarRecomendacao() {
     selectSecretaria.name =
         "nova_secretaria[" + indice + "][]";
 
-    selectSecretaria.multiple = true;
+    selectSecretaria.multiple =
+        true;
 
-    selectSecretaria.size = 5;
+    selectSecretaria.size =
+        5;
 
 
     const secretarias = [
@@ -5220,9 +5262,11 @@ function adicionarRecomendacao() {
             const option =
                 document.createElement("option");
 
-            option.value = nome;
+            option.value =
+                nome;
 
-            option.textContent = nome;
+            option.textContent =
+                nome;
 
             selectSecretaria.appendChild(
                 option
@@ -5238,64 +5282,6 @@ function adicionarRecomendacao() {
 
     blocoSecretaria.appendChild(
         selectSecretaria
-    );
-
-
-    // =====================================================
-    // COORDENADOR
-    // =====================================================
-
-    const blocoCoordenador =
-        document.createElement("div");
-
-    const labelCoordenador =
-        document.createElement("label");
-
-    labelCoordenador.innerHTML =
-        "<b>Coordenador</b>";
-
-
-    const selectCoordenador =
-        document.createElement("select");
-
-    selectCoordenador.name =
-        "novo_coordenador[" + indice + "][]";
-
-    selectCoordenador.multiple = true;
-
-    selectCoordenador.size = 5;
-
-
-    const colaboradores =
-        window.colaboradoresRecomendacoes || [];
-
-
-    colaboradores.forEach(
-        function(colaborador) {
-
-            const option =
-                document.createElement("option");
-
-            option.value =
-                colaborador;
-
-            option.textContent =
-                colaborador;
-
-            selectCoordenador.appendChild(
-                option
-            );
-
-        }
-    );
-
-
-    blocoCoordenador.appendChild(
-        labelCoordenador
-    );
-
-    blocoCoordenador.appendChild(
-        selectCoordenador
     );
 
 
@@ -5360,10 +5346,6 @@ function adicionarRecomendacao() {
 
     div.appendChild(
         blocoSecretaria
-    );
-
-    div.appendChild(
-        blocoCoordenador
     );
 
     div.appendChild(

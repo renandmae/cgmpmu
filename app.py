@@ -3366,6 +3366,7 @@ def recomendacoes_os():
             """, (
                 os_codigo,
                 prazo,
+                coordenador,
                 servidor_id
             ))
 
@@ -3507,7 +3508,8 @@ def recomendacoes_os():
 
         cur.execute("""
             SELECT
-                prazo_monitoramento
+                prazo_monitoramento,
+                coordenador
             FROM recomendacao_monitoramento_config
             WHERE TRIM(os_codigo) = TRIM(%s)
         """, (os_codigo,))
@@ -3964,11 +3966,27 @@ select {
             {% endif %}
 
         </div>
-        
-        <div style="margin-top:15px;">
+    </form>
+</div>
+
+{% if os_codigo %}
+
+<!-- ===================================================== -->
+<!-- FORMULÁRIO PRINCIPAL -->
+<!-- SOMENTE RECOMENDAÇÕES + PRAZO -->
+<!-- ===================================================== -->
+
+<form method="post">
+
+    <div style="margin-top:15px;">
         <label for="coordenadorMonitoramento">
             <b>Coordenador do Monitoramento</b>
         </label>
+        {% set coordenadores_selecionados = [] %}
+    
+        {% if monitoramento and monitoramento.coordenador %}
+            {% set coordenadores_selecionados = monitoramento.coordenador.split(',') %}
+        {% endif %}
     
         <select
             id="coordenadorMonitoramento"
@@ -3979,7 +3997,12 @@ select {
     
             {% for c in colaboradores %}
     
-            <option value="{{ c.nome }}">
+            <option
+                value="{{ c.nome }}"
+                {% if c.nome in coordenadores_selecionados %}
+                    selected
+                {% endif %}
+            >
                 {{ c.nome }}
             </option>
     
@@ -3994,20 +4017,7 @@ select {
         ">
             Selecione um ou mais coordenadores responsáveis pelo monitoramento.
         </div>
-    
     </div>
-    </form>
-
-</div>
-
-{% if os_codigo %}
-
-<!-- ===================================================== -->
-<!-- FORMULÁRIO PRINCIPAL -->
-<!-- SOMENTE RECOMENDAÇÕES + PRAZO -->
-<!-- ===================================================== -->
-
-<form method="post">
 
     <input
         type="hidden"

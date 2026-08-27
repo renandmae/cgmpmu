@@ -3097,7 +3097,7 @@ def recomendacoes_os():
     os_resumo = request.args.get("resumo_os", "").strip()
     
     if termo_os:
-    
+
         cur.execute("""
             SELECT
                 codigo,
@@ -3126,14 +3126,19 @@ def recomendacoes_os():
     
             os_codigo = os_encontrada["codigo"]
     
-            # Resumo oficial da tabela OS tem prioridade
+            # =====================================================
+            # 1. RESUMO OFICIAL DA TABELA OS
+            # =====================================================
+    
             if os_encontrada["resumo"]:
                 os_resumo = os_encontrada["resumo"]
     
-            # Se a OS existe mas o resumo oficial está vazio,
-            # buscar o resumo manual já salvo em recomendações.
             else:
-            
+    
+                # =================================================
+                # 2. RESUMO MANUAL DA CONFIGURAÇÃO
+                # =================================================
+    
                 cur.execute("""
                     SELECT resumo_os
                     FROM recomendacao_monitoramento_config
@@ -3142,16 +3147,18 @@ def recomendacoes_os():
                       AND TRIM(resumo_os) <> ''
                     LIMIT 1
                 """, (os_codigo,))
-            
-                resumo_manual = cur.fetchone()
-            
-                if resumo_manual and resumo_manual["resumo_os"]:
-                    os_resumo = resumo_manual["resumo_os"]
-            
+    
+                resumo_config = cur.fetchone()
+    
+                if resumo_config and resumo_config["resumo_os"]:
+                    os_resumo = resumo_config["resumo_os"]
+    
                 else:
-            
-                    # Compatibilidade com registros antigos
-                    # que ainda possuem o resumo somente em recomendações.
+    
+                    # =============================================
+                    # 3. COMPATIBILIDADE COM REGISTROS ANTIGOS
+                    # =============================================
+    
                     cur.execute("""
                         SELECT resumo_os
                         FROM recomendacoes
@@ -3161,12 +3168,51 @@ def recomendacoes_os():
                         ORDER BY id DESC
                         LIMIT 1
                     """, (os_codigo,))
-            
+    
                     resumo_antigo = cur.fetchone()
-            
+    
                     if resumo_antigo:
                         os_resumo = resumo_antigo["resumo_os"]
-
+    
+        else:
+    
+            # =====================================================
+            # O.S NÃO EXISTE NA TABELA OS
+            # =====================================================
+            # Procurar resumo manual salvo na configuração.
+    
+            cur.execute("""
+                SELECT resumo_os
+                FROM recomendacao_monitoramento_config
+                WHERE TRIM(os_codigo) = TRIM(%s)
+                  AND resumo_os IS NOT NULL
+                  AND TRIM(resumo_os) <> ''
+                LIMIT 1
+            """, (termo_os,))
+    
+            resumo_config = cur.fetchone()
+    
+            if resumo_config:
+                os_resumo = resumo_config["resumo_os"]
+    
+            else:
+    
+                # Compatibilidade com registros antigos
+                cur.execute("""
+                    SELECT resumo_os
+                    FROM recomendacoes
+                    WHERE TRIM(os_codigo) = TRIM(%s)
+                      AND resumo_os IS NOT NULL
+                      AND TRIM(resumo_os) <> ''
+                    ORDER BY id DESC
+                    LIMIT 1
+                """, (termo_os,))
+    
+                resumo_antigo = cur.fetchone()
+    
+                if resumo_antigo:
+                    os_resumo = resumo_antigo["resumo_os"]
+                
     # =========================================================
     # O.S. JÁ CADASTRADAS NAS RECOMENDAÇÕES
     # =========================================================
@@ -3985,51 +4031,7 @@ select {
                 >
                     Consultar
                 </button>
-
             </div>
-
-        </div>
-
-
-        <div style="margin-top:15px;">
-
-            <label>
-                <b>Resumo da O.S</b>
-            </label>
-
-            <input
-                type="text"
-                name="resumo_os"
-                value="{{ os_resumo }}"
-                placeholder="Nome / descrição da O.S"
-
-                {% if os_resumo %}
-                    readonly
-                {% endif %}
-            >
-
-            {% if os_resumo %}
-
-            <div style="
-                margin-top:6px;
-                font-size:12px;
-                color:#16a34a;
-            ">
-                ✓ Resumo carregado automaticamente da tabela de O.S.
-            </div>
-
-            {% else %}
-
-            <div style="
-                margin-top:6px;
-                font-size:12px;
-                color:#64748b;
-            ">
-                O.S não localizada no cadastro. Informe manualmente o resumo.
-            </div>
-
-            {% endif %}
-
         </div>
     </form>
 </div>
@@ -4042,7 +4044,44 @@ select {
 <!-- ===================================================== -->
 
 <form method="post">
+    <div style="margin-top:15px;">
 
+        <label for="resumoOS">
+            <b>Resumo da O.S</b>
+        </label>
+    
+        <input
+            type="text"
+            id="resumoOS"
+            name="os_resumo"
+            value="{{ os_resumo }}"
+            placeholder="Nome / descrição da O.S"
+        >
+    
+        {% if os_resumo %}
+    
+        <div style="
+            margin-top:6px;
+            font-size:12px;
+            color:#16a34a;
+        ">
+            ✓ Resumo carregado automaticamente.
+        </div>
+    
+        {% else %}
+    
+        <div style="
+            margin-top:6px;
+            font-size:12px;
+            color:#64748b;
+        ">
+            Informe manualmente o resumo desta O.S.
+        </div>
+    
+        {% endif %}
+    
+    </div>
+    
     <div style="margin-top:15px;">
         <label for="coordenadorMonitoramento">
             <b>Coordenador do Monitoramento</b>
@@ -4088,12 +4127,6 @@ select {
         type="hidden"
         name="os_codigo"
         value="{{ os_codigo }}"
-    >
-
-    <input
-        type="hidden"
-        name="os_resumo"
-        value="{{ os_resumo }}"
     >
 
     <input

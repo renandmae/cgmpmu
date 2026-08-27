@@ -3071,6 +3071,18 @@ def recomendacoes_os():
 
     colaborador = cur.fetchone()
 
+    cur.execute("""
+        SELECT
+            id,
+            nome
+        FROM colaboradores
+        WHERE nome IS NOT NULL
+          AND TRIM(nome) <> ''
+        ORDER BY nome
+    """)
+    
+    colaboradores = cur.fetchall()
+
     if not colaborador:
         con.close()
         return "Colaborador não encontrado"
@@ -3229,6 +3241,14 @@ def recomendacoes_os():
             # -------------------------------------------------
 
             for rec_id, descricao, prioridade, st in zip(
+                secretarias = request.form.getlist(
+                    f"secretaria[{rec_id}][]"
+                )
+                coordenadores = request.form.getlist(
+                    f"coordenador[{rec_id}][]"
+                )
+                secretaria = ", ".join(secretarias)
+                coordenador = ", ".join(coordenadores)
                 ids,
                 descricoes,
                 prioridades,
@@ -3247,6 +3267,8 @@ def recomendacoes_os():
                         descricao = %s,
                         prioridade = %s,
                         status = %s,
+                        secretaria = %s,
+                        coordenador = %s,
                         atualizado_em = NOW()
                     WHERE id = %s
                       AND os_codigo = %s
@@ -3255,6 +3277,8 @@ def recomendacoes_os():
                     descricao,
                     prioridade,
                     st,
+                    secretaria,
+                    coordenador,
                     rec_id,
                     os_codigo
                 ))
@@ -3275,32 +3299,50 @@ def recomendacoes_os():
                 "novo_status[]"
             )
 
-            for descricao, prioridade, st in zip(
-                novas_descricoes,
-                novas_prioridades,
-                novos_status
+            for i, (descricao, prioridade, st) in enumerate(
+                zip(
+                    novas_descricoes,
+                    novas_prioridades,
+                    novos_status
+                )
             ):
-
+            
                 descricao = descricao.strip()
-
+            
                 if not descricao:
                     continue
-
+            
+                secretarias = request.form.getlist(
+                    f"nova_secretaria[{i}][]"
+                )
+            
+                coordenadores = request.form.getlist(
+                    f"nova_coordenador[{i}][]"
+                )
+            
+                secretaria = ", ".join(secretarias)
+            
+                coordenador = ", ".join(coordenadores)
+            
                 cur.execute("""
                     INSERT INTO recomendacoes (
                         os_codigo,
                         resumo_os,
                         descricao,
                         prioridade,
-                        status
+                        status,
+                        secretaria,
+                        coordenador
                     )
-                    VALUES (%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     os_codigo,
                     os_resumo,
                     descricao,
                     prioridade,
-                    st
+                    st,
+                    secretaria,
+                    coordenador
                 ))
 
             # -------------------------------------------------
@@ -3449,6 +3491,8 @@ def recomendacoes_os():
                 descricao,
                 prioridade,
                 status,
+                secretaria,
+                coordenador,
                 criado_em,
                 atualizado_em
             FROM recomendacoes
@@ -3619,7 +3663,7 @@ select {
 
 .rec {
     display:grid;
-    grid-template-columns:40px 1fr 150px 170px 45px;
+    grid-template-columns:40px 1fr 140px 150px 180px 200px 45px;
     gap:10px;
     align-items:center;
     padding:12px;
@@ -4153,7 +4197,173 @@ select {
 
                 </div>
 
+                <div>
 
+                    <label>
+                        <b>Secretaria</b>
+                    </label>
+                
+                    {% set secretarias_selecionadas = (r.secretaria or '').split(',') %}
+                
+                    <select
+                        name="secretaria[{{ r.id }}][]"
+                        multiple
+                        size="5"
+                    >
+                
+                        <option value="CM"
+                            {% if 'CM' in secretarias_selecionadas %}selected{% endif %}
+                        >CM</option>
+                
+                        <option value="SEGOV"
+                            {% if 'SEGOV' in secretarias_selecionadas %}selected{% endif %}
+                        >SEGOV</option>
+                
+                        <option value="SMGAS"
+                            {% if 'SMGAS' in secretarias_selecionadas %}selected{% endif %}
+                        >SMGAS</option>
+                
+                        <option value="PGM"
+                            {% if 'PGM' in secretarias_selecionadas %}selected{% endif %}
+                        >PGM</option>
+                
+                        <option value="SMA"
+                            {% if 'SMA' in secretarias_selecionadas %}selected{% endif %}
+                        >SMA</option>
+                
+                        <option value="SMF"
+                            {% if 'SMF' in secretarias_selecionadas %}selected{% endif %}
+                        >SMF</option>
+                
+                        <option value="SME"
+                            {% if 'SME' in secretarias_selecionadas %}selected{% endif %}
+                        >SME</option>
+                
+                        <option value="SMCT"
+                            {% if 'SMCT' in secretarias_selecionadas %}selected{% endif %}
+                        >SMCT</option>
+                
+                        <option value="SMS"
+                            {% if 'SMS' in secretarias_selecionadas %}selected{% endif %}
+                        >SMS</option>
+                
+                        <option value="SEDES"
+                            {% if 'SEDES' in secretarias_selecionadas %}selected{% endif %}
+                        >SEDES</option>
+                
+                        <option value="SMAGRO"
+                            {% if 'SMAGRO' in secretarias_selecionadas %}selected{% endif %}
+                        >SMAGRO</option>
+                
+                        <option value="SEINFRA"
+                            {% if 'SEINFRA' in secretarias_selecionadas %}selected{% endif %}
+                        >SEINFRA</option>
+                
+                        <option value="SETTRAN"
+                            {% if 'SETTRAN' in secretarias_selecionadas %}selected{% endif %}
+                        >SETTRAN</option>
+                
+                        <option value="DMAE"
+                            {% if 'DMAE' in secretarias_selecionadas %}selected{% endif %}
+                        >DMAE</option>
+                
+                        <option value="IPREMU"
+                            {% if 'IPREMU' in secretarias_selecionadas %}selected{% endif %}
+                        >IPREMU</option>
+                
+                        <option value="FUTEL"
+                            {% if 'FUTEL' in secretarias_selecionadas %}selected{% endif %}
+                        >FUTEL</option>
+                
+                        <option value="FERUB"
+                            {% if 'FERUB' in secretarias_selecionadas %}selected{% endif %}
+                        >FERUB</option>
+                
+                        <option value="EMAM"
+                            {% if 'EMAM' in secretarias_selecionadas %}selected{% endif %}
+                        >EMAM</option>
+                
+                        <option value="CGM"
+                            {% if 'CGM' in secretarias_selecionadas %}selected{% endif %}
+                        >CGM</option>
+                
+                        <option value="SESURB"
+                            {% if 'SESURB' in secretarias_selecionadas %}selected{% endif %}
+                        >SESURB</option>
+                
+                        <option value="SMH"
+                            {% if 'SMH' in secretarias_selecionadas %}selected{% endif %}
+                        >SMH</option>
+                
+                        <option value="SEJUV"
+                            {% if 'SEJUV' in secretarias_selecionadas %}selected{% endif %}
+                        >SEJUV</option>
+                
+                        <option value="SECOM"
+                            {% if 'SECOM' in secretarias_selecionadas %}selected{% endif %}
+                        >SECOM</option>
+                
+                        <option value="SEDEI"
+                            {% if 'SEDEI' in secretarias_selecionadas %}selected{% endif %}
+                        >SEDEI</option>
+                
+                        <option value="SMGE"
+                            {% if 'SMGE' in secretarias_selecionadas %}selected{% endif %}
+                        >SMGE</option>
+                
+                        <option value="SEPLAN"
+                            {% if 'SEPLAN' in secretarias_selecionadas %}selected{% endif %}
+                        >SEPLAN</option>
+                
+                        <option value="SSEG"
+                            {% if 'SSEG' in secretarias_selecionadas %}selected{% endif %}
+                        >SSEG</option>
+                
+                        <option value="ARESAN"
+                            {% if 'ARESAN' in secretarias_selecionadas %}selected{% endif %}
+                        >ARESAN</option>
+                
+                        <option value="EXTERNO"
+                            {% if 'EXTERNO' in secretarias_selecionadas %}selected{% endif %}
+                        >EXTERNO</option>
+                
+                        <option value="OUTROS"
+                            {% if 'OUTROS' in secretarias_selecionadas %}selected{% endif %}
+                        >OUTROS</option>
+                
+                    </select>
+                
+                </div>
+
+                <div>
+
+                    <label>
+                        <b>Coordenador</b>
+                    </label>
+                
+                    {% set coordenadores_selecionados = (r.coordenador or '').split(',') %}
+                
+                    <select
+                        name="coordenador[{{ r.id }}][]"
+                        multiple
+                        size="5"
+                    >
+                
+                        {% for c in colaboradores %}
+                
+                        <option
+                            value="{{ c.nome }}"
+                            {% if c.nome in coordenadores_selecionados %}selected{% endif %}
+                        >
+                            {{ c.nome }}
+                        </option>
+                
+                        {% endfor %}
+                
+                    </select>
+                
+                </div>
+                    
                 <div>
 
                     <button
@@ -4526,6 +4736,13 @@ select {
 
 </form>
 
+<script>
+window.colaboradoresRecomendacoes = [
+    {% for c in colaboradores %}
+        {{ c.nome|tojson }}{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+</script>
 
 <script>
 
@@ -4714,7 +4931,6 @@ function atualizarLinha(elemento) {
     }
 }
 
-
 function adicionarRecomendacao() {
 
     const container =
@@ -4724,12 +4940,15 @@ function adicionarRecomendacao() {
         return;
     }
 
-
     const div =
         document.createElement("div");
 
     div.className = "rec rec-nao";
 
+
+    // =====================================================
+    // ÍCONE
+    // =====================================================
 
     const icone =
         document.createElement("div");
@@ -4741,9 +4960,12 @@ function adicionarRecomendacao() {
     icone.textContent = "✖";
 
 
+    // =====================================================
+    // DESCRIÇÃO
+    // =====================================================
+
     const blocoDescricao =
         document.createElement("div");
-
 
     const textarea =
         document.createElement("textarea");
@@ -4756,22 +4978,23 @@ function adicionarRecomendacao() {
     textarea.placeholder =
         "Digite a nova recomendação...";
 
-
     blocoDescricao.appendChild(
         textarea
     );
 
 
+    // =====================================================
+    // PRIORIDADE
+    // =====================================================
+
     const blocoPrioridade =
         document.createElement("div");
-
 
     const labelPrioridade =
         document.createElement("label");
 
     labelPrioridade.innerHTML =
         "<b>Prioridade</b>";
-
 
     const selectPrioridade =
         document.createElement("select");
@@ -4828,6 +5051,7 @@ function adicionarRecomendacao() {
             atualizarPrioridade(
                 selectPrioridade
             );
+
         }
     );
 
@@ -4841,9 +5065,12 @@ function adicionarRecomendacao() {
     );
 
 
+    // =====================================================
+    // STATUS
+    // =====================================================
+
     const blocoStatus =
         document.createElement("div");
-
 
     const labelStatus =
         document.createElement("label");
@@ -4909,6 +5136,7 @@ function adicionarRecomendacao() {
             atualizarLinha(
                 selectStatus
             );
+
         }
     );
 
@@ -4921,6 +5149,154 @@ function adicionarRecomendacao() {
         selectStatus
     );
 
+
+    // =====================================================
+    // SECRETARIA
+    // =====================================================
+
+    const blocoSecretaria =
+        document.createElement("div");
+
+    const labelSecretaria =
+        document.createElement("label");
+
+    labelSecretaria.innerHTML =
+        "<b>Secretaria</b>";
+
+
+    const selectSecretaria =
+        document.createElement("select");
+
+    selectSecretaria.name =
+        "nova_secretaria[]";
+
+    selectSecretaria.multiple = true;
+
+    selectSecretaria.size = 5;
+
+
+    const secretarias = [
+        "CM",
+        "SEGOV",
+        "SMGAS",
+        "PGM",
+        "SMA",
+        "SMF",
+        "SME",
+        "SMCT",
+        "SMS",
+        "SEDES",
+        "SMAGRO",
+        "SEINFRA",
+        "SETTRAN",
+        "DMAE",
+        "IPREMU",
+        "FUTEL",
+        "FERUB",
+        "EMAM",
+        "CGM",
+        "SESURB",
+        "SMH",
+        "SEJUV",
+        "SECOM",
+        "SEDEI",
+        "SMGE",
+        "SEPLAN",
+        "SSEG",
+        "ARESAN",
+        "EXTERNO",
+        "OUTROS"
+    ];
+
+
+    secretarias.forEach(
+        function(nome) {
+
+            const option =
+                document.createElement("option");
+
+            option.value = nome;
+
+            option.textContent = nome;
+
+            selectSecretaria.appendChild(
+                option
+            );
+
+        }
+    );
+
+
+    blocoSecretaria.appendChild(
+        labelSecretaria
+    );
+
+    blocoSecretaria.appendChild(
+        selectSecretaria
+    );
+
+
+    // =====================================================
+    // COORDENADOR
+    // =====================================================
+
+    const blocoCoordenador =
+        document.createElement("div");
+
+    const labelCoordenador =
+        document.createElement("label");
+
+    labelCoordenador.innerHTML =
+        "<b>Coordenador</b>";
+
+
+    const selectCoordenador =
+        document.createElement("select");
+
+    selectCoordenador.name =
+        "novo_coordenador[]";
+
+    selectCoordenador.multiple = true;
+
+    selectCoordenador.size = 5;
+
+
+    const colaboradores =
+        window.colaboradoresRecomendacoes || [];
+
+
+    colaboradores.forEach(
+        function(colaborador) {
+
+            const option =
+                document.createElement("option");
+
+            option.value =
+                colaborador;
+
+            option.textContent =
+                colaborador;
+
+            selectCoordenador.appendChild(
+                option
+            );
+
+        }
+    );
+
+
+    blocoCoordenador.appendChild(
+        labelCoordenador
+    );
+
+    blocoCoordenador.appendChild(
+        selectCoordenador
+    );
+
+
+    // =====================================================
+    // EXCLUIR
+    // =====================================================
 
     const blocoExcluir =
         document.createElement("div");
@@ -4937,7 +5313,6 @@ function adicionarRecomendacao() {
 
     botaoExcluir.textContent =
         "🗑";
-
 
     botaoExcluir.title =
         "Excluir recomendação";
@@ -4958,6 +5333,10 @@ function adicionarRecomendacao() {
     );
 
 
+    // =====================================================
+    // MONTAR LINHA
+    // =====================================================
+
     div.appendChild(
         icone
     );
@@ -4975,6 +5354,14 @@ function adicionarRecomendacao() {
     );
 
     div.appendChild(
+        blocoSecretaria
+    );
+
+    div.appendChild(
+        blocoCoordenador
+    );
+
+    div.appendChild(
         blocoExcluir
     );
 
@@ -4983,6 +5370,10 @@ function adicionarRecomendacao() {
         div
     );
 
+
+    // =====================================================
+    // CORES INICIAIS
+    // =====================================================
 
     atualizarLinha(
         selectStatus
@@ -5120,6 +5511,7 @@ document.addEventListener(
         os_codigo=os_codigo,
         os_resumo=os_resumo,
         os_cadastradas=os_cadastradas,
+        colaboradores=colaboradores,
         recomendacoes=recomendacoes,
         monitoramento=monitoramento,
         monitoramentos=monitoramentos,

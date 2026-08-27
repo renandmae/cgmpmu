@@ -3133,20 +3133,39 @@ def recomendacoes_os():
             # Se a OS existe mas o resumo oficial está vazio,
             # buscar o resumo manual já salvo em recomendações.
             else:
+            
                 cur.execute("""
                     SELECT resumo_os
-                    FROM recomendacoes
+                    FROM recomendacao_monitoramento_config
                     WHERE TRIM(os_codigo) = TRIM(%s)
                       AND resumo_os IS NOT NULL
                       AND TRIM(resumo_os) <> ''
-                    ORDER BY id DESC
                     LIMIT 1
                 """, (os_codigo,))
-    
+            
                 resumo_manual = cur.fetchone()
-    
-                if resumo_manual:
+            
+                if resumo_manual and resumo_manual["resumo_os"]:
                     os_resumo = resumo_manual["resumo_os"]
+            
+                else:
+            
+                    # Compatibilidade com registros antigos
+                    # que ainda possuem o resumo somente em recomendações.
+                    cur.execute("""
+                        SELECT resumo_os
+                        FROM recomendacoes
+                        WHERE TRIM(os_codigo) = TRIM(%s)
+                          AND resumo_os IS NOT NULL
+                          AND TRIM(resumo_os) <> ''
+                        ORDER BY id DESC
+                        LIMIT 1
+                    """, (os_codigo,))
+            
+                    resumo_antigo = cur.fetchone()
+            
+                    if resumo_antigo:
+                        os_resumo = resumo_antigo["resumo_os"]
 
     # =========================================================
     # O.S. JÁ CADASTRADAS NAS RECOMENDAÇÕES
@@ -3157,8 +3176,8 @@ def recomendacoes_os():
             x.os_codigo,
     
             COALESCE(
-                NULLIF(x.resumo_recomendacao, ''),
-                o.resumo,
+                NULLIF(MAX(x.resumo_recomendacao), ''),
+                MAX(o.resumo),
                 ''
             ) AS resumo,
     
@@ -3170,25 +3189,30 @@ def recomendacoes_os():
     
         FROM (
     
-            /* O.S. que possuem recomendações */
+            /* O.S. com recomendações */
             SELECT
                 r.os_codigo,
                 MAX(r.resumo_os) AS resumo_recomendacao
             FROM recomendacoes r
             GROUP BY r.os_codigo
     
-            UNION
+            UNION ALL
     
             /* O.S. que possuem somente monitoramento */
             SELECT
                 mc.os_codigo,
-                NULL AS resumo_recomendacao
+                MAX(mc.resumo_os) AS resumo_recomendacao
             FROM recomendacao_monitoramento_config mc
+            GROUP BY mc.os_codigo
     
         ) x
     
         LEFT JOIN os o
             ON o.codigo = x.os_codigo
+    
+        GROUP BY
+            x.os_codigo,
+            o.resumo
     
         ORDER BY
             ano DESC,
@@ -3377,31 +3401,34 @@ def recomendacoes_os():
             prazo = request.form.get(
                 "prazo_monitoramento"
             ) or None
-
+            
             coordenadores = request.form.getlist(
                 "coordenador_monitoramento[]"
             )
             
             coordenador = ", ".join(coordenadores)
-
+            
             cur.execute("""
                 INSERT INTO recomendacao_monitoramento_config (
                     os_codigo,
+                    resumo_os,
                     prazo_monitoramento,
                     coordenador,
                     atualizado_por,
                     atualizado_em
                 )
-                VALUES (%s,%s,%s,%s,NOW())
-
+                VALUES (%s,%s,%s,%s,%s,NOW())
+            
                 ON CONFLICT (os_codigo)
                 DO UPDATE SET
+                    resumo_os = EXCLUDED.resumo_os,
                     prazo_monitoramento = EXCLUDED.prazo_monitoramento,
                     coordenador = EXCLUDED.coordenador,
                     atualizado_por = EXCLUDED.atualizado_por,
                     atualizado_em = NOW()
             """, (
                 os_codigo,
+                os_resumo,
                 prazo,
                 coordenador,
                 servidor_id
@@ -3546,7 +3573,8 @@ def recomendacoes_os():
         cur.execute("""
             SELECT
                 prazo_monitoramento,
-                coordenador
+                coordenador,
+                resumo_os
             FROM recomendacao_monitoramento_config
             WHERE TRIM(os_codigo) = TRIM(%s)
         """, (os_codigo,))

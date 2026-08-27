@@ -5529,7 +5529,11 @@ def listar_recomendacoes():
     params = []
 
     if status_filtro:
-        where.append("r.status = %s")
+
+        where.append("""
+            r.status = %s
+        """)
+
         params.append(status_filtro)
 
     if busca:
@@ -5545,6 +5549,8 @@ def listar_recomendacoes():
                 OR r.descricao ILIKE %s
                 OR r.status ILIKE %s
                 OR r.prioridade ILIKE %s
+                OR r.secretaria ILIKE %s
+                OR mc.coordenador ILIKE %s
             )
         """)
 
@@ -5553,13 +5559,15 @@ def listar_recomendacoes():
         params.extend([
             texto,  # os_codigo
             texto,  # resumo_os
-            texto,  # codigo da os
-            texto,  # resumo da os
+            texto,  # codigo os
+            texto,  # resumo os
             texto,  # unidade
-            texto,  # uo / secretaria
+            texto,  # uo
             texto,  # recomendacao
             texto,  # status
-            texto   # prioridade
+            texto,  # prioridade
+            texto,  # secretaria / órgão
+            texto   # coordenador
         ])
 
     sql_where = ""
@@ -5583,14 +5591,14 @@ def listar_recomendacoes():
             ) AS resumo,
 
             COALESCE(
-                o.unidade,
+                mc.coordenador,
                 ''
-            ) AS unidade,
+            ) AS coordenador,
 
             COALESCE(
-                o.uo,
+                r.secretaria,
                 ''
-            ) AS secretaria,
+            ) AS orgao_entidade,
 
             r.descricao AS recomendacao,
             r.status,
@@ -5608,6 +5616,7 @@ def listar_recomendacoes():
         {sql_where}
 
         ORDER BY
+
             CASE
                 WHEN r.os_codigo ~ '/[0-9]{4}$'
                 THEN split_part(r.os_codigo, '/', 2)::int
@@ -5616,6 +5625,7 @@ def listar_recomendacoes():
 
             r.os_codigo DESC,
             r.id ASC
+
     """, params)
 
     rows = cur.fetchall()
@@ -5861,7 +5871,7 @@ tr:hover{
             type="text"
             id="busca"
             value="{{ request.args.get('busca','') }}"
-            placeholder="🔎 Pesquisar O.S, resumo, diretoria, unidade, secretaria, recomendação..."
+            placeholder="🔎 Pesquisar O.S, resumo, coordenador, órgão/entidade, recomendação..."
             onkeydown="if(event.key==='Enter') pesquisarTabela()"
         >
 
@@ -5924,8 +5934,8 @@ tr:hover{
                 <tr>
                     <th>O.S</th>
                     <th>Resumo</th>
-                    <th>Diretoria</th>
-                    <th>Un. Audit.</th>
+                    <th>Coordenador</th>
+                    <th>Órgão/Entidade</th>
                     <th>Recomendação</th>
                     <th>Status</th>
                     <th>Prioridade</th>
@@ -5950,11 +5960,11 @@ tr:hover{
                     </td>
 
                     <td>
-                        {{ r.unidade or '-' }}
+                        {{ r.coordenador or '-' }}
                     </td>
 
                     <td>
-                        {{ r.secretaria or '-' }}
+                        {{ r.orgao_entidade or '-' }}
                     </td>
 
                     <td>
@@ -6028,6 +6038,7 @@ tr:hover{
                     <td style="text-align:center;">
 
                         <button
+                            type="button"
                             class="btn-monitor"
                             onclick="abrirMonitoramento('{{ r.os_codigo|e }}')"
                             title="Ver monitoramentos da O.S"
@@ -6073,6 +6084,7 @@ tr:hover{
             </h3>
 
             <button
+                type="button"
                 class="btn btn-blue"
                 onclick="fecharMonitoramento()"
             >
@@ -6154,6 +6166,10 @@ function abrirMonitoramento(os){
             "conteudoMonitoramento"
         );
 
+    if(!modal || !conteudo){
+        return;
+    }
+
     modal.style.display = "flex";
 
     conteudo.innerHTML =
@@ -6231,20 +6247,28 @@ function abrirMonitoramento(os){
 
 function fecharMonitoramento(){
 
-    document.getElementById(
-        "modalMonitoramento"
-    ).style.display = "none";
+    const modal =
+        document.getElementById(
+            "modalMonitoramento"
+        );
+
+    if(modal){
+        modal.style.display = "none";
+    }
 
 }
 
 
 function fecharFora(e){
 
-    if(
-        e.target ===
+    const modal =
         document.getElementById(
             "modalMonitoramento"
-        )
+        );
+
+    if(
+        modal &&
+        e.target === modal
     ){
         fecharMonitoramento();
     }
@@ -6255,7 +6279,9 @@ function fecharFora(e){
 document.addEventListener(
     "DOMContentLoaded",
     function(){
+
         atualizarExcel();
+
     }
 );
 
@@ -6346,9 +6372,9 @@ def recomendacoes_export():
     where = []
     params = []
 
-    # ---------------------------------------------------------
+    # =========================================================
     # FILTRO STATUS
-    # ---------------------------------------------------------
+    # =========================================================
 
     if status_filtro:
 
@@ -6358,9 +6384,9 @@ def recomendacoes_export():
 
         params.append(status_filtro)
 
-    # ---------------------------------------------------------
+    # =========================================================
     # PESQUISA GERAL
-    # ---------------------------------------------------------
+    # =========================================================
 
     if busca:
 
@@ -6375,21 +6401,25 @@ def recomendacoes_export():
                 OR r.descricao ILIKE %s
                 OR r.status ILIKE %s
                 OR r.prioridade ILIKE %s
+                OR r.secretaria ILIKE %s
+                OR mc.coordenador ILIKE %s
             )
         """)
 
         texto = f"%{busca}%"
 
         params.extend([
-            texto,   # O.S da recomendação
-            texto,   # resumo salvo na recomendação
-            texto,   # código da O.S
-            texto,   # resumo da O.S
-            texto,   # unidade
-            texto,   # secretaria / uo
-            texto,   # recomendação
-            texto,   # status
-            texto    # prioridade
+            texto,  # O.S
+            texto,  # resumo
+            texto,  # código O.S
+            texto,  # resumo O.S
+            texto,  # unidade
+            texto,  # uo
+            texto,  # recomendação
+            texto,  # status
+            texto,  # prioridade
+            texto,  # órgão/entidade
+            texto   # coordenador
         ])
 
     # =========================================================
@@ -6417,14 +6447,14 @@ def recomendacoes_export():
             ) AS resumo,
 
             COALESCE(
-                o.unidade,
+                mc.coordenador,
                 ''
-            ) AS unidade,
+            ) AS coordenador,
 
             COALESCE(
-                o.uo,
+                r.secretaria,
                 ''
-            ) AS secretaria,
+            ) AS orgao_entidade,
 
             r.descricao AS recomendacao,
 
@@ -6478,8 +6508,8 @@ def recomendacoes_export():
     cabecalho = [
         "O.S",
         "Resumo",
-        "Diretoria",
-        "Un. Audit.",
+        "Coordenador",
+        "Órgão/Entidade",
         "Recomendação",
         "Status",
         "Prioridade",
@@ -6521,9 +6551,9 @@ def recomendacoes_export():
 
             r["resumo"] or "",
 
-            r["unidade"] or "",
+            r["coordenador"] or "",
 
-            r["secretaria"] or "",
+            r["orgao_entidade"] or "",
 
             r["recomendacao"] or "",
 
@@ -6540,7 +6570,7 @@ def recomendacoes_export():
         ])
 
     # =========================================================
-    # CORES DOS STATUS
+    # CORES DOS STATUS / PRIORIDADE
     # =========================================================
 
     for row in ws.iter_rows(
@@ -6549,7 +6579,6 @@ def recomendacoes_export():
     ):
 
         status = row[5].value
-
         prioridade = row[6].value
 
         # -----------------------------------------------------
@@ -6664,8 +6693,8 @@ def recomendacoes_export():
     larguras = [
         16,   # O.S
         45,   # Resumo
-        25,   # Diretoria
-        20,   # Un. Audit.
+        35,   # Coordenador
+        25,   # Órgão/Entidade
         80,   # Recomendação
         20,   # Status
         15,   # Prioridade
@@ -6688,7 +6717,7 @@ def recomendacoes_export():
     ws.freeze_panes = "A2"
 
     # =========================================================
-    # FILTRO AUTOMÁTICO DO EXCEL
+    # FILTRO AUTOMÁTICO
     # =========================================================
 
     if ws.max_row >= 2:

@@ -3658,7 +3658,7 @@ select {
 
 .rec {
     display:grid;
-    grid-template-columns:40px 1fr 140px 150px 180px 200px 45px;
+    grid-template-columns:40px 1fr 140px 150px 220px 45px;
     gap:10px;
     align-items:center;
     padding:12px;

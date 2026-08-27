@@ -3985,7 +3985,7 @@ select {
         {% set coordenadores_selecionados = [] %}
     
         {% if monitoramento and monitoramento.coordenador %}
-            {% set coordenadores_selecionados = monitoramento.coordenador.split(',') %}
+            {% set coordenadores_selecionados = monitoramento.coordenador.split(',') | map('trim') | list %}
         {% endif %}
     
         <select
@@ -4239,7 +4239,7 @@ select {
                         <b>Secretaria</b>
                     </label>
                 
-                    {% set secretarias_selecionadas = (r.secretaria or '').split(',') %}
+                    {% set secretarias_selecionadas = (r.secretaria or '').split(',') | map('trim') | list %}
                 
                     <select
                         name="secretaria[{{ r.id }}][]"

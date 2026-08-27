@@ -3175,11 +3175,11 @@ def recomendacoes_os():
             WHERE codigo = %s
             LIMIT 1
         """, (os_codigo,))
-
+        
         os_db = cur.fetchone()
-
-        if os_db:
-            os_resumo = os_db["resumo"] or ""
+        
+        if os_db and os_db["resumo"]:
+            os_resumo = os_db["resumo"]
 
         if not os_codigo:
             con.close()
@@ -4023,6 +4023,12 @@ select {
         type="hidden"
         name="os_codigo"
         value="{{ os_codigo }}"
+    >
+
+    <input
+        type="hidden"
+        name="os_resumo"
+        value="{{ os_resumo }}"
     >
 
     <input

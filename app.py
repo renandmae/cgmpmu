@@ -3775,9 +3775,9 @@ select {
 
 .rec {
     display:grid;
-    grid-template-columns:40px minmax(250px, 1fr) 130px 150px 180px 45px;
+    grid-template-columns:40px 1fr 140px 150px 220px 45px;
     gap:10px;
-    align-items:start;
+    align-items:center;
     padding:12px;
     margin-top:10px;
     border-radius:10px;
@@ -3785,17 +3785,16 @@ select {
     background:#fee2e2;
 }
 
-.rec-implementada {
+.rec-atendido {
     background:#dcfce7;
     border-left-color:#16a34a;
 }
 
-.rec-andamento {
+.rec-parcial {
     background:#fef9c3;
     border-left-color:#ca8a04;
 }
 
-.rec-nao-implementada,
 .rec-nao {
     background:#fee2e2;
     border-left-color:#dc2626;
@@ -3804,25 +3803,6 @@ select {
 .rec-cancelada {
     background:#e5e7eb;
     border-left-color:#6b7280;
-}
-
-.rec select,
-.rec textarea {
-    width:100%;
-    box-sizing:border-box;
-}
-
-.rec textarea {
-    min-height:70px;
-    resize:vertical;
-}
-
-.rec select {
-    min-height:42px;
-}
-
-.rec select[multiple] {
-    height:110px;
 }
 
 .prioridade {
@@ -4246,21 +4226,21 @@ select {
             <div
                 class="rec
                 {% if r.status == 'IMPLEMENTADA' %}
-                    rec-implementada
+                    rec-atendido
                 {% elif r.status == 'EM ANDAMENTO' %}
-                    rec-andamento
+                    rec-parcial
                 {% elif r.status == 'CANCELADA' %}
                     rec-cancelada
                 {% else %}
-                    rec-nao-implementada
-                {% endif %}
+                    rec-nao
+                {% endif %}"
             >
-
+            
                 <div
                     class="icone-status"
                     style="font-size:22px;"
                 >
-
+            
                     {% if r.status == 'IMPLEMENTADA' %}
                         ✔
                     {% elif r.status == 'EM ANDAMENTO' %}
@@ -4270,252 +4250,320 @@ select {
                     {% else %}
                         ✖
                     {% endif %}
-
+            
                 </div>
-
-
+            
+            
                 <div>
-
+            
                     <input
                         type="hidden"
                         name="rec_id[]"
                         value="{{ r.id }}"
                     >
-
+            
                     <textarea
                         name="recomendacao[]"
                         rows="2"
                     >{{ r.descricao }}</textarea>
-
+            
                 </div>
-
-
+            
+            
                 <div>
-
+            
                     <label>
                         <b>Prioridade</b>
                     </label>
-
+            
                     <select
                         name="prioridade[]"
                         onchange="atualizarLinha(this); atualizarPrioridade(this)"
                         class="prioridade"
                     >
-
+            
                         <option
                             value="BAIXO"
                             {% if r.prioridade == 'BAIXO' %}selected{% endif %}
                         >
                             Baixo
                         </option>
-
+            
                         <option
                             value="MÉDIO"
                             {% if r.prioridade == 'MÉDIO' %}selected{% endif %}
                         >
                             Médio
                         </option>
-
+            
                         <option
                             value="ALTO"
                             {% if r.prioridade == 'ALTO' %}selected{% endif %}
                         >
                             Alto
                         </option>
-
+            
                         <option
                             value="EXTREMO"
                             {% if r.prioridade == 'EXTREMO' %}selected{% endif %}
                         >
                             Extremo
                         </option>
-
+            
                     </select>
-
+            
                 </div>
-
-
+            
+            
                 <div>
-
+            
                     <label>
                         <b>Status</b>
                     </label>
-
+            
                     <select
                         name="status[]"
                         onchange="atualizarLinha(this)"
                     >
+            
                         <option
                             value="NÃO IMPLEMENTADA"
                             {% if r.status == 'NÃO IMPLEMENTADA' %}selected{% endif %}
                         >
                             Não Implementada
                         </option>
-                    
+            
                         <option
                             value="EM ANDAMENTO"
                             {% if r.status == 'EM ANDAMENTO' %}selected{% endif %}
                         >
                             Em andamento
                         </option>
-                    
+            
                         <option
                             value="IMPLEMENTADA"
                             {% if r.status == 'IMPLEMENTADA' %}selected{% endif %}
                         >
                             Implementada
                         </option>
-                    
+            
                         <option
                             value="CANCELADA"
                             {% if r.status == 'CANCELADA' %}selected{% endif %}
                         >
                             Cancelada
                         </option>
+            
                     </select>
-
+            
                 </div>
-
+            
+            
                 <div>
-
+            
                     <label>
                         <b>Secretaria</b>
                     </label>
-                
-                    {% set secretarias_selecionadas = (r.secretaria or '').split(',') | map('trim') | list %}
-                
+            
+                    {% set secretarias_selecionadas =
+                        (r.secretaria or '').split(',')
+                        | map('trim')
+                        | list
+                    %}
+            
                     <select
                         name="secretaria[{{ r.id }}][]"
                         multiple
                         size="5"
                     >
-                
+            
                         <option value="CM"
                             {% if 'CM' in secretarias_selecionadas %}selected{% endif %}
-                        >CM</option>
-                
+                        >
+                            CM
+                        </option>
+            
                         <option value="SEGOV"
                             {% if 'SEGOV' in secretarias_selecionadas %}selected{% endif %}
-                        >SEGOV</option>
-                
+                        >
+                            SEGOV
+                        </option>
+            
                         <option value="SMGAS"
                             {% if 'SMGAS' in secretarias_selecionadas %}selected{% endif %}
-                        >SMGAS</option>
-                
+                        >
+                            SMGAS
+                        </option>
+            
                         <option value="PGM"
                             {% if 'PGM' in secretarias_selecionadas %}selected{% endif %}
-                        >PGM</option>
-                
+                        >
+                            PGM
+                        </option>
+            
                         <option value="SMA"
                             {% if 'SMA' in secretarias_selecionadas %}selected{% endif %}
-                        >SMA</option>
-                
+                        >
+                            SMA
+                        </option>
+            
                         <option value="SMF"
                             {% if 'SMF' in secretarias_selecionadas %}selected{% endif %}
-                        >SMF</option>
-                
+                        >
+                            SMF
+                        </option>
+            
                         <option value="SME"
                             {% if 'SME' in secretarias_selecionadas %}selected{% endif %}
-                        >SME</option>
-                
+                        >
+                            SME
+                        </option>
+            
                         <option value="SMCT"
                             {% if 'SMCT' in secretarias_selecionadas %}selected{% endif %}
-                        >SMCT</option>
-                
+                        >
+                            SMCT
+                        </option>
+            
                         <option value="SMS"
                             {% if 'SMS' in secretarias_selecionadas %}selected{% endif %}
-                        >SMS</option>
-                
+                        >
+                            SMS
+                        </option>
+            
                         <option value="SEDES"
                             {% if 'SEDES' in secretarias_selecionadas %}selected{% endif %}
-                        >SEDES</option>
-                
+                        >
+                            SEDES
+                        </option>
+            
                         <option value="SMAGRO"
                             {% if 'SMAGRO' in secretarias_selecionadas %}selected{% endif %}
-                        >SMAGRO</option>
-                
+                        >
+                            SMAGRO
+                        </option>
+            
                         <option value="SEINFRA"
                             {% if 'SEINFRA' in secretarias_selecionadas %}selected{% endif %}
-                        >SEINFRA</option>
-                
+                        >
+                            SEINFRA
+                        </option>
+            
                         <option value="SETTRAN"
                             {% if 'SETTRAN' in secretarias_selecionadas %}selected{% endif %}
-                        >SETTRAN</option>
-                
+                        >
+                            SETTRAN
+                        </option>
+            
                         <option value="DMAE"
                             {% if 'DMAE' in secretarias_selecionadas %}selected{% endif %}
-                        >DMAE</option>
-                
+                        >
+                            DMAE
+                        </option>
+            
                         <option value="IPREMU"
                             {% if 'IPREMU' in secretarias_selecionadas %}selected{% endif %}
-                        >IPREMU</option>
-                
+                        >
+                            IPREMU
+                        </option>
+            
                         <option value="FUTEL"
                             {% if 'FUTEL' in secretarias_selecionadas %}selected{% endif %}
-                        >FUTEL</option>
-                
+                        >
+                            FUTEL
+                        </option>
+            
                         <option value="FERUB"
                             {% if 'FERUB' in secretarias_selecionadas %}selected{% endif %}
-                        >FERUB</option>
-                
+                        >
+                            FERUB
+                        </option>
+            
                         <option value="EMAM"
                             {% if 'EMAM' in secretarias_selecionadas %}selected{% endif %}
-                        >EMAM</option>
-                
+                        >
+                            EMAM
+                        </option>
+            
                         <option value="CGM"
                             {% if 'CGM' in secretarias_selecionadas %}selected{% endif %}
-                        >CGM</option>
-                
+                        >
+                            CGM
+                        </option>
+            
                         <option value="SESURB"
                             {% if 'SESURB' in secretarias_selecionadas %}selected{% endif %}
-                        >SESURB</option>
-                
+                        >
+                            SESURB
+                        </option>
+            
                         <option value="SMH"
                             {% if 'SMH' in secretarias_selecionadas %}selected{% endif %}
-                        >SMH</option>
-                
+                        >
+                            SMH
+                        </option>
+            
                         <option value="SEJUV"
                             {% if 'SEJUV' in secretarias_selecionadas %}selected{% endif %}
-                        >SEJUV</option>
-                
+                        >
+                            SEJUV
+                        </option>
+            
                         <option value="SECOM"
                             {% if 'SECOM' in secretarias_selecionadas %}selected{% endif %}
-                        >SECOM</option>
-                
+                        >
+                            SECOM
+                        </option>
+            
                         <option value="SEDEI"
                             {% if 'SEDEI' in secretarias_selecionadas %}selected{% endif %}
-                        >SEDEI</option>
-                
+                        >
+                            SEDEI
+                        </option>
+            
                         <option value="SMGE"
                             {% if 'SMGE' in secretarias_selecionadas %}selected{% endif %}
-                        >SMGE</option>
-                
+                        >
+                            SMGE
+                        </option>
+            
                         <option value="SEPLAN"
                             {% if 'SEPLAN' in secretarias_selecionadas %}selected{% endif %}
-                        >SEPLAN</option>
-                
+                        >
+                            SEPLAN
+                        </option>
+            
                         <option value="SSEG"
                             {% if 'SSEG' in secretarias_selecionadas %}selected{% endif %}
-                        >SSEG</option>
-                
+                        >
+                            SSEG
+                        </option>
+            
                         <option value="ARESAN"
                             {% if 'ARESAN' in secretarias_selecionadas %}selected{% endif %}
-                        >ARESAN</option>
-                
+                        >
+                            ARESAN
+                        </option>
+            
                         <option value="EXTERNO"
                             {% if 'EXTERNO' in secretarias_selecionadas %}selected{% endif %}
-                        >EXTERNO</option>
-                
+                        >
+                            EXTERNO
+                        </option>
+            
                         <option value="OUTROS"
                             {% if 'OUTROS' in secretarias_selecionadas %}selected{% endif %}
-                        >OUTROS</option>
-                
+                        >
+                            OUTROS
+                        </option>
+            
                     </select>
-                
+            
                 </div>
-    
+            
+            
                 <div>
-
+            
                     <button
                         type="button"
                         class="btn btn-danger"
@@ -4524,11 +4572,11 @@ select {
                     >
                         🗑
                     </button>
-
+            
                 </div>
-
+            
             </div>
-
+            
             {% endfor %}
 
         </div>
@@ -5035,9 +5083,9 @@ function atualizarLinha(elemento) {
 
 
     linha.classList.remove(
-    "rec-implementada",
-    "rec-andamento",
-    "rec-nao-implementada",
+    "rec-atendido",
+    "rec-parcial",
+    "rec-nao",
     "rec-cancelada"
 );
 
@@ -5045,7 +5093,7 @@ if (status) {
 
     if (status.value === "IMPLEMENTADA") {
 
-        linha.classList.add("rec-implementada");
+        linha.classList.add("rec-atendido");
 
         if (icone) {
             icone.textContent = "✔";
@@ -5055,7 +5103,7 @@ if (status) {
 
     else if (status.value === "EM ANDAMENTO") {
 
-        linha.classList.add("rec-andamento");
+        linha.classList.add("rec-parcial");
 
         if (icone) {
             icone.textContent = "◐";
@@ -5075,7 +5123,7 @@ if (status) {
 
     else {
 
-        linha.classList.add("rec-nao-implementada");
+        linha.classList.add("rec-nao");
 
         if (icone) {
             icone.textContent = "✖";
@@ -5107,7 +5155,7 @@ function adicionarRecomendacao() {
         document.createElement("div");
 
     div.className =
-        "rec rec-nao-implementada";
+        "rec rec-nao";
 
 
     // =====================================================

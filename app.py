@@ -3775,9 +3775,9 @@ select {
 
 .rec {
     display:grid;
-    grid-template-columns:40px 1fr 140px 150px 220px 45px;
+    grid-template-columns:40px minmax(250px, 1fr) 130px 150px 180px 45px;
     gap:10px;
-    align-items:center;
+    align-items:start;
     padding:12px;
     margin-top:10px;
     border-radius:10px;
@@ -3795,7 +3795,8 @@ select {
     border-left-color:#ca8a04;
 }
 
-.rec-nao-implementada {
+.rec-nao-implementada,
+.rec-nao {
     background:#fee2e2;
     border-left-color:#dc2626;
 }
@@ -3803,6 +3804,25 @@ select {
 .rec-cancelada {
     background:#e5e7eb;
     border-left-color:#6b7280;
+}
+
+.rec select,
+.rec textarea {
+    width:100%;
+    box-sizing:border-box;
+}
+
+.rec textarea {
+    min-height:70px;
+    resize:vertical;
+}
+
+.rec select {
+    min-height:42px;
+}
+
+.rec select[multiple] {
+    height:110px;
 }
 
 .prioridade {
@@ -5087,7 +5107,7 @@ function adicionarRecomendacao() {
         document.createElement("div");
 
     div.className =
-        "rec rec-nao";
+        "rec rec-nao-implementada";
 
 
     // =====================================================

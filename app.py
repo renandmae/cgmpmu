@@ -3686,7 +3686,7 @@ def recomendacoes_os():
     
     if total > 0:
         percentual = int(
-            (implementadas / total) * 100
+            ((implementadas + em_andamento) / total) * 100
         )
 
     con.close()
@@ -4192,14 +4192,15 @@ select {
         <div style="margin-top:20px;">
 
             <b>
-                📊 Progresso das recomendações
+                📊 Progresso das recomendações: Total: {{ total }}
             </b>
 
             <div style="margin-top:8px;">
 
-                {{ atendidas }} atendidas |
-                {{ parcialmente }} parcialmente |
-                {{ nao_atendidas }} não atendidas
+                {{ implementadas }} implementadas |
+                {{ em_andamento }} em andamento |
+                {{ nao_implementadas }} não implementadas |
+                {{ canceladas }} canceladas
 
             </div>
 
@@ -5256,46 +5257,60 @@ function adicionarRecomendacao() {
         "novo_status[]";
 
 
-    const opNaoAtendido =
+    const opNaoImplementada =
+    document.createElement("option");
+
+    opNaoImplementada.value =
+        "NÃO IMPLEMENTADA";
+    
+    opNaoImplementada.textContent =
+        "Não Implementada";
+    
+    
+    const opEmAndamento =
         document.createElement("option");
-
-    opNaoAtendido.value =
-        "NÃO ATENDIDO";
-
-    opNaoAtendido.textContent =
-        "Não Atendido";
-
-
-    const opParcial =
+    
+    opEmAndamento.value =
+        "EM ANDAMENTO";
+    
+    opEmAndamento.textContent =
+        "Em andamento";
+    
+    
+    const opImplementada =
         document.createElement("option");
-
-    opParcial.value =
-        "PARCIALMENTE";
-
-    opParcial.textContent =
-        "Parcialmente";
-
-
-    const opAtendido =
+    
+    opImplementada.value =
+        "IMPLEMENTADA";
+    
+    opImplementada.textContent =
+        "Implementada";
+    
+    
+    const opCancelada =
         document.createElement("option");
-
-    opAtendido.value =
-        "ATENDIDO";
-
-    opAtendido.textContent =
-        "Atendido";
-
-
+    
+    opCancelada.value =
+        "CANCELADA";
+    
+    opCancelada.textContent =
+        "Cancelada";
+    
+    
     selectStatus.appendChild(
-        opNaoAtendido
+        opNaoImplementada
     );
-
+    
     selectStatus.appendChild(
-        opParcial
+        opEmAndamento
     );
-
+    
     selectStatus.appendChild(
-        opAtendido
+        opImplementada
+    );
+    
+    selectStatus.appendChild(
+        opCancelada
     );
 
 

@@ -5790,32 +5790,6 @@ def listar_recomendacoes():
     if where:
         sql_where = "WHERE " + " AND ".join(where)
 
-    hoje = date.today()
-    
-    for r in rows:
-        r["dias_restantes"] = None
-        r["classe_prazo"] = ""
-    
-        if r["prazo_monitoramento"]:
-            # Implementada e cancelada não entram como prazo vencido
-            if r["status"] in ("IMPLEMENTADA", "CANCELADA"):
-                r["dias_restantes"] = None
-                r["classe_prazo"] = "prazo-concluido"
-    
-            else:
-                r["dias_restantes"] = (
-                    r["prazo_monitoramento"] - hoje
-                ).days
-    
-                if r["dias_restantes"] < 90:
-                    r["classe_prazo"] = "prazo-vermelho"
-    
-                elif r["dias_restantes"] <= 180:
-                    r["classe_prazo"] = "prazo-amarelo"
-    
-                else:
-                    r["classe_prazo"] = "prazo-azul"
-
     # =========================================================
     # CONSULTA
     # =========================================================
@@ -5870,6 +5844,32 @@ def listar_recomendacoes():
     """, params)
 
     rows = cur.fetchall()
+
+    hoje = date.today()
+
+    for r in rows:
+        r["dias_restantes"] = None
+        r["classe_prazo"] = ""
+    
+        if r["prazo_monitoramento"]:
+            # Implementada e cancelada não entram como prazo vencido
+            if r["status"] in ("IMPLEMENTADA", "CANCELADA"):
+                r["dias_restantes"] = None
+                r["classe_prazo"] = "prazo-concluido"
+    
+            else:
+                r["dias_restantes"] = (
+                    r["prazo_monitoramento"] - hoje
+                ).days
+    
+                if r["dias_restantes"] < 90:
+                    r["classe_prazo"] = "prazo-vermelho"
+    
+                elif r["dias_restantes"] <= 180:
+                    r["classe_prazo"] = "prazo-amarelo"
+    
+                else:
+                    r["classe_prazo"] = "prazo-azul"
 
     con.close()
 
@@ -6259,42 +6259,31 @@ tr:hover{
                     </td>
 
                     <td>
-                        {% if r.prazo_monitoramento %}
-                            <div class="prazo-box {{ r.classe_prazo }}">
+                        {% if r.status == 'IMPLEMENTADA' %}
+                            <span class="status status-atendido">
+                                🟢 Implementada
+                            </span>
+            
+                        {% elif r.status == 'EM ANDAMENTO' %}
                     
-                                <div class="prazo-data">
-                                    {{ r.prazo_monitoramento.strftime('%d/%m/%Y') }}
-                                </div>
+                            <span class="status status-parcial">
+                                🟡 Em andamento
+                            </span>
                     
-                                {% if r.status == 'IMPLEMENTADA' %}
-                                    <div class="prazo-dias">
-                                        ✓ Implementada
-                                    </div>
+                        {% elif r.status == 'CANCELADA' %}
                     
-                                {% elif r.status == 'CANCELADA' %}
-                                    <div class="prazo-dias">
-                                        − Cancelada
-                                    </div>
+                            <span class="status" style="
+                                background:#e5e7eb;
+                                color:#374151;
+                            ">
+                                ⚪ Cancelada
+                            </span>
                     
-                                {% elif r.dias_restantes > 0 %}
-                                    <div class="prazo-dias">
-                                        {{ r.dias_restantes }} dia{% if r.dias_restantes != 1 %}s{% endif %} restantes
-                                    </div>
-                    
-                                {% elif r.dias_restantes == 0 %}
-                                    <div class="prazo-dias">
-                                        ⚠ Prazo é hoje
-                                    </div>
-                    
-                                {% else %}
-                                    <div class="prazo-dias">
-                                        ✕ Vencido há {{ r.dias_restantes|abs }} dias
-                                    </div>
-                                {% endif %}
-                    
-                            </div>
                         {% else %}
-                            -
+                    
+                            <span class="status status-nao">
+                                🔴 Não Implementada
+                            </span>
                         {% endif %}
                     </td>
 
@@ -6331,11 +6320,55 @@ tr:hover{
                     <td>
 
                         {% if r.prazo_monitoramento %}
-                            {{ r.prazo_monitoramento.strftime('%d/%m/%Y') }}
+                    
+                            <div class="prazo-box {{ r.classe_prazo }}">
+                    
+                                <div class="prazo-data">
+                                    {{ r.prazo_monitoramento.strftime('%d/%m/%Y') }}
+                                </div>
+                    
+                                {% if r.status == 'IMPLEMENTADA' %}
+                    
+                                    <div class="prazo-dias">
+                                        ✓ Implementada
+                                    </div>
+                    
+                                {% elif r.status == 'CANCELADA' %}
+                    
+                                    <div class="prazo-dias">
+                                        − Cancelada
+                                    </div>
+                    
+                                {% elif r.dias_restantes > 0 %}
+                    
+                                    <div class="prazo-dias">
+                                        {{ r.dias_restantes }}
+                                        dia{% if r.dias_restantes != 1 %}s{% endif %}
+                                        restantes
+                                    </div>
+                    
+                                {% elif r.dias_restantes == 0 %}
+                    
+                                    <div class="prazo-dias">
+                                        ⚠ Prazo é hoje
+                                    </div>
+                    
+                                {% else %}
+                    
+                                    <div class="prazo-dias">
+                                        ✕ Vencido há {{ r.dias_restantes|abs }} dias
+                                    </div>
+                    
+                                {% endif %}
+                    
+                            </div>
+                    
                         {% else %}
+                    
                             -
+                    
                         {% endif %}
-
+                    
                     </td>
 
                     <td style="text-align:center;">

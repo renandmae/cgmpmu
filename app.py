@@ -3662,27 +3662,31 @@ def recomendacoes_os():
 
     total = len(recomendacoes)
 
-    atendidas = len([
+    implementadas = len([
         r for r in recomendacoes
-        if r["status"] == "ATENDIDO"
+        if r["status"] == "IMPLEMENTADA"
     ])
-
-    parcialmente = len([
+    
+    em_andamento = len([
         r for r in recomendacoes
-        if r["status"] == "PARCIALMENTE"
+        if r["status"] == "EM ANDAMENTO"
     ])
-
-    nao_atendidas = len([
+    
+    nao_implementadas = len([
         r for r in recomendacoes
-        if r["status"] == "NÃO ATENDIDO"
+        if r["status"] == "NÃO IMPLEMENTADA"
     ])
-
+    
+    canceladas = len([
+        r for r in recomendacoes
+        if r["status"] == "CANCELADA"
+    ])
+    
     percentual = 0
-
+    
     if total > 0:
-
         percentual = int(
-            (atendidas / total) * 100
+            (implementadas / total) * 100
         )
 
     con.close()
@@ -3781,19 +3785,24 @@ select {
     background:#fee2e2;
 }
 
-.rec-atendido {
+.rec-implementada {
     background:#dcfce7;
     border-left-color:#16a34a;
 }
 
-.rec-parcial {
+.rec-andamento {
     background:#fef9c3;
     border-left-color:#ca8a04;
 }
 
-.rec-nao {
+.rec-nao-implementada {
     background:#fee2e2;
     border-left-color:#dc2626;
+}
+
+.rec-cancelada {
+    background:#e5e7eb;
+    border-left-color:#6b7280;
 }
 
 .prioridade {
@@ -4215,13 +4224,15 @@ select {
 
             <div
                 class="rec
-                {% if r.status == 'ATENDIDO' %}
-                    rec-atendido
-                {% elif r.status == 'PARCIALMENTE' %}
-                    rec-parcial
+                {% if r.status == 'IMPLEMENTADA' %}
+                    rec-implementada
+                {% elif r.status == 'EM ANDAMENTO' %}
+                    rec-andamento
+                {% elif r.status == 'CANCELADA' %}
+                    rec-cancelada
                 {% else %}
-                    rec-nao
-                {% endif %}"
+                    rec-nao-implementada
+                {% endif %}
             >
 
                 <div
@@ -4229,10 +4240,12 @@ select {
                     style="font-size:22px;"
                 >
 
-                    {% if r.status == 'ATENDIDO' %}
+                    {% if r.status == 'IMPLEMENTADA' %}
                         ✔
-                    {% elif r.status == 'PARCIALMENTE' %}
+                    {% elif r.status == 'EM ANDAMENTO' %}
                         ◐
+                    {% elif r.status == 'CANCELADA' %}
+                        −
                     {% else %}
                         ✖
                     {% endif %}
@@ -4311,28 +4324,33 @@ select {
                         name="status[]"
                         onchange="atualizarLinha(this)"
                     >
-
                         <option
-                            value="NÃO ATENDIDO"
-                            {% if r.status == 'NÃO ATENDIDO' %}selected{% endif %}
+                            value="NÃO IMPLEMENTADA"
+                            {% if r.status == 'NÃO IMPLEMENTADA' %}selected{% endif %}
                         >
-                            Não Atendido
+                            Não Implementada
                         </option>
-
+                    
                         <option
-                            value="PARCIALMENTE"
-                            {% if r.status == 'PARCIALMENTE' %}selected{% endif %}
+                            value="EM ANDAMENTO"
+                            {% if r.status == 'EM ANDAMENTO' %}selected{% endif %}
                         >
-                            Parcialmente
+                            Em andamento
                         </option>
-
+                    
                         <option
-                            value="ATENDIDO"
-                            {% if r.status == 'ATENDIDO' %}selected{% endif %}
+                            value="IMPLEMENTADA"
+                            {% if r.status == 'IMPLEMENTADA' %}selected{% endif %}
                         >
-                            Atendido
+                            Implementada
                         </option>
-
+                    
+                        <option
+                            value="CANCELADA"
+                            {% if r.status == 'CANCELADA' %}selected{% endif %}
+                        >
+                            Cancelada
+                        </option>
                     </select>
 
                 </div>
@@ -4996,45 +5014,54 @@ function atualizarLinha(elemento) {
 
 
     linha.classList.remove(
-        "rec-atendido",
-        "rec-parcial",
-        "rec-nao"
-    );
+    "rec-implementada",
+    "rec-andamento",
+    "rec-nao-implementada",
+    "rec-cancelada"
+);
 
+if (status) {
 
-    if (status) {
+    if (status.value === "IMPLEMENTADA") {
 
-        if (status.value === "ATENDIDO") {
+        linha.classList.add("rec-implementada");
 
-            linha.classList.add("rec-atendido");
-
-            if (icone) {
-                icone.textContent = "✔";
-            }
-
-        }
-
-        else if (status.value === "PARCIALMENTE") {
-
-            linha.classList.add("rec-parcial");
-
-            if (icone) {
-                icone.textContent = "◐";
-            }
-
-        }
-
-        else {
-
-            linha.classList.add("rec-nao");
-
-            if (icone) {
-                icone.textContent = "✖";
-            }
-
+        if (icone) {
+            icone.textContent = "✔";
         }
 
     }
+
+    else if (status.value === "EM ANDAMENTO") {
+
+        linha.classList.add("rec-andamento");
+
+        if (icone) {
+            icone.textContent = "◐";
+        }
+
+    }
+
+    else if (status.value === "CANCELADA") {
+
+        linha.classList.add("rec-cancelada");
+
+        if (icone) {
+            icone.textContent = "−";
+        }
+
+    }
+
+    else {
+
+        linha.classList.add("rec-nao-implementada");
+
+        if (icone) {
+            icone.textContent = "✖";
+        }
+
+    }
+}
 
 
     if (prioridade) {
@@ -5601,9 +5628,10 @@ document.addEventListener(
         monitoramento=monitoramento,
         monitoramentos=monitoramentos,
         total=total,
-        atendidas=atendidas,
-        parcialmente=parcialmente,
-        nao_atendidas=nao_atendidas,
+        implementadas=implementadas,
+        em_andamento=em_andamento,
+        nao_implementadas=nao_implementadas,
+        canceladas=canceladas,
         percentual=percentual,
         user=session['user'],
         perfil=session['perfil']
@@ -5678,6 +5706,32 @@ def listar_recomendacoes():
 
     if where:
         sql_where = "WHERE " + " AND ".join(where)
+
+    hoje = date.today()
+    
+    for r in rows:
+        r["dias_restantes"] = None
+        r["classe_prazo"] = ""
+    
+        if r["prazo_monitoramento"]:
+            # Implementada e cancelada não entram como prazo vencido
+            if r["status"] in ("IMPLEMENTADA", "CANCELADA"):
+                r["dias_restantes"] = None
+                r["classe_prazo"] = "prazo-concluido"
+    
+            else:
+                r["dias_restantes"] = (
+                    r["prazo_monitoramento"] - hoje
+                ).days
+    
+                if r["dias_restantes"] < 90:
+                    r["classe_prazo"] = "prazo-vermelho"
+    
+                elif r["dias_restantes"] <= 180:
+                    r["classe_prazo"] = "prazo-amarelo"
+    
+                else:
+                    r["classe_prazo"] = "prazo-azul"
 
     # =========================================================
     # CONSULTA
@@ -5921,6 +5975,43 @@ tr:hover{
     border:1px solid #d1d5db;
     border-radius:9px;
 }
+.prazo-box {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 120px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    line-height: 1.2;
+    text-align: center;
+}
+
+.prazo-data {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.prazo-dias {
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 3px;
+}
+
+.prazo-vermelho {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.prazo-amarelo {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.prazo-azul {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
 
 </style>
 
@@ -5994,30 +6085,39 @@ tr:hover{
             </option>
 
             <option
-                value="ATENDIDO"
-                {% if request.args.get('status') == 'ATENDIDO' %}
+                value="IMPLEMENTADA"
+                {% if request.args.get('status') == 'IMPLEMENTADA' %}
                     selected
                 {% endif %}
             >
-                🟢 Atendido
+                🟢 Implementada
             </option>
-
+            
             <option
-                value="PARCIALMENTE"
-                {% if request.args.get('status') == 'PARCIALMENTE' %}
+                value="EM ANDAMENTO"
+                {% if request.args.get('status') == 'EM ANDAMENTO' %}
                     selected
                 {% endif %}
             >
-                🟡 Parcialmente
+                🟡 Em andamento
             </option>
-
+            
             <option
-                value="NÃO ATENDIDO"
-                {% if request.args.get('status') == 'NÃO ATENDIDO' %}
+                value="NÃO IMPLEMENTADA"
+                {% if request.args.get('status') == 'NÃO IMPLEMENTADA' %}
                     selected
                 {% endif %}
             >
-                🔴 Não Atendido
+                🔴 Não Implementada
+            </option>
+            
+            <option
+                value="CANCELADA"
+                {% if request.args.get('status') == 'CANCELADA' %}
+                    selected
+                {% endif %}
+            >
+                ⚪ Cancelada
             </option>
 
         </select>
@@ -6076,27 +6176,43 @@ tr:hover{
                     </td>
 
                     <td>
-
-                        {% if r.status == 'ATENDIDO' %}
-
-                            <span class="status status-atendido">
-                                ✓ Atendido
-                            </span>
-
-                        {% elif r.status == 'PARCIALMENTE' %}
-
-                            <span class="status status-parcial">
-                                ◐ Parcialmente
-                            </span>
-
+                        {% if r.prazo_monitoramento %}
+                            <div class="prazo-box {{ r.classe_prazo }}">
+                    
+                                <div class="prazo-data">
+                                    {{ r.prazo_monitoramento.strftime('%d/%m/%Y') }}
+                                </div>
+                    
+                                {% if r.status == 'IMPLEMENTADA' %}
+                                    <div class="prazo-dias">
+                                        ✓ Implementada
+                                    </div>
+                    
+                                {% elif r.status == 'CANCELADA' %}
+                                    <div class="prazo-dias">
+                                        − Cancelada
+                                    </div>
+                    
+                                {% elif r.dias_restantes > 0 %}
+                                    <div class="prazo-dias">
+                                        {{ r.dias_restantes }} dia{% if r.dias_restantes != 1 %}s{% endif %} restantes
+                                    </div>
+                    
+                                {% elif r.dias_restantes == 0 %}
+                                    <div class="prazo-dias">
+                                        ⚠ Prazo é hoje
+                                    </div>
+                    
+                                {% else %}
+                                    <div class="prazo-dias">
+                                        ✕ Vencido há {{ r.dias_restantes|abs }} dias
+                                    </div>
+                                {% endif %}
+                    
+                            </div>
                         {% else %}
-
-                            <span class="status status-nao">
-                                ✕ Não Atendido
-                            </span>
-
+                            -
                         {% endif %}
-
                     </td>
 
                     <td>

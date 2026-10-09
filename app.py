@@ -12717,20 +12717,37 @@ def requisicoes():
                     cur.execute("""
                         UPDATE requisicoes
                         SET
+                            status_analise = %s,
+                            nota = NULLIF(%s,''),
+                            num_nota = NULLIF(%s,''),
+                            oficio = NULLIF(%s,''),
+                            monitoramento = NULLIF(%s,''),
+                            monitoramento_resposta = NULLIF(%s,''),
+                            observacoes = NULLIF(%s,'')
+                        WHERE id = %s
+                    """, (
+                        status,
+                        nota,
+                        num_nota,
+                        oficio,
+                        monitoramento,
+                        monitoramento_resposta,
+                        observacoes,
+                        req_id
+                    ))
+                    
+                else:
+                    cur.execute("""
+                        UPDATE requisicoes
+                        SET
                             status_analise = NULLIF(%s, ''),
                             tipo = NULLIF(%s, ''),
                             criterio = NULLIF(%s, ''),
                     
                             data_inicio = CASE
-                                WHEN requisicoes.servidor_id
-                                     IS DISTINCT FROM NULLIF(%s, '')::INTEGER
-                    
-                                 AND NULLIF(%s, '') IS NOT NULL
-                    
-                                 AND requisicoes.data_inicio IS NULL
-                    
+                                WHEN NULLIF(%s, '') IS NOT NULL
+                                     AND requisicoes.data_inicio IS NULL
                                 THEN (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
-                    
                                 ELSE requisicoes.data_inicio
                             END,
                     
@@ -12747,40 +12764,8 @@ def requisicoes():
                         status,
                         tipo,
                         criterio,
-                    
-                        servidor_id,  # Verificar se o responsável mudou
-                        servidor_id,  # Exigir que haja um responsável
-                        servidor_id,  # Atualizar o responsável
-                    
-                        nota,
-                        num_nota,
-                        oficio,
-                        monitoramento,
-                        monitoramento_resposta,
-                        observacoes,
-                        req_id
-                    ))
-    
-                else:
-                    cur.execute("""
-                        UPDATE requisicoes
-                        SET
-                            status_analise = NULLIF(%s,''),
-                            tipo = NULLIF(%s,''),
-                            criterio = NULLIF(%s,''),
-                            servidor_id = NULLIF(%s,'')::INTEGER,
-                            nota = NULLIF(%s,''),
-                            num_nota = NULLIF(%s,''),
-                            oficio = NULLIF(%s,''),
-                            monitoramento = NULLIF(%s,''),
-                            monitoramento_resposta = NULLIF(%s,''),
-                            observacoes = NULLIF(%s,'')
-                        WHERE id = %s
-                    """, (
-                        status,
-                        tipo,
-                        criterio,
-                        servidor_id,
+                        servidor_id,  # Verifica se há responsável selecionado
+                        servidor_id,  # Grava o responsável
                         nota,
                         num_nota,
                         oficio,
@@ -13067,7 +13052,7 @@ def requisicoes():
             </td>
 
             <td>
-                <select onchange="salvar({{ r.id }}, true)"id="servidor_{{ r.id }}">
+                <select onchange="salvar({{ r.id }}, true)" id="servidor_{{ r.id }}">
                     <option value=""></option>
                     {% for col in colaboradores %}
                         <option value="{{ col.id }}" {% if r.servidor_id==col.id %}selected{% endif %}>

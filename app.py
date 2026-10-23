@@ -756,6 +756,7 @@ tr.analisado { background:#e6ffed; }
         {% endif %}
         
         <a href="/notas-auditoria">🧾 Notas Auditoria</a>
+        <a href="/notas-auditoria-documentos">📝 Emitir Nota Preventiva</a>
         </div>
         </div>
         

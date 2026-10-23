@@ -19855,6 +19855,10 @@ NA_GOOGLE_RESPONSES_FOLDER_ID = os.environ.get(
     "NA_GOOGLE_RESPONSES_FOLDER_ID",
     "1Z5KRuXLq88AJIthVxowFdwIBmchdeFw9",
 )
+NA_GOOGLE_PDFS_FOLDER_ID = os.environ.get(
+    "NA_GOOGLE_PDFS_FOLDER_ID",
+    "1EPM1pHYd2mAH69cF6A25Fit54-ef84Qx",
+)
 NA_GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/documents",
@@ -20084,19 +20088,22 @@ def _na_build_doc_values(note, responsaveis=None):
 
 
 def _na_create_google_doc(nota_id):
-    from googleapiclient.errors import HttpError
+    """Cria o documento pelo modelo e substitui cópias antigas pelo nome.
+
+    Se houver documento com o nome padrão na pasta, a nova versão é criada
+    primeiro e preenchida; só depois as versões antigas com o mesmo nome são
+    movidas para a lixeira. Se o documento tiver sido excluído manualmente,
+    não dependemos do ID antigo do PostgreSQL: simplesmente criamos outro.
+    """
     drive, docs = _na_google_services()
     conn = get_db()
     cur = conn.cursor()
+    new_doc_id = None
     try:
         _na_ensure_schema(cur)
         note = _na_note_access(cur, nota_id)
         if not note:
             raise PermissionError("Nota não encontrada ou sem permissão de acesso.")
-        if note.get("google_doc_id"):
-            return note["google_doc_id"], note.get("google_doc_url") or (
-                "https://docs.google.com/document/d/%s/edit" % note["google_doc_id"]
-            ), "O documento Google já existe; ele foi mantido para preservar as edições feitas no Docs."
 
         cur.execute("""
             SELECT c.nome, nr.matricula, nr.ordem
@@ -20107,13 +20114,33 @@ def _na_create_google_doc(nota_id):
         responsible_rows = cur.fetchall()
         values = _na_build_doc_values(note, responsible_rows)
         titulo = _na_clean_filename(f"{note['na_numero']} - Nota de Auditoria Preventiva")
+
+        # Localiza por nome e pasta, não apenas pelo ID salvo no banco. Isso
+        # permite recuperar o caso em que alguém apagou o documento no Drive.
+        titulo_q = titulo.replace("\\", "\\\\").replace("'", "\\'")
+        q = (
+            f"name = '{titulo_q}' "
+            f"and '{NA_GOOGLE_DOCUMENTS_FOLDER_ID}' in parents "
+            "and mimeType = 'application/vnd.google-apps.document' "
+            "and trashed = false"
+        )
+        existing_files = drive.files().list(
+            q=q,
+            pageSize=100,
+            orderBy="createdTime desc",
+            fields="files(id,name,webViewLink,mimeType,parents,createdTime)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute().get("files", [])
+
         copia = drive.files().copy(
             fileId=NA_GOOGLE_TEMPLATE_ID,
             body={"name": titulo, "parents": [NA_GOOGLE_DOCUMENTS_FOLDER_ID]},
             fields="id,name,webViewLink,parents",
             supportsAllDrives=True,
         ).execute()
-        doc_id = copia["id"]
+        new_doc_id = copia["id"]
+
         replacements = []
         for tag, value in values.items():
             replacements.append({
@@ -20122,8 +20149,7 @@ def _na_create_google_doc(nota_id):
                     "replaceText": value,
                 }
             })
-        # Compatibilidade com o modelo atual, caso a linha do monitoramento ainda
-        # não tenha sido trocada por {{monitoramento_check}}.
+        # Compatibilidade com modelo antigo; o modelo atual usa {{monitoramento_check}}.
         replacements.append({
             "replaceAllText": {
                 "containsText": {"text": "Sim (   ) Não (   )", "matchCase": True},
@@ -20131,17 +20157,69 @@ def _na_create_google_doc(nota_id):
             }
         })
         docs.documents().batchUpdate(
-            documentId=doc_id, body={"requests": replacements}
+            documentId=new_doc_id, body={"requests": replacements}
         ).execute()
-        doc_url = copia.get("webViewLink") or f"https://docs.google.com/document/d/{doc_id}/edit"
+
+        doc_url = copia.get("webViewLink") or f"https://docs.google.com/document/d/{new_doc_id}/edit"
+
+        # Atualiza primeiro o cadastro. Assim, se a limpeza dos arquivos antigos
+        # falhar, o banco já aponta para o novo documento válido.
         cur.execute("""
-            UPDATE na_documentos SET google_doc_id=%s, google_doc_url=%s,
-                atualizado_em=NOW() WHERE id=%s
-        """, (doc_id, doc_url, nota_id))
+            UPDATE na_documentos SET
+                google_doc_id=%s,
+                google_doc_url=%s,
+                pdf_file_id=NULL,
+                pdf_url=NULL,
+                pdf_gerado_em=NULL,
+                estado='RASCUNHO',
+                atualizado_em=NOW()
+            WHERE id=%s
+        """, (new_doc_id, doc_url, nota_id))
         conn.commit()
-        return doc_id, doc_url, "Documento Google criado. Revise o conteúdo e gere o PDF atualizado quando estiver pronto."
+
+        # A nova cópia já está preenchida e registrada. Agora move as cópias
+        # antigas de mesmo nome para a lixeira, mantendo-as recuperáveis.
+        antigos_movidos = 0
+        falhas_limpeza = 0
+        for old in existing_files:
+            old_id = old.get("id")
+            if not old_id or old_id == new_doc_id:
+                continue
+            try:
+                drive.files().update(
+                    fileId=old_id,
+                    body={"trashed": True},
+                    fields="id,trashed",
+                    supportsAllDrives=True,
+                ).execute()
+                antigos_movidos += 1
+            except Exception as cleanup_exc:
+                falhas_limpeza += 1
+                # Não desfazemos a nova versão funcional por falha de limpeza.
+                print(f"Aviso: não foi possível mover documento antigo {old_id} para a lixeira: {cleanup_exc}")
+
+        # O PDF mais recente deixa de ser o atual, pois se refere a uma versão
+        # anterior do Word. Os registros em na_documento_pdfs são preservados
+        # como histórico de auditoria.
+        if falhas_limpeza:
+            msg = f"Google Docs regenerado e link atualizado. {antigos_movidos} versão(ões) antiga(s) foram para a lixeira; {falhas_limpeza} não puderam ser movidas. Confira a pasta para remover duplicidades manualmente. Gere novamente o PDF."
+        elif antigos_movidos:
+            msg = f"Google Docs regenerado. {antigos_movidos} versão(ões) antiga(s) com o mesmo nome foram movidas para a lixeira. Revise o novo documento e gere novamente o PDF."
+        else:
+            msg = "Google Docs criado/recuperado; o sistema atualizou o link do cadastro. Revise o documento e gere o PDF."
+        return new_doc_id, doc_url, msg
     except Exception:
         conn.rollback()
+        # Se a criação falhou antes de atualizar o cadastro, tenta remover a
+        # cópia incompleta para não deixar um documento parcial no Drive.
+        if new_doc_id:
+            try:
+                drive.files().update(
+                    fileId=new_doc_id, body={"trashed": True}, fields="id,trashed",
+                    supportsAllDrives=True,
+                ).execute()
+            except Exception:
+                pass
         raise
     finally:
         cur.close()
@@ -20234,7 +20312,7 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
       <h2>🧾 {{ 'Nova Nota de Auditoria Preventiva' if is_new else 'Nota de Auditoria Preventiva — ' ~ note.na_numero }}</h2>
       {% if mensagem %}<div class="na-msg">{{mensagem}}</div>{% endif %}
       {% if not is_new and note.google_doc_id %}
-        <div class="na-warning">O documento Google já foi criado. Alterações salvas neste formulário atualizam o cadastro do PostgreSQL, mas não sobrescrevem silenciosamente o texto que você editou no Google Docs. Para alterar o documento, use o link do Google Docs na aba Documento.</div>
+        <div class="na-warning">Ao regenerar o Google Docs, será criada uma nova cópia do modelo com os dados atualmente salvos no cadastro. A versão anterior com o mesmo nome será movida para a lixeira; edições feitas diretamente nela não serão copiadas para a nova versão. Os PDFs anteriores permanecem no histórico.</div>
       {% endif %}
       <div class="na-tabs">
         <button type="button" class="na-tab active" data-panel="dados">1. Dados da Nota</button>
@@ -20289,7 +20367,11 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
         </div>
         <div class="na-card">
           <button class="na-btn green" type="submit" name="acao" value="salvar">💾 Salvar cadastro</button>
-          <button class="na-btn" type="submit" name="acao" value="salvar_criar_doc">💾 Salvar e criar Google Docs</button>
+          {% if not is_new and note.google_doc_id %}
+            <button class="na-btn orange" type="submit" name="acao" value="salvar_criar_doc" onclick="return confirm('Salvar as alterações e regenerar o Google Docs? A versão anterior com o mesmo nome será movida para a lixeira; edições feitas diretamente nela não serão mantidas.');">💾 Salvar e regenerar Google Docs</button>
+          {% else %}
+            <button class="na-btn" type="submit" name="acao" value="salvar_criar_doc">💾 Salvar e criar Google Docs</button>
+          {% endif %}
           <a class="na-btn gray" href="/notas-auditoria-documentos">Cancelar</a>
         </div>
        </form>
@@ -20299,9 +20381,10 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
           <h3>Google Docs e PDF</h3>
           {% if note.google_doc_url %}
             <p><a class="na-btn" target="_blank" rel="noopener" href="{{note.google_doc_url}}">📝 Abrir / editar no Google Docs</a></p>
-          {% elif not is_new %}
-            <p class="na-muted">Crie uma cópia preenchida do modelo oficial no Google Drive.</p>
-            <form method="post" action="/notas-auditoria-documentos/{{note.id}}/gerar-documento"><button class="na-btn" type="submit">Criar Google Docs a partir do modelo</button></form>
+          {% endif %}
+          {% if not is_new %}
+            <p class="na-muted">O botão abaixo gera novamente o documento a partir do modelo e dos dados salvos no formulário. Se já existir um arquivo com o mesmo nome na pasta, a versão antiga será movida para a lixeira. Se você apagou o arquivo no Drive, o sistema cria uma nova cópia e atualiza o link automaticamente.</p>
+            <form method="post" action="/notas-auditoria-documentos/{{note.id}}/gerar-documento" onsubmit="return confirm('Gerar novamente a Nota a partir do modelo? A versão antiga com o mesmo nome será movida para a lixeira e as edições feitas diretamente nela não serão mantidas.');"><button class="na-btn orange" type="submit">♻️ Regenerar Google Docs</button></form>
           {% else %}
             <p class="na-muted">Salve o cadastro primeiro. Você também pode usar “Salvar e criar Google Docs” no formulário para gerar o documento em uma única etapa.</p>
           {% endif %}
@@ -20694,7 +20777,7 @@ def na_gerar_pdf(nota_id):
         filename = _na_clean_filename(f"{note['na_numero']} - Nota de Auditoria - {stamp}") + ".pdf"
         media = MediaIoBaseUpload(io.BytesIO(pdf_bytes), mimetype="application/pdf", resumable=True)
         uploaded = drive.files().create(
-            body={"name": filename, "mimeType": "application/pdf", "parents": [NA_GOOGLE_DOCUMENTS_FOLDER_ID]},
+            body={"name": filename, "mimeType": "application/pdf", "parents": [NA_GOOGLE_PDFS_FOLDER_ID]},
             media_body=media, fields="id,name,webViewLink,parents", supportsAllDrives=True,
         ).execute()
         file_id = uploaded["id"]
@@ -20708,7 +20791,7 @@ def na_gerar_pdf(nota_id):
                 estado='PDF GERADO',atualizado_em=NOW() WHERE id=%s
         """, (file_id, file_url, nota_id))
         con.commit()
-        msg = "PDF atualizado e salvo no Google Drive."
+        msg = "PDF gerado e salvo na pasta específica de PDFs do Google Drive. O histórico foi atualizado."
     except Exception as exc:
         con.rollback()
         msg = "Não foi possível gerar/salvar o PDF: " + str(exc)[:500]

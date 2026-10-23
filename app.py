@@ -19818,6 +19818,954 @@ def req_eng_salvar(id):
 
     return jsonify(ok=True)
 
+# ================================================================
+# MÓDULO ADITIVO: NOTA DE AUDITORIA PREVENTIVA
+#
+# Como integrar:
+# 1) No app.py existente, cole TODO este bloco antes de @app.route("/seed")
+#    (e antes do if __name__ == "__main__").
+# 2) Não substitua o app.py inteiro por este arquivo.
+# 3) O bloco reutiliza app, get_db, BASE, render_template_string, request,
+#    session, redirect, jsonify, io, os e quote definidos no app.py original.
+# 4) Execute a migração SQL e configure a autorização Google descritas nas
+#    instruções do módulo.
+#
+# O modelo já pode usar {{monitoramento_check}}.
+# ================================================================
+
+# ================================================================
+# NOTAS DE AUDITORIA PREVENTIVA - Google Docs/Drive + PostgreSQL
+# Implementação aditiva: não substitui as rotas antigas de N.A.
+# ================================================================
+import json as _na_json
+import re as _na_re
+from datetime import date as _na_date, datetime as _na_datetime
+from werkzeug.utils import secure_filename as _na_secure_filename
+
+NA_GOOGLE_TEMPLATE_ID = os.environ.get(
+    "NA_GOOGLE_TEMPLATE_ID",
+    "1tkPlSnUjmiJ-U5QcNhdZg-OOCjgiDpZ5-TnhXtxhrhE",
+)
+NA_GOOGLE_DOCUMENTS_FOLDER_ID = os.environ.get(
+    "NA_GOOGLE_DOCUMENTS_FOLDER_ID",
+    "1BO2dXm5kGsRN-rndGJQLKkQZfMbmG_vk",
+)
+NA_GOOGLE_RESPONSES_FOLDER_ID = os.environ.get(
+    "NA_GOOGLE_RESPONSES_FOLDER_ID",
+    "1Z5KRuXLq88AJIthVxowFdwIBmchdeFw9",
+)
+NA_GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/documents",
+]
+NA_MAX_RESPONSE_PDF_BYTES = 20 * 1024 * 1024
+
+
+def _na_ensure_schema(cur):
+    """Cria as tabelas novas sem alterar as tabelas legadas do sistema."""
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS na_documentos (
+        id BIGSERIAL PRIMARY KEY,
+        na_numero TEXT NOT NULL UNIQUE,
+        requisicao_numeros TEXT NOT NULL DEFAULT '',
+        oficio_numero TEXT NOT NULL DEFAULT '',
+        contrato_numero TEXT NOT NULL DEFAULT '',
+        empresa TEXT NOT NULL DEFAULT '',
+        objeto_contratacao TEXT NOT NULL DEFAULT '',
+        data_emissao DATE NOT NULL DEFAULT CURRENT_DATE,
+        data_analise DATE,
+        orgao_origem TEXT NOT NULL DEFAULT '',
+        identificacao_problema TEXT NOT NULL DEFAULT '',
+        analise_causa_raiz TEXT NOT NULL DEFAULT '',
+        observacoes_complementares TEXT NOT NULL DEFAULT '',
+        exige_monitoramento BOOLEAN NOT NULL DEFAULT FALSE,
+        prazo_resposta DATE,
+        monitoramento TEXT NOT NULL DEFAULT '',
+        responsaveis_na TEXT NOT NULL DEFAULT '',
+        matriculas TEXT NOT NULL DEFAULT '',
+        resposta_url TEXT,
+        google_doc_id TEXT,
+        google_doc_url TEXT,
+        pdf_file_id TEXT,
+        pdf_url TEXT,
+        pdf_gerado_em TIMESTAMP,
+        estado TEXT NOT NULL DEFAULT 'RASCUNHO',
+        criado_por INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL,
+        criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+        atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS na_documento_responsaveis (
+        nota_id BIGINT NOT NULL REFERENCES na_documentos(id) ON DELETE CASCADE,
+        colaborador_id INTEGER NOT NULL REFERENCES colaboradores(id) ON DELETE RESTRICT,
+        matricula TEXT NOT NULL DEFAULT '',
+        ordem INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (nota_id, colaborador_id)
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS na_documento_requisicoes (
+        nota_id BIGINT NOT NULL REFERENCES na_documentos(id) ON DELETE CASCADE,
+        requisicao_id INTEGER NOT NULL REFERENCES requisicoes(id) ON DELETE CASCADE,
+        PRIMARY KEY (nota_id, requisicao_id)
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS na_documento_pdfs (
+        id BIGSERIAL PRIMARY KEY,
+        nota_id BIGINT NOT NULL REFERENCES na_documentos(id) ON DELETE CASCADE,
+        drive_file_id TEXT NOT NULL,
+        drive_url TEXT NOT NULL,
+        nome_arquivo TEXT NOT NULL,
+        gerado_por INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL,
+        gerado_em TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS na_respostas (
+        id BIGSERIAL PRIMARY KEY,
+        nota_id BIGINT NOT NULL REFERENCES na_documentos(id) ON DELETE CASCADE,
+        drive_file_id TEXT NOT NULL,
+        drive_url TEXT NOT NULL,
+        nome_arquivo TEXT NOT NULL,
+        enviado_por INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL,
+        enviado_em TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_na_documentos_numero ON na_documentos(na_numero)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_na_doc_resp_colaborador ON na_documento_responsaveis(colaborador_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_na_doc_req_req ON na_documento_requisicoes(requisicao_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_na_respostas_nota ON na_respostas(nota_id, enviado_em DESC)")
+
+
+def _na_google_services():
+    """Obtém credenciais OAuth de usuário e cria clientes Drive/Docs.
+
+    GOOGLE_OAUTH_TOKEN_JSON deve conter o JSON gerado por google_oauth_setup.py,
+    ou GOOGLE_OAUTH_TOKEN_FILE deve apontar para um arquivo com o mesmo conteúdo.
+    """
+    raw = os.environ.get("GOOGLE_OAUTH_TOKEN_JSON", "").strip()
+    token_file = os.environ.get("GOOGLE_OAUTH_TOKEN_FILE", "").strip()
+    if raw:
+        token_info = _na_json.loads(raw)
+    elif token_file and os.path.isfile(token_file):
+        with open(token_file, "r", encoding="utf-8") as f:
+            token_info = _na_json.load(f)
+    else:
+        raise RuntimeError(
+            "Integração Google não configurada. Gere o token OAuth e configure "
+            "GOOGLE_OAUTH_TOKEN_JSON no ambiente do Render."
+        )
+
+    try:
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+        from googleapiclient.discovery import build
+    except ImportError as exc:
+        raise RuntimeError(
+            "Bibliotecas Google ausentes. Instale google-api-python-client, "
+            "google-auth e google-auth-oauthlib."
+        ) from exc
+
+    creds = Credentials.from_authorized_user_info(token_info, scopes=NA_GOOGLE_SCOPES)
+    if creds.expired and creds.refresh_token:
+        creds.refresh(GoogleAuthRequest())
+    if not creds.valid:
+        raise RuntimeError("Token Google inválido/expirado; gere um novo token OAuth.")
+    drive = build("drive", "v3", credentials=creds, cache_discovery=False)
+    docs = build("docs", "v1", credentials=creds, cache_discovery=False)
+    return drive, docs
+
+
+def _na_fmt_date(value):
+    if not value:
+        return ""
+    if isinstance(value, (_na_date, _na_datetime)):
+        return value.strftime("%d/%m/%Y")
+    s = str(value).strip()
+    try:
+        return _na_datetime.strptime(s[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        try:
+            return _na_datetime.strptime(s[:10], "%d/%m/%Y").strftime("%d/%m/%Y")
+        except ValueError:
+            return s
+
+
+def _na_parse_date(value):
+    if not value:
+        return None
+    value = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return _na_datetime.strptime(value[:10], fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def _na_clean_filename(value):
+    value = _na_secure_filename(str(value or "Nota_Auditoria")) or "Nota_Auditoria"
+    return value[:120]
+
+
+def _na_note_access(cur, nota_id):
+    cur.execute("SELECT * FROM na_documentos WHERE id=%s", (nota_id,))
+    note = cur.fetchone()
+    if not note:
+        return None
+    if session.get("perfil") == "admin":
+        return note
+    cur.execute("""
+        SELECT EXISTS (
+            SELECT 1 FROM na_documento_responsaveis nr
+            WHERE nr.nota_id=%s AND nr.colaborador_id=%s
+        ) OR EXISTS (
+            SELECT 1 FROM na_documento_requisicoes ndq
+            JOIN requisicoes r ON r.id=ndq.requisicao_id
+            WHERE ndq.nota_id=%s AND r.servidor_id=%s
+        ) AS autorizado
+    """, (nota_id, session.get("user_id"), nota_id, session.get("user_id")))
+    linked = cur.fetchone()
+    if note.get("criado_por") == session.get("user_id") or (linked and linked.get("autorizado")):
+        return note
+    return None
+
+
+def _na_selected_requisitions(cur, req_ids):
+    if not req_ids:
+        return []
+    params = [req_ids]
+    sql = """
+        SELECT id, chave, requisicao_num, sigla, secretaria, contrato,
+               nome_fornecedor, oficio, natureza_despesa, item_despesa,
+               tipo_documento, num_nota
+        FROM requisicoes
+        WHERE id = ANY(%s)
+    """
+    if session.get("perfil") != "admin":
+        sql += " AND servidor_id=%s"
+        params.append(session.get("user_id"))
+    sql += " ORDER BY array_position(%s::int[], id)"
+    params.append(req_ids)
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+    return rows
+
+
+def _na_build_doc_values(note, responsaveis=None):
+    responsaveis = responsaveis or []
+    names = [str(r.get("nome") or "").strip() for r in responsaveis if r.get("nome")]
+    matriculas = [str(r.get("matricula") or "").strip() for r in responsaveis if r.get("nome")]
+    sim_nao = "Sim ( X ) Não (   )" if note.get("exige_monitoramento") else "Sim (   ) Não ( X )"
+    prazo = _na_fmt_date(note.get("prazo_resposta"))
+    return {
+        "{{data_emissao}}": _na_fmt_date(note.get("data_emissao")),
+        "{{requisicao_numeros}}": str(note.get("requisicao_numeros") or ""),
+        "{{oficio_numero}}": str(note.get("oficio_numero") or ""),
+        "{{contrato_numero}}": str(note.get("contrato_numero") or ""),
+        "{{empresa}}": str(note.get("empresa") or ""),
+        "{{na_numero}}": str(note.get("na_numero") or ""),
+        "{{objeto_contratacao}}": str(note.get("objeto_contratacao") or ""),
+        "{{data_analise}}": _na_fmt_date(note.get("data_analise")),
+        "{{orgao_origem}}": str(note.get("orgao_origem") or ""),
+        "{{identificacao_problema}}": str(note.get("identificacao_problema") or ""),
+        "{{analise_causa_raiz}}": str(note.get("analise_causa_raiz") or ""),
+        "{{observacoes_complementares}}": str(note.get("observacoes_complementares") or ""),
+        "{{prazo_resposta}}": prazo,
+        "{{monitoramento}}": str(note.get("monitoramento") or ""),
+        "{{responsaveis_na}}": ", ".join(names) or str(note.get("responsaveis_na") or ""),
+        "{{matriculas}}": ", ".join(matriculas) or str(note.get("matriculas") or ""),
+        "{{monitoramento_check}}": sim_nao,
+        "{{exige_monitoramento}}": sim_nao,
+    }
+
+
+def _na_create_google_doc(nota_id):
+    from googleapiclient.errors import HttpError
+    drive, docs = _na_google_services()
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        _na_ensure_schema(cur)
+        note = _na_note_access(cur, nota_id)
+        if not note:
+            raise PermissionError("Nota não encontrada ou sem permissão de acesso.")
+        if note.get("google_doc_id"):
+            return note["google_doc_id"], note.get("google_doc_url") or (
+                "https://docs.google.com/document/d/%s/edit" % note["google_doc_id"]
+            ), "O documento Google já existe; ele foi mantido para preservar as edições feitas no Docs."
+
+        cur.execute("""
+            SELECT c.nome, nr.matricula, nr.ordem
+            FROM na_documento_responsaveis nr
+            JOIN colaboradores c ON c.id=nr.colaborador_id
+            WHERE nr.nota_id=%s ORDER BY nr.ordem, c.nome
+        """, (nota_id,))
+        responsible_rows = cur.fetchall()
+        values = _na_build_doc_values(note, responsible_rows)
+        titulo = _na_clean_filename(f"{note['na_numero']} - Nota de Auditoria Preventiva")
+        copia = drive.files().copy(
+            fileId=NA_GOOGLE_TEMPLATE_ID,
+            body={"name": titulo, "parents": [NA_GOOGLE_DOCUMENTS_FOLDER_ID]},
+            fields="id,name,webViewLink,parents",
+            supportsAllDrives=True,
+        ).execute()
+        doc_id = copia["id"]
+        replacements = []
+        for tag, value in values.items():
+            replacements.append({
+                "replaceAllText": {
+                    "containsText": {"text": tag, "matchCase": True},
+                    "replaceText": value,
+                }
+            })
+        # Compatibilidade com o modelo atual, caso a linha do monitoramento ainda
+        # não tenha sido trocada por {{monitoramento_check}}.
+        replacements.append({
+            "replaceAllText": {
+                "containsText": {"text": "Sim (   ) Não (   )", "matchCase": True},
+                "replaceText": values["{{monitoramento_check}}"],
+            }
+        })
+        docs.documents().batchUpdate(
+            documentId=doc_id, body={"requests": replacements}
+        ).execute()
+        doc_url = copia.get("webViewLink") or f"https://docs.google.com/document/d/{doc_id}/edit"
+        cur.execute("""
+            UPDATE na_documentos SET google_doc_id=%s, google_doc_url=%s,
+                atualizado_em=NOW() WHERE id=%s
+        """, (doc_id, doc_url, nota_id))
+        conn.commit()
+        return doc_id, doc_url, "Documento Google criado. Revise o conteúdo e gere o PDF atualizado quando estiver pronto."
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _na_user_can_see_list_sql():
+    if session.get("perfil") == "admin":
+        return "", []
+    return " AND (n.criado_por=%s OR EXISTS (SELECT 1 FROM na_documento_responsaveis nr WHERE nr.nota_id=n.id AND nr.colaborador_id=%s) OR EXISTS (SELECT 1 FROM na_documento_requisicoes ndq JOIN requisicoes r ON r.id=ndq.requisicao_id WHERE ndq.nota_id=n.id AND r.servidor_id=%s)) ", [session.get("user_id"), session.get("user_id"), session.get("user_id")]
+
+
+def _na_render(html, **context):
+    return render_template_string(
+        BASE.replace("{% block content %}{% endblock %}", html),
+        user=session.get("user"),
+        perfil=session.get("perfil"),
+        request=request,
+        **context,
+    )
+
+
+def _na_load_form_data(cur, note=None):
+    cur.execute("SELECT id, nome FROM colaboradores WHERE nome IS NOT NULL ORDER BY nome")
+    colaboradores = cur.fetchall()
+    responsaveis_selecionados = {}
+    req_selected = []
+    respostas = []
+    pdfs = []
+    if note:
+        cur.execute("""
+            SELECT nr.colaborador_id, nr.matricula, nr.ordem
+            FROM na_documento_responsaveis nr WHERE nr.nota_id=%s
+        """, (note["id"],))
+        responsaveis_selecionados = {str(r["colaborador_id"]): r["matricula"] for r in cur.fetchall()}
+        cur.execute("""
+            SELECT r.id, r.chave, r.requisicao_num, r.sigla, r.secretaria,
+                   r.contrato, r.nome_fornecedor, r.oficio, r.natureza_despesa,
+                   r.item_despesa, r.tipo_documento, r.num_nota
+            FROM na_documento_requisicoes l JOIN requisicoes r ON r.id=l.requisicao_id
+            WHERE l.nota_id=%s ORDER BY r.id
+        """, (note["id"],))
+        req_selected = cur.fetchall()
+        cur.execute("SELECT * FROM na_respostas WHERE nota_id=%s ORDER BY enviado_em DESC", (note["id"],))
+        respostas = cur.fetchall()
+        cur.execute("SELECT * FROM na_documento_pdfs WHERE nota_id=%s ORDER BY gerado_em DESC", (note["id"],))
+        pdfs = cur.fetchall()
+    return colaboradores, responsaveis_selecionados, req_selected, respostas, pdfs
+
+
+def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, respostas, pdfs, mensagem=""):
+    is_new = not note or not note.get("id")
+    form_action = "/notas-auditoria-documentos/nova" if is_new else f"/notas-auditoria-documentos/{note['id']}"
+    note = dict(note or {})
+    if not note.get("data_emissao"):
+        note["data_emissao"] = _na_date.today()
+    if not note.get("data_analise"):
+        note["data_analise"] = _na_date.today()
+    html = r"""
+    <style>
+      .na-wrap{max-width:1180px;margin:18px auto;padding:0 12px;color:#1f2937}
+      .na-card{background:#fff;border:1px solid #dbe4ef;border-radius:14px;padding:20px;margin:14px 0;box-shadow:0 4px 14px #1e3a5f0d}
+      .na-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+      .na-grid .wide{grid-column:1/-1}
+      .na-field label{display:block;font-size:13px;font-weight:700;margin:0 0 5px;color:#374151}
+      .na-field input,.na-field textarea,.na-field select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:10px;background:#fff;color:#111827;font:inherit}
+      .na-field textarea{min-height:105px;resize:vertical}
+      .na-muted{font-size:13px;color:#64748b;line-height:1.5}
+      .na-btn{display:inline-block;border:0;border-radius:8px;padding:10px 15px;background:#1d4ed8;color:white!important;font-weight:700;cursor:pointer;text-decoration:none;margin:3px 4px 3px 0}
+      .na-btn.gray{background:#475569}.na-btn.green{background:#15803d}.na-btn.orange{background:#b45309}
+      .na-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}
+      .na-tab{background:#e2e8f0;color:#1e293b;border:0;border-radius:8px;padding:10px 15px;cursor:pointer;font-weight:700}
+      .na-tab.active{background:#1d4ed8;color:#fff}
+      .na-panel{display:none}.na-panel.active{display:block}
+      .na-msg{padding:12px 14px;border-radius:8px;background:#eff6ff;border:1px solid #bfdbfe;margin:10px 0;white-space:pre-line}
+      .na-warning{padding:12px 14px;border-radius:8px;background:#fff7ed;border:1px solid #fed7aa;margin:10px 0;white-space:pre-line}
+      .na-resp-row{display:grid;grid-template-columns:minmax(220px,1fr) minmax(160px,240px);align-items:center;gap:12px;padding:9px;border-bottom:1px solid #e5e7eb}
+      .na-resp-row label{display:flex;gap:8px;align-items:center;font-weight:600}
+      .na-resp-row input[type=text]{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px}
+      .na-req-results{border:1px solid #dbe4ef;border-radius:8px;background:white;max-height:240px;overflow:auto;margin-top:5px}
+      .na-req-option{display:block;width:100%;text-align:left;border:0;background:#fff;padding:10px;border-bottom:1px solid #e5e7eb;cursor:pointer;color:#1f2937}
+      .na-req-option:hover{background:#eff6ff}
+      .na-chip{display:inline-flex;align-items:center;gap:7px;background:#dbeafe;color:#1e40af;border-radius:999px;padding:5px 9px;margin:4px;font-size:13px}
+      .na-chip button{border:0;background:transparent;font-weight:bold;cursor:pointer;color:#1e40af}
+      .na-table{width:100%;border-collapse:collapse}.na-table th,.na-table td{padding:9px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}
+      @media(max-width:740px){.na-grid{grid-template-columns:1fr}.na-resp-row{grid-template-columns:1fr}.na-card{padding:14px}}
+    </style>
+    <div class="na-wrap">
+      <p><a href="/notas-auditoria-documentos">← Voltar à lista de Notas Preventivas</a></p>
+      <h2>🧾 {{ 'Nova Nota de Auditoria Preventiva' if is_new else 'Nota de Auditoria Preventiva — ' ~ note.na_numero }}</h2>
+      {% if mensagem %}<div class="na-msg">{{mensagem}}</div>{% endif %}
+      {% if not is_new and note.google_doc_id %}
+        <div class="na-warning">O documento Google já foi criado. Alterações salvas neste formulário atualizam o cadastro do PostgreSQL, mas não sobrescrevem silenciosamente o texto que você editou no Google Docs. Para alterar o documento, use o link do Google Docs na aba Documento.</div>
+      {% endif %}
+      <div class="na-tabs">
+        <button type="button" class="na-tab active" data-panel="dados">1. Dados da Nota</button>
+        <button type="button" class="na-tab" data-panel="documento">2. Documento / PDF</button>
+        {% if not is_new %}<button type="button" class="na-tab" data-panel="resposta">3. Resposta à Nota</button>{% endif %}
+      </div>
+      <section class="na-panel active" id="panel-dados">
+       <form method="post" action="{{form_action}}" id="na-form">
+        <div class="na-card">
+          <h3>Identificação</h3>
+          <div class="na-grid">
+            <div class="na-field"><label>Nº da Nota de Auditoria *</label><input name="na_numero" required value="{{note.na_numero or ''}}" placeholder="Ex.: NA. 028/2026"></div>
+            <div class="na-field"><label>Data de emissão</label><input type="date" name="data_emissao" value="{{note.data_emissao.isoformat() if note.data_emissao and note.data_emissao.strftime is defined else (note.data_emissao or '')}}" required></div>
+            <div class="na-field wide"><label>Localizar requisições existentes</label><input id="na-req-search" type="search" autocomplete="off" placeholder="Digite número, secretaria, fornecedor ou contrato"><div id="na-req-results" class="na-req-results" hidden></div><div id="na-req-chips"></div><div class="na-muted">Selecione as requisições relacionadas para preencher os campos abaixo. Você também pode corrigir os dados manualmente.</div></div>
+            <div id="na-req-hidden"></div>
+            <div class="na-field"><label>Nº Requisição</label><input name="requisicao_numeros" id="na-requisicao-numeros" value="{{note.requisicao_numeros or ''}}" placeholder="Preenchido pelas requisições selecionadas"></div>
+            <div class="na-field"><label>Ofício nº</label><input name="oficio_numero" id="na-oficio" value="{{note.oficio_numero or ''}}"></div>
+            <div class="na-field"><label>Contrato nº</label><input name="contrato_numero" id="na-contrato" value="{{note.contrato_numero or ''}}"></div>
+            <div class="na-field"><label>Empresa</label><input name="empresa" id="na-empresa" value="{{note.empresa or ''}}"></div>
+            <div class="na-field wide"><label>Objeto da contratação</label><textarea name="objeto_contratacao" id="na-objeto">{{note.objeto_contratacao or ''}}</textarea></div>
+            <div class="na-field"><label>Data da análise</label><input type="date" name="data_analise" value="{{note.data_analise.isoformat() if note.data_analise and note.data_analise.strftime is defined else (note.data_analise or '')}}"></div>
+            <div class="na-field"><label>Origem (órgão ou entidade)</label><input name="orgao_origem" id="na-origem" value="{{note.orgao_origem or ''}}"></div>
+          </div>
+        </div>
+        <div class="na-card">
+          <h3>2. Definição do problema</h3>
+          <div class="na-field"><label>Apontamentos encontrados</label><textarea name="identificacao_problema" rows="7">{{note.identificacao_problema or ''}}</textarea></div>
+          <h3>3. Análise da causa raiz</h3>
+          <div class="na-field"><label>Documentos analisados e análise</label><textarea name="analise_causa_raiz" rows="6">{{note.analise_causa_raiz or ''}}</textarea></div>
+          <h3>4. Observações complementares</h3>
+          <div class="na-field"><label>Recomendações e observações</label><textarea name="observacoes_complementares" rows="5">{{note.observacoes_complementares or ''}}</textarea></div>
+        </div>
+        <div class="na-card">
+          <h3>5. Exige monitoramento?</h3>
+          <div class="na-grid">
+            <div class="na-field"><label>Monitoramento</label><select name="exige_monitoramento" id="na-exige-monitoramento"><option value="nao" {% if not note.exige_monitoramento %}selected{% endif %}>Não</option><option value="sim" {% if note.exige_monitoramento %}selected{% endif %}>Sim</option></select></div>
+            <div class="na-field"><label>Prazo de resposta</label><input type="date" name="prazo_resposta" value="{{note.prazo_resposta.isoformat() if note.prazo_resposta and note.prazo_resposta.strftime is defined else (note.prazo_resposta or '')}}"></div>
+          </div>
+          <h3>6. Monitoramento realizado</h3>
+          <div class="na-field"><label>Registro do monitoramento</label><textarea name="monitoramento" rows="5">{{note.monitoramento or ''}}</textarea></div>
+          <p class="na-muted">O texto da LGPD previsto no modelo oficial será mantido no Google Docs modelo.</p>
+        </div>
+        <div class="na-card">
+          <h3>Responsáveis pela Nota de Auditoria</h3>
+          <p class="na-muted">Marque um ou mais colaboradores da tabela existente. Informe a matrícula no campo ao lado de cada responsável selecionado.</p>
+          {% for c in colaboradores %}
+            <div class="na-resp-row">
+              <label><input type="checkbox" name="responsavel_ids" value="{{c.id}}" data-resp-check="{{c.id}}" {% if (c.id|string) in responsaveis_selecionados %}checked{% endif %}> {{c.nome}}</label>
+              <input type="text" name="matricula_{{c.id}}" data-matricula="{{c.id}}" placeholder="Matrícula" value="{{responsaveis_selecionados.get(c.id|string, '')}}" {% if (c.id|string) not in responsaveis_selecionados %}disabled{% endif %}>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="na-card">
+          <button class="na-btn green" type="submit" name="acao" value="salvar">💾 Salvar cadastro</button>
+          <button class="na-btn" type="submit" name="acao" value="salvar_criar_doc">💾 Salvar e criar Google Docs</button>
+          <a class="na-btn gray" href="/notas-auditoria-documentos">Cancelar</a>
+        </div>
+       </form>
+      </section>
+      <section class="na-panel" id="panel-documento">
+        <div class="na-card">
+          <h3>Google Docs e PDF</h3>
+          {% if note.google_doc_url %}
+            <p><a class="na-btn" target="_blank" rel="noopener" href="{{note.google_doc_url}}">📝 Abrir / editar no Google Docs</a></p>
+          {% elif not is_new %}
+            <p class="na-muted">Crie uma cópia preenchida do modelo oficial no Google Drive.</p>
+            <form method="post" action="/notas-auditoria-documentos/{{note.id}}/gerar-documento"><button class="na-btn" type="submit">Criar Google Docs a partir do modelo</button></form>
+          {% else %}
+            <p class="na-muted">Salve o cadastro primeiro. Você também pode usar “Salvar e criar Google Docs” no formulário para gerar o documento em uma única etapa.</p>
+          {% endif %}
+          {% if note.google_doc_id %}
+            <form method="post" action="/notas-auditoria-documentos/{{note.id}}/gerar-pdf"><button class="na-btn green" type="submit">📄 Gerar / atualizar PDF no Drive</button></form>
+          {% endif %}
+          {% if note.pdf_url %}<p>PDF mais recente: <a target="_blank" rel="noopener" href="{{note.pdf_url}}">Abrir PDF emitido</a> {% if note.pdf_gerado_em %}<span class="na-muted">({{note.pdf_gerado_em.strftime('%d/%m/%Y %H:%M') if note.pdf_gerado_em.strftime is defined else note.pdf_gerado_em}})</span>{% endif %}</p>{% endif %}
+          {% if pdfs %}<h4>Histórico de PDFs</h4><table class="na-table"><tr><th>Arquivo</th><th>Gerado em</th></tr>{% for p in pdfs %}<tr><td><a target="_blank" rel="noopener" href="{{p.drive_url}}">{{p.nome_arquivo}}</a></td><td>{{p.gerado_em.strftime('%d/%m/%Y %H:%M') if p.gerado_em.strftime is defined else p.gerado_em}}</td></tr>{% endfor %}</table>{% endif %}
+        </div>
+      </section>
+      {% if not is_new %}
+      <section class="na-panel" id="panel-resposta">
+        <div class="na-card">
+          <h3>Resposta à Nota de Auditoria</h3>
+          <p class="na-muted">Envie aqui o PDF da resposta recebida. O arquivo será guardado na pasta de respostas configurada no Google Drive e o link ficará associado à Nota.</p>
+          <form method="post" enctype="multipart/form-data" action="/notas-auditoria-documentos/{{note.id}}/respostas/upload">
+            <div class="na-field"><label>Arquivo de resposta (PDF, máximo 20 MB)</label><input type="file" name="resposta_pdf" accept="application/pdf,.pdf" required></div>
+            <button class="na-btn green" type="submit">⬆ Enviar resposta em PDF</button>
+          </form>
+          {% if note.resposta_url %}<p>Última resposta: <a target="_blank" rel="noopener" href="{{note.resposta_url}}">Abrir PDF da resposta</a></p>{% endif %}
+          {% if respostas %}<h4>Histórico de respostas</h4><table class="na-table"><tr><th>Arquivo</th><th>Enviado em</th></tr>{% for a in respostas %}<tr><td><a target="_blank" rel="noopener" href="{{a.drive_url}}">{{a.nome_arquivo}}</a></td><td>{{a.enviado_em.strftime('%d/%m/%Y %H:%M') if a.enviado_em.strftime is defined else a.enviado_em}}</td></tr>{% endfor %}</table>{% endif %}
+        </div>
+      </section>
+      {% endif %}
+    </div>
+    <script>
+    (function(){
+      const tabs=[...document.querySelectorAll('.na-tab')];
+      tabs.forEach(btn=>btn.addEventListener('click',()=>{
+        tabs.forEach(t=>t.classList.toggle('active',t===btn));
+        document.querySelectorAll('.na-panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+btn.dataset.panel));
+      }));
+      document.querySelectorAll('[data-resp-check]').forEach(ch=>{
+        const inp=document.querySelector('[data-matricula="'+ch.value+'"]');
+        const apply=()=>{ if(inp){inp.disabled=!ch.checked; inp.required=ch.checked;} };
+        ch.addEventListener('change',apply); apply();
+      });
+      const search=document.getElementById('na-req-search');
+      const results=document.getElementById('na-req-results');
+      const chips=document.getElementById('na-req-chips');
+      const hidden=document.getElementById('na-req-hidden');
+      const selected=new Map();
+      const existing={{ req_selected|tojson }};
+      existing.forEach(r=>selected.set(String(r.id),r));
+      function uniq(items,key){return [...new Set(items.map(x=>(x[key]||'').trim()).filter(Boolean))].join(', ')}
+      function autofill(){
+        const arr=[...selected.values()];
+        const fields={
+          'na-requisicao-numeros':arr.map(r=>r.chave || ((r.requisicao_num||'')+(r.sigla?' / '+r.sigla:''))).filter(Boolean).join('; '),
+          'na-oficio':uniq(arr,'oficio'),
+          'na-contrato':uniq(arr,'contrato'),
+          'na-empresa':uniq(arr,'nome_fornecedor'),
+          'na-origem':uniq(arr,'secretaria'),
+          'na-objeto':uniq(arr,'item_despesa') || uniq(arr,'natureza_despesa') || uniq(arr,'tipo_documento')
+        };
+        Object.entries(fields).forEach(([id,val])=>{const el=document.getElementById(id);if(el && val)el.value=val;});
+        if(arr.length===1 && arr[0].num_nota){const n=document.querySelector('[name="na_numero"]');if(n&&!n.value)n.value=arr[0].num_nota;}
+      }
+      function drawSelected(){
+        chips.innerHTML=''; hidden.innerHTML='';
+        selected.forEach((r,id)=>{
+          const chip=document.createElement('span');chip.className='na-chip';
+          const label=r.chave || ((r.requisicao_num||'')+(r.sigla?' / '+r.sigla:'')) || ('Requisição '+id);
+          chip.appendChild(document.createTextNode(label+' '));
+          const del=document.createElement('button');del.type='button';del.textContent='×';del.setAttribute('aria-label','Remover requisição');del.onclick=()=>{selected.delete(id);drawSelected();autofill();};chip.appendChild(del);chips.appendChild(chip);
+          const hid=document.createElement('input');hid.type='hidden';hid.name='requisicao_ids';hid.value=id;hidden.appendChild(hid);
+        });
+      }
+      function drawResults(items){results.innerHTML='';if(!items.length){results.hidden=false;results.textContent='Nenhuma requisição encontrada.';return;}
+        items.forEach(r=>{if(selected.has(String(r.id)))return;const b=document.createElement('button');b.type='button';b.className='na-req-option';
+          b.textContent=(r.chave||r.requisicao_num||'Requisição')+' — '+(r.secretaria||'Órgão não informado')+' — '+(r.nome_fornecedor||'Fornecedor não informado');
+          b.onclick=()=>{selected.set(String(r.id),r);results.hidden=true;search.value='';drawSelected();autofill();};results.appendChild(b);});results.hidden=false;
+      }
+      let timer;
+      if(search){search.addEventListener('input',()=>{clearTimeout(timer);const q=search.value.trim();timer=setTimeout(()=>fetch('/api/notas-auditoria-documentos/requisicoes?q='+encodeURIComponent(q)).then(r=>r.ok?r.json():[]).then(drawResults).catch(()=>drawResults([])),220);});search.addEventListener('focus',()=>{if(!search.value.trim())search.dispatchEvent(new Event('input'));});document.addEventListener('click',e=>{if(!results.contains(e.target)&&e.target!==search)results.hidden=true;});}
+      drawSelected();
+    })();
+    </script>
+    """
+    return _na_render(html, note=note, colaboradores=colaboradores,
+                      responsaveis_selecionados=responsaveis_selecionados,
+                      req_selected=req_selected, respostas=respostas, pdfs=pdfs,
+                      mensagem=mensagem, is_new=is_new, form_action=form_action)
+
+
+def _na_save_form(nota_id=None):
+    con = get_db()
+    cur = con.cursor()
+    try:
+        _na_ensure_schema(cur)
+        if nota_id:
+            current = _na_note_access(cur, nota_id)
+            if not current:
+                con.close()
+                return "Nota não encontrada ou sem permissão de acesso.", 404
+        else:
+            current = None
+
+        na_numero = (request.form.get("na_numero") or "").strip()
+        if not na_numero:
+            con.close()
+            return "O número da Nota de Auditoria é obrigatório.", 400
+        data_emissao = _na_parse_date(request.form.get("data_emissao")) or _na_date.today()
+        data_analise = _na_parse_date(request.form.get("data_analise"))
+        prazo_resposta = _na_parse_date(request.form.get("prazo_resposta"))
+        exige_monitoramento = request.form.get("exige_monitoramento") == "sim"
+        req_ids = []
+        for raw_id in request.form.getlist("requisicao_ids"):
+            try:
+                rid = int(raw_id)
+                if rid > 0 and rid not in req_ids:
+                    req_ids.append(rid)
+            except (ValueError, TypeError):
+                pass
+        req_rows = _na_selected_requisitions(cur, req_ids)
+        req_ids = [int(r["id"]) for r in req_rows]
+        requisicao_numeros = (request.form.get("requisicao_numeros") or "").strip()
+        if not requisicao_numeros and req_rows:
+            requisicao_numeros = "; ".join(
+                str(r.get("chave") or ((r.get("requisicao_num") or "") + (" / " + r.get("sigla") if r.get("sigla") else "")))
+                for r in req_rows
+            )
+
+        resp_ids = []
+        for raw_id in request.form.getlist("responsavel_ids"):
+            try:
+                rid = int(raw_id)
+                if rid > 0 and rid not in resp_ids:
+                    resp_ids.append(rid)
+            except (ValueError, TypeError):
+                pass
+        collaborators = []
+        if resp_ids:
+            cur.execute("SELECT id, nome FROM colaboradores WHERE id=ANY(%s) ORDER BY nome", (resp_ids,))
+            by_id = {int(r["id"]): r for r in cur.fetchall()}
+            for order, rid in enumerate(resp_ids, 1):
+                c = by_id.get(rid)
+                if not c:
+                    continue
+                matricula = (request.form.get(f"matricula_{rid}") or "").strip()
+                if not matricula:
+                    con.rollback()
+                    con.close()
+                    return f"Informe a matrícula de {c['nome']} ou desmarque esse responsável.", 400
+                collaborators.append({"id": rid, "nome": c["nome"], "matricula": matricula, "ordem": order})
+        responsaveis_na = ", ".join(c["nome"] for c in collaborators)
+        matriculas = ", ".join(c["matricula"] for c in collaborators)
+
+        values = (
+            na_numero,
+            requisicao_numeros,
+            (request.form.get("oficio_numero") or "").strip(),
+            (request.form.get("contrato_numero") or "").strip(),
+            (request.form.get("empresa") or "").strip(),
+            (request.form.get("objeto_contratacao") or "").strip(),
+            data_emissao,
+            data_analise,
+            (request.form.get("orgao_origem") or "").strip(),
+            (request.form.get("identificacao_problema") or "").strip(),
+            (request.form.get("analise_causa_raiz") or "").strip(),
+            (request.form.get("observacoes_complementares") or "").strip(),
+            exige_monitoramento,
+            prazo_resposta,
+            (request.form.get("monitoramento") or "").strip(),
+            responsaveis_na,
+            matriculas,
+        )
+        if current:
+            cur.execute("""
+                UPDATE na_documentos SET
+                    na_numero=%s, requisicao_numeros=%s, oficio_numero=%s,
+                    contrato_numero=%s, empresa=%s, objeto_contratacao=%s,
+                    data_emissao=%s, data_analise=%s, orgao_origem=%s,
+                    identificacao_problema=%s, analise_causa_raiz=%s,
+                    observacoes_complementares=%s, exige_monitoramento=%s,
+                    prazo_resposta=%s, monitoramento=%s, responsaveis_na=%s,
+                    matriculas=%s, atualizado_em=NOW()
+                WHERE id=%s
+            """, values + (nota_id,))
+            saved_id = nota_id
+        else:
+            cur.execute("""
+                INSERT INTO na_documentos (
+                    na_numero, requisicao_numeros, oficio_numero, contrato_numero,
+                    empresa, objeto_contratacao, data_emissao, data_analise,
+                    orgao_origem, identificacao_problema, analise_causa_raiz,
+                    observacoes_complementares, exige_monitoramento, prazo_resposta,
+                    monitoramento, responsaveis_na, matriculas, criado_por
+                ) VALUES (
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+                ) RETURNING id
+            """, values + (session.get("user_id"),))
+            saved_id = cur.fetchone()["id"]
+
+        cur.execute("DELETE FROM na_documento_responsaveis WHERE nota_id=%s", (saved_id,))
+        for c in collaborators:
+            cur.execute("""
+                INSERT INTO na_documento_responsaveis(nota_id,colaborador_id,matricula,ordem)
+                VALUES(%s,%s,%s,%s)
+            """, (saved_id, c["id"], c["matricula"], c["ordem"]))
+        cur.execute("DELETE FROM na_documento_requisicoes WHERE nota_id=%s", (saved_id,))
+        for rid in req_ids:
+            cur.execute("INSERT INTO na_documento_requisicoes(nota_id,requisicao_id) VALUES(%s,%s)", (saved_id, rid))
+        con.commit()
+    except Exception as exc:
+        con.rollback()
+        if "duplicate key" in str(exc).lower() or "unique constraint" in str(exc).lower():
+            con.close()
+            return "Já existe uma Nota com esse número. Informe outro número ou abra a nota existente.", 400
+        con.close()
+        raise
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        try:
+            con.close()
+        except Exception:
+            pass
+
+    message = "Cadastro salvo no PostgreSQL."
+    action = request.form.get("acao")
+    if action == "salvar_criar_doc":
+        try:
+            _, _, google_msg = _na_create_google_doc(saved_id)
+            message += " " + google_msg
+        except Exception as exc:
+            message += " O cadastro foi salvo, mas não foi possível criar o Google Docs: " + str(exc)[:500]
+    return redirect(f"/notas-auditoria-documentos/{saved_id}?msg={quote(message)}")
+
+
+@app.route("/notas-auditoria-documentos", methods=["GET"])
+def na_documentos_lista():
+    if "user" not in session:
+        return redirect("/")
+    con = get_db()
+    cur = con.cursor()
+    try:
+        _na_ensure_schema(cur)
+        busca = (request.args.get("busca") or "").strip()
+        where, params = _na_user_can_see_list_sql()
+        sql_query = """
+            SELECT n.id,n.na_numero,n.requisicao_numeros,n.empresa,n.estado,
+                   n.exige_monitoramento,n.google_doc_url,n.pdf_url,n.resposta_url,
+                   n.data_emissao,n.atualizado_em,
+                   (SELECT STRING_AGG(c.nome, ', ' ORDER BY nr.ordem)
+                    FROM na_documento_responsaveis nr JOIN colaboradores c ON c.id=nr.colaborador_id
+                    WHERE nr.nota_id=n.id) AS responsaveis
+            FROM na_documentos n WHERE 1=1
+        """
+        if where:
+            where = where.replace("n.criado_por", "n.criado_por").replace("nr.nota_id=n.id", "nr.nota_id=n.id")
+            sql_query += where
+        if busca:
+            sql_query += " AND (n.na_numero ILIKE %s OR n.empresa ILIKE %s OR n.requisicao_numeros ILIKE %s)"
+            params.extend([f"%{busca}%", f"%{busca}%", f"%{busca}%"])
+        sql_query += " ORDER BY n.criado_em DESC LIMIT 500"
+        cur.execute(sql_query, params)
+        notas = cur.fetchall()
+        con.commit()
+    finally:
+        cur.close()
+        con.close()
+    html = r"""
+    <style>
+      .nal-wrap{max-width:1280px;margin:20px auto;padding:0 12px}.nal-card{background:#fff;border:1px solid #dbe4ef;border-radius:14px;padding:20px;box-shadow:0 4px 16px #1e3a5f0d}.nal-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.nal-search{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:15px 0}.nal-search input{padding:10px;border:1px solid #cbd5e1;border-radius:8px;min-width:260px}.nal-table{width:100%;border-collapse:collapse;background:#fff}.nal-table th,.nal-table td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.nal-table th{background:#eaf1fb;color:#1e40af}.nal-btn{display:inline-block;padding:9px 13px;border-radius:8px;background:#1d4ed8;color:#fff!important;text-decoration:none;font-weight:700}
+      @media(max-width:750px){.nal-card{overflow:auto}}
+    </style>
+    <div class="nal-wrap"><div class="nal-card">
+      <div class="nal-top"><h2>🧾 Notas de Auditoria Preventiva</h2><a class="nal-btn" href="/notas-auditoria-documentos/nova">＋ Nova Nota</a></div>
+      <form method="get" class="nal-search"><input name="busca" value="{{request.args.get('busca','')}}" placeholder="Buscar número, empresa ou requisição"><button class="nal-btn" type="submit">Pesquisar</button><a href="/notas-auditoria-documentos">Limpar</a></form>
+      <div style="overflow:auto"><table class="nal-table"><thead><tr><th>Nº N.A.</th><th>Requisições</th><th>Empresa</th><th>Responsáveis</th><th>Emissão</th><th>Status</th><th>Documentos</th><th>Ação</th></tr></thead><tbody>
+      {% for n in notas %}<tr><td><b>{{n.na_numero}}</b></td><td>{{n.requisicao_numeros or '—'}}</td><td>{{n.empresa or '—'}}</td><td>{{n.responsaveis or '—'}}</td><td>{{n.data_emissao.strftime('%d/%m/%Y') if n.data_emissao and n.data_emissao.strftime is defined else (n.data_emissao or '—')}}</td><td>{{n.estado}}{% if n.exige_monitoramento %}<br><small>Monitoramento</small>{% endif %}</td><td>{% if n.google_doc_url %}<a target="_blank" rel="noopener" href="{{n.google_doc_url}}">Docs</a>{% endif %}{% if n.pdf_url %} · <a target="_blank" rel="noopener" href="{{n.pdf_url}}">PDF</a>{% endif %}{% if n.resposta_url %} · <a target="_blank" rel="noopener" href="{{n.resposta_url}}">Resposta</a>{% endif %}</td><td><a class="nal-btn" href="/notas-auditoria-documentos/{{n.id}}">Abrir</a></td></tr>{% else %}<tr><td colspan="8">Nenhuma Nota cadastrada.</td></tr>{% endfor %}
+      </tbody></table></div><p style="font-size:12px;color:#64748b">Exibindo até 500 registros. Acesso restrito conforme perfil, autoria, responsabilidade e requisições vinculadas.</p>
+    </div></div>
+    """
+    return _na_render(html, notas=notas)
+
+
+@app.route("/notas-auditoria-documentos/nova", methods=["GET", "POST"])
+def na_documento_novo():
+    if "user" not in session:
+        return redirect("/")
+    if request.method == "POST":
+        return _na_save_form(None)
+    con = get_db()
+    cur = con.cursor()
+    try:
+        _na_ensure_schema(cur)
+        colaboradores, selected_resps, req_selected, respostas, pdfs = _na_load_form_data(cur, None)
+        con.commit()
+    finally:
+        cur.close()
+        con.close()
+    return _na_form_html({}, colaboradores, selected_resps, req_selected, respostas, pdfs, request.args.get("msg", ""))
+
+
+@app.route("/notas-auditoria-documentos/<int:nota_id>", methods=["GET", "POST"])
+def na_documento_editar(nota_id):
+    if "user" not in session:
+        return redirect("/")
+    if request.method == "POST":
+        return _na_save_form(nota_id)
+    con = get_db()
+    cur = con.cursor()
+    try:
+        _na_ensure_schema(cur)
+        note = _na_note_access(cur, nota_id)
+        if not note:
+            return "Nota não encontrada ou sem permissão de acesso.", 404
+        colaboradores, selected_resps, req_selected, respostas, pdfs = _na_load_form_data(cur, note)
+        con.commit()
+    finally:
+        cur.close()
+        con.close()
+    return _na_form_html(note, colaboradores, selected_resps, req_selected, respostas, pdfs, request.args.get("msg", ""))
+
+
+@app.route("/api/notas-auditoria-documentos/requisicoes", methods=["GET"])
+def na_api_requisicoes():
+    if "user" not in session:
+        return jsonify([]), 401
+    q = (request.args.get("q") or "").strip()
+    con = get_db()
+    cur = con.cursor()
+    try:
+        _na_ensure_schema(cur)
+        sql_query = """
+            SELECT id,chave,requisicao_num,sigla,secretaria,contrato,nome_fornecedor,
+                   oficio,natureza_despesa,item_despesa,tipo_documento,num_nota
+            FROM requisicoes WHERE 1=1
+        """
+        params = []
+        if session.get("perfil") != "admin":
+            sql_query += " AND servidor_id=%s"
+            params.append(session.get("user_id"))
+        if q:
+            sql_query += " AND (chave ILIKE %s OR requisicao_num ILIKE %s OR sigla ILIKE %s OR secretaria ILIKE %s OR nome_fornecedor ILIKE %s OR contrato ILIKE %s)"
+            params.extend([f"%{q}%"] * 6)
+        sql_query += " ORDER BY data_criacao DESC NULLS LAST, id DESC LIMIT 40"
+        cur.execute(sql_query, params)
+        rows = cur.fetchall()
+        con.commit()
+        return jsonify([{k: (str(v) if isinstance(v, (_na_date, _na_datetime)) else v) for k, v in row.items()} for row in rows])
+    finally:
+        cur.close()
+        con.close()
+
+
+@app.route("/notas-auditoria-documentos/<int:nota_id>/gerar-documento", methods=["POST"])
+def na_gerar_documento(nota_id):
+    if "user" not in session:
+        return redirect("/")
+    con = get_db()
+    cur = con.cursor()
+    try:
+        _na_ensure_schema(cur)
+        note = _na_note_access(cur, nota_id)
+    finally:
+        cur.close()
+        con.close()
+    if not note:
+        return "Nota não encontrada ou sem permissão de acesso.", 404
+    try:
+        _, _, msg = _na_create_google_doc(nota_id)
+    except Exception as exc:
+        msg = "Não foi possível criar o Google Docs: " + str(exc)[:500]
+    return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
+
+
+@app.route("/notas-auditoria-documentos/<int:nota_id>/gerar-pdf", methods=["POST"])
+def na_gerar_pdf(nota_id):
+    if "user" not in session:
+        return redirect("/")
+    con = get_db()
+    cur = con.cursor()
+    try:
+        _na_ensure_schema(cur)
+        note = _na_note_access(cur, nota_id)
+        if not note:
+            return "Nota não encontrada ou sem permissão de acesso.", 404
+        doc_id = note.get("google_doc_id")
+        if not doc_id:
+            return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('Crie primeiro o Google Docs a partir do modelo.')}")
+        drive, docs = _na_google_services()
+        pdf_bytes = drive.files().export(fileId=doc_id, mimeType="application/pdf").execute()
+        from googleapiclient.http import MediaIoBaseUpload
+        stamp = _na_datetime.now().strftime("%Y%m%d-%H%M%S")
+        filename = _na_clean_filename(f"{note['na_numero']} - Nota de Auditoria - {stamp}") + ".pdf"
+        media = MediaIoBaseUpload(io.BytesIO(pdf_bytes), mimetype="application/pdf", resumable=True)
+        uploaded = drive.files().create(
+            body={"name": filename, "mimeType": "application/pdf", "parents": [NA_GOOGLE_DOCUMENTS_FOLDER_ID]},
+            media_body=media, fields="id,name,webViewLink,parents", supportsAllDrives=True,
+        ).execute()
+        file_id = uploaded["id"]
+        file_url = uploaded.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view"
+        cur.execute("""
+            INSERT INTO na_documento_pdfs(nota_id,drive_file_id,drive_url,nome_arquivo,gerado_por)
+            VALUES(%s,%s,%s,%s,%s)
+        """, (nota_id, file_id, file_url, filename, session.get("user_id")))
+        cur.execute("""
+            UPDATE na_documentos SET pdf_file_id=%s,pdf_url=%s,pdf_gerado_em=NOW(),
+                estado='PDF GERADO',atualizado_em=NOW() WHERE id=%s
+        """, (file_id, file_url, nota_id))
+        con.commit()
+        msg = "PDF atualizado e salvo no Google Drive."
+    except Exception as exc:
+        con.rollback()
+        msg = "Não foi possível gerar/salvar o PDF: " + str(exc)[:500]
+    finally:
+        cur.close()
+        con.close()
+    return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
+
+
+@app.route("/notas-auditoria-documentos/<int:nota_id>/respostas/upload", methods=["POST"])
+def na_upload_resposta(nota_id):
+    if "user" not in session:
+        return redirect("/")
+    file = request.files.get("resposta_pdf")
+    if not file or not file.filename:
+        return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('Selecione um arquivo PDF para enviar.')}")
+    original_name = _na_secure_filename(file.filename)
+    if not original_name or not original_name.lower().endswith(".pdf"):
+        return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('Envie somente arquivo com extensão .pdf.')}")
+    data = file.stream.read(NA_MAX_RESPONSE_PDF_BYTES + 1)
+    if len(data) > NA_MAX_RESPONSE_PDF_BYTES:
+        return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('O PDF excede o limite de 20 MB.')}")
+    if not data.startswith(b"%PDF-"):
+        return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('O arquivo selecionado não parece ser um PDF válido.')}")
+
+    con = get_db()
+    cur = con.cursor()
+    try:
+        _na_ensure_schema(cur)
+        note = _na_note_access(cur, nota_id)
+        if not note:
+            return "Nota não encontrada ou sem permissão de acesso.", 404
+        drive, docs = _na_google_services()
+        from googleapiclient.http import MediaIoBaseUpload
+        safe_na = _na_clean_filename(note["na_numero"])
+        filename = _na_clean_filename(f"Resposta - {safe_na} - {_na_datetime.now().strftime('%Y%m%d-%H%M%S')} - {original_name}")
+        media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/pdf", resumable=True)
+        uploaded = drive.files().create(
+            body={"name": filename, "mimeType": "application/pdf", "parents": [NA_GOOGLE_RESPONSES_FOLDER_ID]},
+            media_body=media, fields="id,name,webViewLink,parents", supportsAllDrives=True,
+        ).execute()
+        file_id = uploaded["id"]
+        file_url = uploaded.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view"
+        cur.execute("""
+            INSERT INTO na_respostas(nota_id,drive_file_id,drive_url,nome_arquivo,enviado_por)
+            VALUES(%s,%s,%s,%s,%s)
+        """, (nota_id, file_id, file_url, filename, session.get("user_id")))
+        cur.execute("UPDATE na_documentos SET resposta_url=%s, atualizado_em=NOW() WHERE id=%s", (file_url, nota_id))
+        con.commit()
+        msg = "Resposta em PDF enviada ao Google Drive e vinculada à Nota."
+    except Exception as exc:
+        con.rollback()
+        msg = "Não foi possível enviar a resposta: " + str(exc)[:500]
+    finally:
+        cur.close()
+        con.close()
+    return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
+
 @app.route("/api/<tabela>")
 def api_tabela(tabela):
 

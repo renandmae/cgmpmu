@@ -20105,6 +20105,14 @@ def _na_create_google_doc(nota_id):
         if not note:
             raise PermissionError("Nota não encontrada ou sem permissão de acesso.")
 
+        # Captura PDFs já emitidos. Ao regenerar o Word, deixam de corresponder
+        # à versão atual e seus registros/arquivos serão removidos.
+        cur.execute("SELECT drive_file_id FROM na_documento_pdfs WHERE nota_id=%s", (nota_id,))
+        old_pdf_rows = cur.fetchall()
+        old_pdf_ids = {r["drive_file_id"] for r in old_pdf_rows if r.get("drive_file_id")}
+        if note.get("pdf_file_id"):
+            old_pdf_ids.add(note["pdf_file_id"])
+
         cur.execute("""
             SELECT c.nome, nr.matricula, nr.ordem
             FROM na_documento_responsaveis nr
@@ -20164,6 +20172,10 @@ def _na_create_google_doc(nota_id):
 
         # Atualiza primeiro o cadastro. Assim, se a limpeza dos arquivos antigos
         # falhar, o banco já aponta para o novo documento válido.
+        # A Nota mantém somente o PDF atual. Ao regenerar o Word, o PDF anterior
+        # fica obsoleto: excluímos o registro antes de salvar a nova versão do Docs.
+        # A tabela na_respostas não é alterada.
+        cur.execute("DELETE FROM na_documento_pdfs WHERE nota_id=%s", (nota_id,))
         cur.execute("""
             UPDATE na_documentos SET
                 google_doc_id=%s,
@@ -20198,15 +20210,32 @@ def _na_create_google_doc(nota_id):
                 # Não desfazemos a nova versão funcional por falha de limpeza.
                 print(f"Aviso: não foi possível mover documento antigo {old_id} para a lixeira: {cleanup_exc}")
 
-        # O PDF mais recente deixa de ser o atual, pois se refere a uma versão
-        # anterior do Word. Os registros em na_documento_pdfs são preservados
-        # como histórico de auditoria.
+        # Os PDFs anteriormente emitidos também deixam de ser atuais. Tente
+        # enviá-los à lixeira; 404 significa que já foram apagados manualmente.
+        for old_pdf_id in old_pdf_ids:
+            try:
+                drive.files().update(
+                    fileId=old_pdf_id,
+                    body={"trashed": True},
+                    fields="id,trashed",
+                    supportsAllDrives=True,
+                ).execute()
+                antigos_movidos += 1
+            except Exception as cleanup_exc:
+                status = getattr(getattr(cleanup_exc, "resp", None), "status", None)
+                if status == 404:
+                    continue
+                falhas_limpeza += 1
+                print(f"Aviso: não foi possível mover PDF antigo {old_pdf_id} para a lixeira: {cleanup_exc}")
+
         if falhas_limpeza:
-            msg = f"Google Docs regenerado e link atualizado. {antigos_movidos} versão(ões) antiga(s) foram para a lixeira; {falhas_limpeza} não puderam ser movidas. Confira a pasta para remover duplicidades manualmente. Gere novamente o PDF."
+            msg = (f"Google Docs regenerado e link atualizado. {antigos_movidos} arquivo(s) antigo(s) foram para a lixeira; "
+                   f"{falhas_limpeza} não puderam ser movidos. Os registros antigos de PDF foram removidos do banco; gere o PDF atualizado.")
         elif antigos_movidos:
-            msg = f"Google Docs regenerado. {antigos_movidos} versão(ões) antiga(s) com o mesmo nome foram movidas para a lixeira. Revise o novo documento e gere novamente o PDF."
+            msg = (f"Google Docs regenerado. {antigos_movidos} arquivo(s) antigo(s), incluindo PDFs emitidos da versão anterior, "
+                   "foram movidos para a lixeira. Os registros antigos de PDF foram removidos; revise o documento e gere o PDF novamente.")
         else:
-            msg = "Google Docs criado/recuperado; o sistema atualizou o link do cadastro. Revise o documento e gere o PDF."
+            msg = "Google Docs criado/recuperado; os links antigos de PDF foram removidos do cadastro. Revise o documento e gere o PDF. As respostas anexadas foram preservadas."
         return new_doc_id, doc_url, msg
     except Exception:
         conn.rollback()
@@ -20265,7 +20294,8 @@ def _na_load_form_data(cur, note=None):
         req_selected = cur.fetchall()
         cur.execute("SELECT * FROM na_respostas WHERE nota_id=%s ORDER BY enviado_em DESC", (note["id"],))
         respostas = cur.fetchall()
-        cur.execute("SELECT * FROM na_documento_pdfs WHERE nota_id=%s ORDER BY gerado_em DESC", (note["id"],))
+        # A Nota mantém somente o PDF emitido atual; respostas continuam com histórico próprio.
+        cur.execute("SELECT * FROM na_documento_pdfs WHERE nota_id=%s ORDER BY gerado_em DESC, id DESC LIMIT 1", (note["id"],))
         pdfs = cur.fetchall()
     return colaboradores, responsaveis_selecionados, req_selected, respostas, pdfs
 
@@ -20312,7 +20342,7 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
       <h2>🧾 {{ 'Nova Nota de Auditoria Preventiva' if is_new else 'Nota de Auditoria Preventiva — ' ~ note.na_numero }}</h2>
       {% if mensagem %}<div class="na-msg">{{mensagem}}</div>{% endif %}
       {% if not is_new and note.google_doc_id %}
-        <div class="na-warning">Ao regenerar o Google Docs, será criada uma nova cópia do modelo com os dados atualmente salvos no cadastro. A versão anterior com o mesmo nome será movida para a lixeira; edições feitas diretamente nela não serão copiadas para a nova versão. Os PDFs anteriores permanecem no histórico.</div>
+        <div class="na-warning">Ao regenerar o Google Docs, será criada uma nova cópia do modelo com os dados atualmente salvos no cadastro. A versão anterior com o mesmo nome será movida para a lixeira; edições feitas diretamente nela não serão copiadas para a nova versão. O PDF da versão anterior será removido do cadastro e enviado para a lixeira do Drive; será necessário gerar o PDF atualizado. As respostas anexadas permanecem intactas.</div>
       {% endif %}
       <div class="na-tabs">
         <button type="button" class="na-tab active" data-panel="dados">1. Dados da Nota</button>
@@ -20392,7 +20422,7 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
             <form method="post" action="/notas-auditoria-documentos/{{note.id}}/gerar-pdf"><button class="na-btn green" type="submit">📄 Gerar / atualizar PDF no Drive</button></form>
           {% endif %}
           {% if note.pdf_url %}<p>PDF mais recente: <a target="_blank" rel="noopener" href="{{note.pdf_url}}">Abrir PDF emitido</a> {% if note.pdf_gerado_em %}<span class="na-muted">({{note.pdf_gerado_em.strftime('%d/%m/%Y %H:%M') if note.pdf_gerado_em.strftime is defined else note.pdf_gerado_em}})</span>{% endif %}</p>{% endif %}
-          {% if pdfs %}<h4>Histórico de PDFs</h4><table class="na-table"><tr><th>Arquivo</th><th>Gerado em</th></tr>{% for p in pdfs %}<tr><td><a target="_blank" rel="noopener" href="{{p.drive_url}}">{{p.nome_arquivo}}</a></td><td>{{p.gerado_em.strftime('%d/%m/%Y %H:%M') if p.gerado_em.strftime is defined else p.gerado_em}}</td></tr>{% endfor %}</table>{% endif %}
+          {% if pdfs %}<h4>PDF atual</h4><table class="na-table"><tr><th>Arquivo</th><th>Gerado em</th></tr>{% for p in pdfs %}<tr><td><a target="_blank" rel="noopener" href="{{p.drive_url}}">{{p.nome_arquivo}}</a></td><td>{{p.gerado_em.strftime('%d/%m/%Y %H:%M') if p.gerado_em.strftime is defined else p.gerado_em}}</td></tr>{% endfor %}</table>{% endif %}
         </div>
       </section>
       {% if not is_new %}
@@ -20758,46 +20788,163 @@ def na_gerar_documento(nota_id):
 
 @app.route("/notas-auditoria-documentos/<int:nota_id>/gerar-pdf", methods=["POST"])
 def na_gerar_pdf(nota_id):
+    """Gera/atualiza um único PDF por Nota e elimina registros de PDFs antigos.
+
+    Nome estável: ao gerar novamente, reutiliza o arquivo de mesmo nome na pasta.
+    Se o arquivo tiver sido apagado do Drive, cria outro e atualiza o cadastro.
+    Os anexos de resposta não são alterados por esta rota.
+    """
     if "user" not in session:
         return redirect("/")
+
     con = get_db()
     cur = con.cursor()
+    msg = ""
+    files_to_trash = set()
+    current_file_id = None
+
     try:
         _na_ensure_schema(cur)
         note = _na_note_access(cur, nota_id)
         if not note:
             return "Nota não encontrada ou sem permissão de acesso.", 404
+
         doc_id = note.get("google_doc_id")
         if not doc_id:
             return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('Crie primeiro o Google Docs a partir do modelo.')}")
+
         drive, docs = _na_google_services()
-        pdf_bytes = drive.files().export(fileId=doc_id, mimeType="application/pdf").execute()
         from googleapiclient.http import MediaIoBaseUpload
-        stamp = _na_datetime.now().strftime("%Y%m%d-%H%M%S")
-        filename = _na_clean_filename(f"{note['na_numero']} - Nota de Auditoria - {stamp}") + ".pdf"
+        from googleapiclient.errors import HttpError
+
+        # Exporta a versão atual do Google Docs.
+        pdf_bytes = drive.files().export(fileId=doc_id, mimeType="application/pdf").execute()
+        if not pdf_bytes or not pdf_bytes.startswith(b"%PDF-"):
+            raise RuntimeError("O Google Docs não retornou um PDF válido.")
+
+        # Nome fixo para que o mesmo PDF seja atualizado, e não acumulado a cada execução.
+        filename = _na_clean_filename(f"{note['na_numero']} - Nota de Auditoria") + ".pdf"
+        filename_q = filename.replace("\\", "\\\\").replace("'", "\\'")
+        query = (
+            f"name = '{filename_q}' "
+            f"and '{NA_GOOGLE_PDFS_FOLDER_ID}' in parents "
+            "and mimeType = 'application/pdf' and trashed = false"
+        )
+        same_name_files = drive.files().list(
+            q=query,
+            pageSize=100,
+            orderBy="modifiedTime desc",
+            fields="files(id,name,mimeType,webViewLink,parents,trashed,modifiedTime)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute().get("files", [])
+
+        # Guarda os IDs previamente registrados para limpar os PDFs antigos do Drive.
+        cur.execute("""
+            SELECT drive_file_id
+            FROM na_documento_pdfs
+            WHERE nota_id=%s
+            ORDER BY gerado_em DESC, id DESC
+        """, (nota_id,))
+        previous_rows = cur.fetchall()
+        previous_ids = {r["drive_file_id"] for r in previous_rows if r.get("drive_file_id")}
+
+        # Prioridade: arquivo com nome estável já existente na pasta dedicada.
+        # Se não houver, tenta reutilizar o ID atual salvo no cadastro (inclusive o nome antigo com data).
+        target = same_name_files[0] if same_name_files else None
+        if target is None and note.get("pdf_file_id"):
+            try:
+                existing_current = drive.files().get(
+                    fileId=note["pdf_file_id"],
+                    fields="id,name,mimeType,webViewLink,parents,trashed",
+                    supportsAllDrives=True,
+                ).execute()
+                if not existing_current.get("trashed") and existing_current.get("mimeType") == "application/pdf":
+                    target = existing_current
+            except HttpError as exc:
+                if getattr(exc, "resp", None) is None or exc.resp.status != 404:
+                    raise
+                # O usuário apagou o arquivo no Drive; será criado novamente abaixo.
+                target = None
+
         media = MediaIoBaseUpload(io.BytesIO(pdf_bytes), mimetype="application/pdf", resumable=True)
-        uploaded = drive.files().create(
-            body={"name": filename, "mimeType": "application/pdf", "parents": [NA_GOOGLE_PDFS_FOLDER_ID]},
-            media_body=media, fields="id,name,webViewLink,parents", supportsAllDrives=True,
-        ).execute()
+        if target:
+            current_file_id = target["id"]
+            parents = target.get("parents") or []
+            update_kwargs = {}
+            if NA_GOOGLE_PDFS_FOLDER_ID not in parents:
+                update_kwargs["addParents"] = NA_GOOGLE_PDFS_FOLDER_ID
+                parents_to_remove = [p for p in parents if p != NA_GOOGLE_PDFS_FOLDER_ID]
+                if parents_to_remove:
+                    update_kwargs["removeParents"] = ",".join(parents_to_remove)
+            uploaded = drive.files().update(
+                fileId=current_file_id,
+                body={"name": filename},
+                media_body=media,
+                fields="id,name,webViewLink,parents,mimeType",
+                supportsAllDrives=True,
+                **update_kwargs,
+            ).execute()
+        else:
+            uploaded = drive.files().create(
+                body={"name": filename, "mimeType": "application/pdf", "parents": [NA_GOOGLE_PDFS_FOLDER_ID]},
+                media_body=media,
+                fields="id,name,webViewLink,parents,mimeType",
+                supportsAllDrives=True,
+            ).execute()
+            current_file_id = uploaded["id"]
+
         file_id = uploaded["id"]
         file_url = uploaded.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view"
+
+        # Prepara limpeza do Drive: PDFs antigos registrados e cópias duplicadas de mesmo nome.
+        files_to_trash.update(fid for fid in previous_ids if fid and fid != file_id)
+        files_to_trash.update(f["id"] for f in same_name_files if f.get("id") and f["id"] != file_id)
+
+        # O banco terá somente um registro por Nota: o PDF atual.
+        cur.execute("DELETE FROM na_documento_pdfs WHERE nota_id=%s", (nota_id,))
         cur.execute("""
             INSERT INTO na_documento_pdfs(nota_id,drive_file_id,drive_url,nome_arquivo,gerado_por)
             VALUES(%s,%s,%s,%s,%s)
         """, (nota_id, file_id, file_url, filename, session.get("user_id")))
         cur.execute("""
-            UPDATE na_documentos SET pdf_file_id=%s,pdf_url=%s,pdf_gerado_em=NOW(),
-                estado='PDF GERADO',atualizado_em=NOW() WHERE id=%s
+            UPDATE na_documentos
+            SET pdf_file_id=%s, pdf_url=%s, pdf_gerado_em=NOW(),
+                estado='PDF GERADO', atualizado_em=NOW()
+            WHERE id=%s
         """, (file_id, file_url, nota_id))
         con.commit()
-        msg = "PDF gerado e salvo na pasta específica de PDFs do Google Drive. O histórico foi atualizado."
+
+        # Limpa do Drive versões antigas criadas pelo próprio módulo; respostas ficam intocadas.
+        cleanup_failed = 0
+        for old_id in files_to_trash:
+            try:
+                drive.files().update(
+                    fileId=old_id,
+                    body={"trashed": True},
+                    supportsAllDrives=True,
+                    fields="id,trashed",
+                ).execute()
+            except HttpError as exc:
+                if getattr(exc, "resp", None) is not None and exc.resp.status == 404:
+                    continue  # já foi excluído manualmente
+                cleanup_failed += 1
+            except Exception:
+                cleanup_failed += 1
+
+        if cleanup_failed:
+            msg = ("PDF atualizado. O banco agora mantém somente o PDF atual, mas "
+                   f"{cleanup_failed} arquivo(s) antigo(s) não puderam ser enviados à lixeira no Drive.")
+        else:
+            msg = "PDF atualizado na pasta de PDFs emitidos. O sistema manteve apenas o registro do PDF atual e limpou as versões antigas; os PDFs de resposta foram preservados."
+
     except Exception as exc:
         con.rollback()
-        msg = "Não foi possível gerar/salvar o PDF: " + str(exc)[:500]
+        msg = "Não foi possível gerar/atualizar o PDF: " + str(exc)[:500]
     finally:
         cur.close()
         con.close()
+
     return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
 
 
@@ -20849,7 +20996,7 @@ def na_upload_resposta(nota_id):
         cur.close()
         con.close()
     return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
-
+    
 @app.route("/api/<tabela>")
 def api_tabela(tabela):
 

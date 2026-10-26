@@ -19832,6 +19832,8 @@ def req_eng_salvar(id):
 #    instruções do módulo.
 #
 # O modelo já pode usar {{monitoramento_check}}.
+# Os campos narrativos usam Quill; o HTML seguro fica no TEXT do PostgreSQL.
+# Na geração do Docs, listas, negrito e alinhamento são aplicados via Google Docs API.
 # ================================================================
 
 # ================================================================
@@ -19840,6 +19842,8 @@ def req_eng_salvar(id):
 # ================================================================
 import json as _na_json
 import re as _na_re
+from html import escape as _na_html_escape
+from html.parser import HTMLParser as _NAHTMLParser
 from datetime import date as _na_date, datetime as _na_datetime
 from werkzeug.utils import secure_filename as _na_secure_filename
 
@@ -20059,6 +20063,351 @@ def _na_selected_requisitions(cur, req_ids):
     return rows
 
 
+# Campos narrativos com editor rico. O HTML é armazenado no PostgreSQL e
+# convertido em texto formatado ao gerar o Google Docs.
+_NA_RICH_FIELDS = (
+    "identificacao_problema",
+    "analise_causa_raiz",
+    "observacoes_complementares",
+    "monitoramento",
+)
+
+
+def _na_rich_marker(field):
+    return "[[NA_RICH_" + field.upper() + "]]"
+
+
+class _NASanitizeRichHTML(_NAHTMLParser):
+    """Sanitizador mínimo: permite somente marcação de texto e alinhamento."""
+    ALLOWED = {"p", "div", "br", "strong", "b", "em", "i", "u", "ol", "ul", "li", "span"}
+    VOID = {"br"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out = []
+        self.suppress_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        attrs = dict(attrs)
+        if tag in ("script", "style", "iframe", "object", "svg", "math"):
+            self.suppress_depth += 1
+            return
+        if self.suppress_depth or tag not in self.ALLOWED:
+            return
+        safe_attrs = []
+        if tag in ("p", "div"):
+            cls = attrs.get("class", "")
+            allowed_classes = [c for c in cls.split() if c in {
+                "ql-align-left", "ql-align-center", "ql-align-right", "ql-align-justify"
+            }]
+            if allowed_classes:
+                safe_attrs.append(("class", " ".join(allowed_classes)))
+            style = attrs.get("style", "")
+            m = _na_re.search(r"text-align\s*:\s*(left|right|center|justify)\s*;?", style, _na_re.I)
+            if m:
+                safe_attrs.append(("style", "text-align: " + m.group(1).lower() + ";"))
+        if tag == "li" and attrs.get("data-list") in ("bullet", "ordered"):
+            safe_attrs.append(("data-list", attrs["data-list"]))
+        attr_text = "".join(f' {k}="{_na_html_escape(v, quote=True)}"' for k, v in safe_attrs)
+        self.out.append(f"<{tag}{attr_text}>")
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in ("script", "style", "iframe", "object", "svg", "math"):
+            if self.suppress_depth:
+                self.suppress_depth -= 1
+            return
+        if self.suppress_depth or tag not in self.ALLOWED or tag in self.VOID:
+            return
+        self.out.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        if not self.suppress_depth:
+            self.out.append(_na_html_escape(data))
+
+    def result(self):
+        return "".join(self.out)
+
+
+def _na_sanitize_rich_html(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    parser = _NASanitizeRichHTML()
+    parser.feed(raw)
+    parser.close()
+    return parser.result()
+
+
+def _na_editor_initial_html(value):
+    """Prepara valor salvo (HTML novo ou texto legado) para carregar no Quill."""
+    raw = str(value or "")
+    if not raw:
+        return ""
+    if _na_re.search(r"<\s*(p|div|br|ol|ul|li|strong|b|em|i|u|span)\b", raw, _na_re.I):
+        return _na_sanitize_rich_html(raw)
+    lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    return "".join("<p>" + (_na_html_escape(line) if line else "<br>") + "</p>" for line in lines)
+
+
+class _NARichHTMLToBlocks(_NAHTMLParser):
+    """Converte saída HTML do Quill em parágrafos, listas e trechos formatados."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.blocks = []
+        self.current = None
+        self.flags = {"bold": False, "italic": False, "underline": False}
+        self.flag_stack = []
+        self.list_stack = []
+        self.suppress_depth = 0
+
+    def _start_block(self, list_type=None, align="START"):
+        self.current = {"segments": [], "list": list_type, "align": align}
+
+    def _ensure_block(self):
+        if self.current is None:
+            lt = self.list_stack[-1] if self.list_stack else None
+            self._start_block(lt, "START")
+
+    def _append(self, text):
+        if not text:
+            return
+        self._ensure_block()
+        fmt = dict(self.flags)
+        segs = self.current["segments"]
+        if segs and segs[-1]["fmt"] == fmt:
+            segs[-1]["text"] += text
+        else:
+            segs.append({"text": text, "fmt": fmt})
+
+    def _flush(self, force=False):
+        if self.current is not None:
+            if self.current["segments"] or force:
+                self.blocks.append(self.current)
+            self.current = None
+
+    @staticmethod
+    def _alignment(attrs):
+        attrs = dict(attrs)
+        cls = attrs.get("class", "")
+        if "ql-align-justify" in cls:
+            return "JUSTIFIED"
+        if "ql-align-center" in cls:
+            return "CENTER"
+        if "ql-align-right" in cls:
+            return "END"
+        style = attrs.get("style", "")
+        m = _na_re.search(r"text-align\s*:\s*(left|right|center|justify)", style, _na_re.I)
+        if m:
+            return {"left": "START", "right": "END", "center": "CENTER", "justify": "JUSTIFIED"}[m.group(1).lower()]
+        return "START"
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        attrs_dict = dict(attrs)
+        if tag in ("script", "style", "iframe", "object", "svg", "math"):
+            self.suppress_depth += 1
+            return
+        if self.suppress_depth:
+            return
+        if tag in ("p", "div"):
+            self._flush()
+            self._start_block(None, self._alignment(attrs))
+        elif tag in ("ol", "ul"):
+            self._flush()
+            self.list_stack.append("ordered" if tag == "ol" else "bullet")
+        elif tag == "li":
+            self._flush()
+            lt = attrs_dict.get("data-list")
+            if lt not in ("bullet", "ordered"):
+                lt = self.list_stack[-1] if self.list_stack else None
+            self._start_block(lt, self._alignment(attrs))
+        elif tag == "br":
+            self._flush(force=True)
+        elif tag in ("strong", "b", "em", "i", "u", "span"):
+            self.flag_stack.append((tag, dict(self.flags)))
+            if tag in ("strong", "b"):
+                self.flags["bold"] = True
+            elif tag in ("em", "i"):
+                self.flags["italic"] = True
+            elif tag == "u":
+                self.flags["underline"] = True
+            elif tag == "span":
+                style = attrs_dict.get("style", "")
+                if _na_re.search(r"font-weight\s*:\s*(bold|[6-9]00)", style, _na_re.I):
+                    self.flags["bold"] = True
+                if _na_re.search(r"font-style\s*:\s*italic", style, _na_re.I):
+                    self.flags["italic"] = True
+                if _na_re.search(r"text-decoration[^;]*underline", style, _na_re.I):
+                    self.flags["underline"] = True
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in ("script", "style", "iframe", "object", "svg", "math"):
+            if self.suppress_depth:
+                self.suppress_depth -= 1
+            return
+        if self.suppress_depth:
+            return
+        if tag in ("p", "div", "li"):
+            self._flush(force=(tag == "li"))
+        elif tag in ("ol", "ul"):
+            self._flush()
+            if self.list_stack:
+                self.list_stack.pop()
+        elif tag in ("strong", "b", "em", "i", "u", "span"):
+            for i in range(len(self.flag_stack) - 1, -1, -1):
+                saved_tag, saved_flags = self.flag_stack[i]
+                if saved_tag == tag:
+                    self.flags = saved_flags
+                    self.flag_stack = self.flag_stack[:i]
+                    break
+
+    def handle_data(self, data):
+        if not self.suppress_depth:
+            self._append(data)
+
+    def result(self):
+        self._flush()
+        return self.blocks
+
+
+def _na_utf16_len(value):
+    return len(str(value).encode("utf-16-le")) // 2
+
+
+def _na_html_to_blocks(value):
+    raw = str(value or "")
+    if not raw.strip():
+        return []
+    if not _na_re.search(r"<\s*(p|div|br|ol|ul|li|strong|b|em|i|u|span)\b", raw, _na_re.I):
+        lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        return [{"segments": ([{"text": line, "fmt": {"bold": False, "italic": False, "underline": False}}] if line else []), "list": None, "align": "START"} for line in lines]
+    parser = _NARichHTMLToBlocks()
+    parser.feed(_na_sanitize_rich_html(raw))
+    parser.close()
+    blocks = parser.result()
+    if not blocks:
+        text_only = _NAHTMLParser(convert_charrefs=True)
+        # fallback handled through a simple parser instance above in normal cases
+        return []
+    # A BR or explicit newline may occur inside an inline segment. Split it
+    # into separate paragraphs so all Google Docs ranges remain accurate.
+    expanded = []
+    for block in blocks:
+        parts = [{"segments": [], "list": block.get("list"), "align": block.get("align", "START")}]
+        for seg in block.get("segments", []):
+            chunks = seg["text"].split("\n")
+            for i, chunk in enumerate(chunks):
+                if chunk:
+                    parts[-1]["segments"].append({"text": chunk, "fmt": dict(seg["fmt"])})
+                if i < len(chunks) - 1:
+                    parts.append({"segments": [], "list": None, "align": block.get("align", "START")})
+        expanded.extend(parts)
+    return expanded
+
+
+def _na_find_text_range(document, needle):
+    """Localiza placeholder e retorna índices nativos do Google Docs API."""
+    def walk(obj):
+        if isinstance(obj, dict):
+            if "textRun" in obj:
+                yield obj
+            else:
+                for v in obj.values():
+                    yield from walk(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                yield from walk(v)
+    body = document.get("body", {}).get("content", [])
+    for element in walk(body):
+        text_run = element.get("textRun", {}).get("content", "")
+        pos = text_run.find(needle)
+        if pos >= 0 and element.get("startIndex") is not None:
+            start = int(element["startIndex"]) + _na_utf16_len(text_run[:pos])
+            return start, start + _na_utf16_len(needle)
+    raise RuntimeError("Não encontrei no Google Docs o marcador de conteúdo formatado: " + needle)
+
+
+def _na_insert_rich_placeholder(docs, document_id, placeholder, html_value):
+    """Substitui marcador por texto e aplica negrito, listas e alinhamento no Docs."""
+    doc = docs.documents().get(documentId=document_id).execute()
+    start, end = _na_find_text_range(doc, placeholder)
+    blocks = _na_html_to_blocks(html_value)
+    requests = [{"deleteContentRange": {"range": {"startIndex": start, "endIndex": end}}}]
+    if not blocks:
+        docs.documents().batchUpdate(documentId=document_id, body={"requests": requests}).execute()
+        return
+
+    def block_text(block):
+        return "".join(seg["text"] for seg in block.get("segments", []))
+
+    text_value = "\n".join(block_text(b) for b in blocks)
+    requests.append({"insertText": {"location": {"index": start}, "text": text_value}})
+
+    # Reseta só negrito/itálico/sublinhado herdado do placeholder; mantém fonte e tamanho do modelo.
+    if text_value:
+        requests.append({"updateTextStyle": {
+            "range": {"startIndex": start, "endIndex": start + _na_utf16_len(text_value)},
+            "textStyle": {"bold": False, "italic": False, "underline": False},
+            "fields": "bold,italic,underline",
+        }})
+
+    offsets = []
+    offset = 0
+    for idx, block in enumerate(blocks):
+        txt = block_text(block)
+        offsets.append((offset, txt))
+        local = 0
+        for seg in block.get("segments", []):
+            seg_txt = seg["text"]
+            fmt = seg.get("fmt", {})
+            style = {k: True for k in ("bold", "italic", "underline") if fmt.get(k)}
+            if style and seg_txt:
+                requests.append({"updateTextStyle": {
+                    "range": {
+                        "startIndex": start + offset + local,
+                        "endIndex": start + offset + local + _na_utf16_len(seg_txt),
+                    },
+                    "textStyle": style,
+                    "fields": ",".join(style.keys()),
+                }})
+            local += _na_utf16_len(seg_txt)
+        # Inclui o terminador do parágrafo. O último usa a quebra já existente no modelo.
+        paragraph_end = start + offset + _na_utf16_len(txt) + 1
+        requests.append({"updateParagraphStyle": {
+            "range": {"startIndex": start + offset, "endIndex": paragraph_end},
+            "paragraphStyle": {"alignment": block.get("align", "START")},
+            "fields": "alignment",
+        }})
+        offset += _na_utf16_len(txt)
+        if idx < len(blocks) - 1:
+            offset += 1  # separador \n inserido entre parágrafos
+
+    # Aplica numeração/marcadores agrupando linhas consecutivas do mesmo tipo.
+    i = 0
+    while i < len(blocks):
+        list_type = blocks[i].get("list")
+        if list_type not in ("bullet", "ordered"):
+            i += 1
+            continue
+        j = i
+        while j + 1 < len(blocks) and blocks[j + 1].get("list") == list_type:
+            j += 1
+        first_start = start + offsets[i][0]
+        last_text = offsets[j][1]
+        last_end = start + offsets[j][0] + _na_utf16_len(last_text) + 1
+        preset = "BULLET_DISC_CIRCLE_SQUARE" if list_type == "bullet" else "NUMBERED_DECIMAL_ALPHA_ROMAN"
+        requests.append({"createParagraphBullets": {
+            "range": {"startIndex": first_start, "endIndex": last_end},
+            "bulletPreset": preset,
+        }})
+        i = j + 1
+
+    docs.documents().batchUpdate(documentId=document_id, body={"requests": requests}).execute()
+
+
 def _na_build_doc_values(note, responsaveis=None):
     responsaveis = responsaveis or []
     names = [str(r.get("nome") or "").strip() for r in responsaveis if r.get("nome")]
@@ -20075,11 +20424,11 @@ def _na_build_doc_values(note, responsaveis=None):
         "{{objeto_contratacao}}": str(note.get("objeto_contratacao") or ""),
         "{{data_analise}}": _na_fmt_date(note.get("data_analise")),
         "{{orgao_origem}}": str(note.get("orgao_origem") or ""),
-        "{{identificacao_problema}}": str(note.get("identificacao_problema") or ""),
-        "{{analise_causa_raiz}}": str(note.get("analise_causa_raiz") or ""),
-        "{{observacoes_complementares}}": str(note.get("observacoes_complementares") or ""),
+        "{{identificacao_problema}}": _na_rich_marker("identificacao_problema"),
+        "{{analise_causa_raiz}}": _na_rich_marker("analise_causa_raiz"),
+        "{{observacoes_complementares}}": _na_rich_marker("observacoes_complementares"),
         "{{prazo_resposta}}": prazo,
-        "{{monitoramento}}": str(note.get("monitoramento") or ""),
+        "{{monitoramento}}": _na_rich_marker("monitoramento"),
         "{{responsaveis_na}}": ", ".join(names) or str(note.get("responsaveis_na") or ""),
         "{{matriculas}}": ", ".join(matriculas) or str(note.get("matriculas") or ""),
         "{{monitoramento_check}}": sim_nao,
@@ -20167,6 +20516,12 @@ def _na_create_google_doc(nota_id):
         docs.documents().batchUpdate(
             documentId=new_doc_id, body={"requests": replacements}
         ).execute()
+
+        # Os campos narrativos são inseridos como texto formatado do editor rico,
+        # preservando listas numeradas, marcadores, negrito/itálico/sublinhado e alinhamento.
+        for field in _NA_RICH_FIELDS:
+            placeholder = _na_rich_marker(field)
+            _na_insert_rich_placeholder(docs, new_doc_id, placeholder, note.get(field) or "")
 
         doc_url = copia.get("webViewLink") or f"https://docs.google.com/document/d/{new_doc_id}/edit"
 
@@ -20335,8 +20690,15 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
       .na-chip{display:inline-flex;align-items:center;gap:7px;background:#dbeafe;color:#1e40af;border-radius:999px;padding:5px 9px;margin:4px;font-size:13px}
       .na-chip button{border:0;background:transparent;font-weight:bold;cursor:pointer;color:#1e40af}
       .na-table{width:100%;border-collapse:collapse}.na-table th,.na-table td{padding:9px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}
+      .na-rich-box{border:1px solid #cbd5e1;border-radius:9px;overflow:hidden;background:#fff}
+      .na-rich-toolbar{border-bottom:1px solid #dbe4ef;background:#f8fafc}
+      .na-rich-editor{min-height:155px;background:#fff;color:#111827;font-size:14px}
+      .na-rich-editor .ql-editor{min-height:155px;line-height:1.55}
+      .na-rich-hint{font-size:12px;color:#64748b;margin:5px 0 10px}
+      .na-rich-source{display:none!important}
       @media(max-width:740px){.na-grid{grid-template-columns:1fr}.na-resp-row{grid-template-columns:1fr}.na-card{padding:14px}}
     </style>
+    <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
     <div class="na-wrap">
       <p><a href="/notas-auditoria-documentos">← Voltar à lista de Notas Preventivas</a></p>
       <h2>🧾 {{ 'Nova Nota de Auditoria Preventiva' if is_new else 'Nota de Auditoria Preventiva — ' ~ note.na_numero }}</h2>
@@ -20369,11 +20731,11 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
         </div>
         <div class="na-card">
           <h3>2. Definição do problema</h3>
-          <div class="na-field"><label>Apontamentos encontrados</label><textarea name="identificacao_problema" rows="7">{{note.identificacao_problema or ''}}</textarea></div>
+          <div class="na-field"><label>Apontamentos encontrados</label><div class="na-rich-box"><div id="na-toolbar-identificacao_problema" class="na-rich-toolbar"><span class="ql-formats"><button type="button" class="ql-bold" title="Negrito"></button><button type="button" class="ql-italic" title="Itálico"></button><button type="button" class="ql-underline" title="Sublinhado"></button></span><span class="ql-formats"><button type="button" class="ql-list" value="ordered" title="Lista numerada"></button><button type="button" class="ql-list" value="bullet" title="Lista com marcadores"></button></span><span class="ql-formats"><select class="ql-align" title="Alinhamento"><option selected></option><option value="center"></option><option value="right"></option><option value="justify"></option></select><button type="button" class="ql-clean" title="Limpar formatação"></button></span></div><div id="na-editor-identificacao_problema" class="na-rich-editor"></div></div><textarea class="na-rich-source" id="na-source-identificacao_problema" name="identificacao_problema" aria-hidden="true">{{rich_html.identificacao_problema}}</textarea><div class="na-rich-hint">Use a barra para aplicar negrito, listas numeradas ou marcadores e alinhar o texto. O conteúdo será salvo no cadastro e usado para gerar o documento.</div></div>
           <h3>3. Análise da causa raiz</h3>
-          <div class="na-field"><label>Documentos analisados e análise</label><textarea name="analise_causa_raiz" rows="6">{{note.analise_causa_raiz or ''}}</textarea></div>
+          <div class="na-field"><label>Documentos analisados e análise</label><div class="na-rich-box"><div id="na-toolbar-analise_causa_raiz" class="na-rich-toolbar"><span class="ql-formats"><button type="button" class="ql-bold" title="Negrito"></button><button type="button" class="ql-italic" title="Itálico"></button><button type="button" class="ql-underline" title="Sublinhado"></button></span><span class="ql-formats"><button type="button" class="ql-list" value="ordered" title="Lista numerada"></button><button type="button" class="ql-list" value="bullet" title="Lista com marcadores"></button></span><span class="ql-formats"><select class="ql-align" title="Alinhamento"><option selected></option><option value="center"></option><option value="right"></option><option value="justify"></option></select><button type="button" class="ql-clean" title="Limpar formatação"></button></span></div><div id="na-editor-analise_causa_raiz" class="na-rich-editor"></div></div><textarea class="na-rich-source" id="na-source-analise_causa_raiz" name="analise_causa_raiz" aria-hidden="true">{{rich_html.analise_causa_raiz}}</textarea><div class="na-rich-hint">Use a barra para aplicar negrito, listas numeradas ou marcadores e alinhar o texto. O conteúdo será salvo no cadastro e usado para gerar o documento.</div></div>
           <h3>4. Observações complementares</h3>
-          <div class="na-field"><label>Recomendações e observações</label><textarea name="observacoes_complementares" rows="5">{{note.observacoes_complementares or ''}}</textarea></div>
+          <div class="na-field"><label>Recomendações e observações</label><div class="na-rich-box"><div id="na-toolbar-observacoes_complementares" class="na-rich-toolbar"><span class="ql-formats"><button type="button" class="ql-bold" title="Negrito"></button><button type="button" class="ql-italic" title="Itálico"></button><button type="button" class="ql-underline" title="Sublinhado"></button></span><span class="ql-formats"><button type="button" class="ql-list" value="ordered" title="Lista numerada"></button><button type="button" class="ql-list" value="bullet" title="Lista com marcadores"></button></span><span class="ql-formats"><select class="ql-align" title="Alinhamento"><option selected></option><option value="center"></option><option value="right"></option><option value="justify"></option></select><button type="button" class="ql-clean" title="Limpar formatação"></button></span></div><div id="na-editor-observacoes_complementares" class="na-rich-editor"></div></div><textarea class="na-rich-source" id="na-source-observacoes_complementares" name="observacoes_complementares" aria-hidden="true">{{rich_html.observacoes_complementares}}</textarea><div class="na-rich-hint">Use a barra para aplicar negrito, listas numeradas ou marcadores e alinhar o texto. O conteúdo será salvo no cadastro e usado para gerar o documento.</div></div>
         </div>
         <div class="na-card">
           <h3>5. Exige monitoramento?</h3>
@@ -20382,7 +20744,7 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
             <div class="na-field"><label>Prazo de resposta</label><input type="date" name="prazo_resposta" value="{{note.prazo_resposta.isoformat() if note.prazo_resposta and note.prazo_resposta.strftime is defined else (note.prazo_resposta or '')}}"></div>
           </div>
           <h3>6. Monitoramento realizado</h3>
-          <div class="na-field"><label>Registro do monitoramento</label><textarea name="monitoramento" rows="5">{{note.monitoramento or ''}}</textarea></div>
+          <div class="na-field"><label>Registro do monitoramento</label><div class="na-rich-box"><div id="na-toolbar-monitoramento" class="na-rich-toolbar"><span class="ql-formats"><button type="button" class="ql-bold" title="Negrito"></button><button type="button" class="ql-italic" title="Itálico"></button><button type="button" class="ql-underline" title="Sublinhado"></button></span><span class="ql-formats"><button type="button" class="ql-list" value="ordered" title="Lista numerada"></button><button type="button" class="ql-list" value="bullet" title="Lista com marcadores"></button></span><span class="ql-formats"><select class="ql-align" title="Alinhamento"><option selected></option><option value="center"></option><option value="right"></option><option value="justify"></option></select><button type="button" class="ql-clean" title="Limpar formatação"></button></span></div><div id="na-editor-monitoramento" class="na-rich-editor"></div></div><textarea class="na-rich-source" id="na-source-monitoramento" name="monitoramento" aria-hidden="true">{{rich_html.monitoramento}}</textarea><div class="na-rich-hint">Use a barra para aplicar negrito, listas numeradas ou marcadores e alinhar o texto. O conteúdo será salvo no cadastro e usado para gerar o documento.</div></div>
           <p class="na-muted">O texto da LGPD previsto no modelo oficial será mantido no Google Docs modelo.</p>
         </div>
         <div class="na-card">
@@ -20440,8 +20802,52 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
       </section>
       {% endif %}
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
     <script>
     (function(){
+      const richFields = ['identificacao_problema','analise_causa_raiz','observacoes_complementares','monitoramento'];
+      const richEditors = {};
+      function safeInitialHtml(raw){
+        if(!raw) return '';
+        if(/<\s*(p|div|br|ol|ul|li|strong|b|em|i|u|span)\b/i.test(raw)) return raw;
+        return raw.replace(/\r\n?/g,'\n').split('\n').map(line=>'<p>'+line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>').join('');
+      }
+      richFields.forEach(field=>{
+        const toolbar = document.getElementById('na-toolbar-'+field);
+        const host = document.getElementById('na-editor-'+field);
+        const source = document.getElementById('na-source-'+field);
+        if(!toolbar || !host || !source) return;
+        if(typeof Quill === 'undefined'){
+          // Fallback acessível: se a CDN estiver bloqueada, mantém edição em texto simples.
+          source.classList.remove('na-rich-source');
+          source.removeAttribute('aria-hidden');
+          source.rows = 8;
+          source.style.display = 'block';
+          const box = host.closest('.na-rich-box');
+          if(box) box.style.display = 'none';
+          const raw = source.value || '';
+          if(/<\s*(p|div|br|ol|ul|li|strong|b|em|i|u|span)\b/i.test(raw)){
+            const tmp = document.createElement('div');
+            tmp.innerHTML = raw;
+            source.value = tmp.textContent || tmp.innerText || '';
+          }
+          return;
+        }
+        const quill = new Quill(host, {
+          theme: 'snow',
+          modules: { toolbar: toolbar },
+          formats: ['bold','italic','underline','list','align']
+        });
+        const initial = safeInitialHtml(source.value);
+        if(initial) quill.clipboard.dangerouslyPasteHTML(initial, 'silent');
+        richEditors[field] = {quill, source};
+      });
+      const notaForm = document.getElementById('na-form');
+      if(notaForm){
+        notaForm.addEventListener('submit',()=>{
+          Object.values(richEditors).forEach(({quill,source})=>{ source.value = quill.root.innerHTML; });
+        });
+      }
       const tabs=[...document.querySelectorAll('.na-tab')];
       tabs.forEach(btn=>btn.addEventListener('click',()=>{
         tabs.forEach(t=>t.classList.toggle('active',t===btn));
@@ -20494,10 +20900,11 @@ def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, 
     })();
     </script>
     """
+    rich_html = {field: _na_editor_initial_html(note.get(field)) for field in _NA_RICH_FIELDS}
     return _na_render(html, note=note, colaboradores=colaboradores,
                       responsaveis_selecionados=responsaveis_selecionados,
                       req_selected=req_selected, respostas=respostas, pdfs=pdfs,
-                      mensagem=mensagem, is_new=is_new, form_action=form_action)
+                      rich_html=rich_html, mensagem=mensagem, is_new=is_new, form_action=form_action)
 
 
 def _na_save_form(nota_id=None):
@@ -20573,12 +20980,12 @@ def _na_save_form(nota_id=None):
             data_emissao,
             data_analise,
             (request.form.get("orgao_origem") or "").strip(),
-            (request.form.get("identificacao_problema") or "").strip(),
-            (request.form.get("analise_causa_raiz") or "").strip(),
-            (request.form.get("observacoes_complementares") or "").strip(),
+            _na_sanitize_rich_html(request.form.get("identificacao_problema") or ""),
+            _na_sanitize_rich_html(request.form.get("analise_causa_raiz") or ""),
+            _na_sanitize_rich_html(request.form.get("observacoes_complementares") or ""),
             exige_monitoramento,
             prazo_resposta,
-            (request.form.get("monitoramento") or "").strip(),
+            _na_sanitize_rich_html(request.form.get("monitoramento") or ""),
             responsaveis_na,
             matriculas,
         )
@@ -20996,6 +21403,10 @@ def na_upload_resposta(nota_id):
         cur.close()
         con.close()
     return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
+
+
+# Fim do módulo de Notas de Auditoria Preventiva
+
     
 @app.route("/api/<tabela>")
 def api_tabela(tabela):

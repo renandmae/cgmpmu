@@ -20162,13 +20162,13 @@ class _NARichHTMLToBlocks(_NAHTMLParser):
         self.list_stack = []
         self.suppress_depth = 0
 
-    def _start_block(self, list_type=None, align="START"):
+    def _start_block(self, list_type=None, align="JUSTIFIED"):
         self.current = {"segments": [], "list": list_type, "align": align}
 
     def _ensure_block(self):
         if self.current is None:
             lt = self.list_stack[-1] if self.list_stack else None
-            self._start_block(lt, "START")
+            self._start_block(lt, "JUSTIFIED")
 
     def _append(self, text):
         if not text:
@@ -20197,11 +20197,15 @@ class _NARichHTMLToBlocks(_NAHTMLParser):
             return "CENTER"
         if "ql-align-right" in cls:
             return "END"
+        if "ql-align-left" in cls:
+            return "START"
         style = attrs.get("style", "")
         m = _na_re.search(r"text-align\s*:\s*(left|right|center|justify)", style, _na_re.I)
         if m:
             return {"left": "START", "right": "END", "center": "CENTER", "justify": "JUSTIFIED"}[m.group(1).lower()]
-        return "START"
+        # O modelo institucional já usa alinhamento justificado.
+        # Se o editor não emitir classe/estilo explícito, mantém esse padrão.
+        return "JUSTIFIED"
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
@@ -20283,7 +20287,7 @@ def _na_html_to_blocks(value):
         return []
     if not _na_re.search(r"<\s*(p|div|br|ol|ul|li|strong|b|em|i|u|span)\b", raw, _na_re.I):
         lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-        return [{"segments": ([{"text": line, "fmt": {"bold": False, "italic": False, "underline": False}}] if line else []), "list": None, "align": "START"} for line in lines]
+        return [{"segments": ([{"text": line, "fmt": {"bold": False, "italic": False, "underline": False}}] if line else []), "list": None, "align": "JUSTIFIED"} for line in lines]
     parser = _NARichHTMLToBlocks()
     parser.feed(_na_sanitize_rich_html(raw))
     parser.close()
@@ -20296,14 +20300,14 @@ def _na_html_to_blocks(value):
     # into separate paragraphs so all Google Docs ranges remain accurate.
     expanded = []
     for block in blocks:
-        parts = [{"segments": [], "list": block.get("list"), "align": block.get("align", "START")}]
+        parts = [{"segments": [], "list": block.get("list"), "align": block.get("align", "JUSTIFIED")}]
         for seg in block.get("segments", []):
             chunks = seg["text"].split("\n")
             for i, chunk in enumerate(chunks):
                 if chunk:
                     parts[-1]["segments"].append({"text": chunk, "fmt": dict(seg["fmt"])})
                 if i < len(chunks) - 1:
-                    parts.append({"segments": [], "list": None, "align": block.get("align", "START")})
+                    parts.append({"segments": [], "list": None, "align": block.get("align", "JUSTIFIED")})
         expanded.extend(parts)
     return expanded
 
@@ -20364,6 +20368,7 @@ def _na_insert_rich_placeholder(docs, document_id, placeholder, html_value):
         }})
 
     offsets = []
+    paragraph_style_requests = []
     offset = 0
     for idx, block in enumerate(blocks):
         txt = block_text(block)
@@ -20383,11 +20388,13 @@ def _na_insert_rich_placeholder(docs, document_id, placeholder, html_value):
                     "fields": ",".join(style.keys()),
                 }})
             local += _na_utf16_len(seg_txt)
-        # Inclui o terminador do parágrafo. O último usa a quebra já existente no modelo.
+        # Deixa o alinhamento para uma segunda chamada à API, depois que o texto
+        # realmente existe no Docs. Assim os ranges são aplicados sobre os
+        # parágrafos finais, e não junto à substituição do marcador.
         paragraph_end = start + offset + _na_utf16_len(txt) + 1
-        requests.append({"updateParagraphStyle": {
+        paragraph_style_requests.append({"updateParagraphStyle": {
             "range": {"startIndex": start + offset, "endIndex": paragraph_end},
-            "paragraphStyle": {"alignment": block.get("align", "START")},
+            "paragraphStyle": {"alignment": block.get("align", "JUSTIFIED")},
             "fields": "alignment",
         }})
         offset += _na_utf16_len(txt)
@@ -20415,6 +20422,14 @@ def _na_insert_rich_placeholder(docs, document_id, placeholder, html_value):
         i = j + 1
 
     docs.documents().batchUpdate(documentId=document_id, body={"requests": requests}).execute()
+
+    # Segunda etapa: força o alinhamento depois da inserção e da criação das listas.
+    # O conteúdo permanece editável no Google Docs e negrito/listas são preservados.
+    if paragraph_style_requests:
+        docs.documents().batchUpdate(
+            documentId=document_id,
+            body={"requests": paragraph_style_requests},
+        ).execute()
 
 
 def _na_build_doc_values(note, responsaveis=None):
@@ -21412,7 +21427,7 @@ def na_upload_resposta(nota_id):
         cur.close()
         con.close()
     return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
- 
+
 @app.route("/api/<tabela>")
 def api_tabela(tabela):
 

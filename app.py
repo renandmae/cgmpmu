@@ -20344,6 +20344,15 @@ def _na_insert_rich_placeholder(docs, document_id, placeholder, html_value):
         return "".join(seg["text"] for seg in block.get("segments", []))
 
     text_value = "\n".join(block_text(b) for b in blocks)
+    # Quill pode enviar HTML com um parágrafo vazio (por exemplo, <p><br></p>).
+    # A API do Google Docs rejeita insertText com texto vazio; nesse caso basta
+    # excluir o marcador e deixar o campo em branco no documento.
+    if not text_value:
+        docs.documents().batchUpdate(
+            documentId=document_id, body={"requests": requests}
+        ).execute()
+        return
+
     requests.append({"insertText": {"location": {"index": start}, "text": text_value}})
 
     # Reseta só negrito/itálico/sublinhado herdado do placeholder; mantém fonte e tamanho do modelo.
@@ -21403,11 +21412,7 @@ def na_upload_resposta(nota_id):
         cur.close()
         con.close()
     return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
-
-
-# Fim do módulo de Notas de Auditoria Preventiva
-
-    
+ 
 @app.route("/api/<tabela>")
 def api_tabela(tabela):
 

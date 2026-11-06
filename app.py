@@ -16,6 +16,7 @@ import psycopg2.extras
 from psycopg2 import IntegrityError
 from datetime import datetime
 from urllib.parse import quote
+from urllib.parse import urlencode
 
 import requests
 
@@ -12652,6 +12653,53 @@ def importar_requisicoes_completo():
     </script>
     """)
 
+def gerar_url_pdf_requisicao(chave):
+    partes = [
+        parte.strip()
+        for parte in str(chave or "").split("/")
+    ]
+    if len(partes) < 3:
+        return None
+    numero, ano, sigla = partes[:3]
+    if not numero.isdigit() or not ano.isdigit():
+        return None
+    empresas = {
+        "DMAE": 2,
+        "ARESAN": 62,
+        "FUTEL": 5,
+        "FERUB": 6,
+        "EMAM": 9,
+        "IPREMU": 3
+    }
+    cd_empresa = empresas.get(sigla.upper(), 1)
+    parametros = {
+        "__report": "../webcompras/WEB-INF/classes/rel/birt/requisicaoExternaTramitacao.rptdesign",
+        "jndiRelatorio": "java:comp/env/jdbc/webcompras",
+        "gestao": 1,
+        "cdEmpresa": cd_empresa,
+        "cdFilialEmpresa": 1,
+        "dtAnoRequisicao": ano,
+        "nrRequisicao": numero,
+        "nrEmpenho": 0,
+        "nrContrato": 0,
+        "nrSeq": 0,
+        "nrAnoLicitacao": 0,
+        "dtAnoEmpenho": 0,
+        "aditamento": 0,
+        "nrAditivoArg": 0,
+        "nrRenovacaoArg": 0,
+        "usuario": "****7533***",
+        "nomeUsuario": "Renan Justino Rezende Silva",
+        "__format": "pdf",
+        "__pageoverflow": 0,
+        "__overwrite": "true"
+    }
+    base_url = (
+        "https://webcompras.uberlandia.mg.gov.br/"
+        "plcVis372/frameset"
+    )
+    return base_url + "?" + urlencode(parametros)
+    
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
     if "user" not in session:
@@ -12941,6 +12989,39 @@ def requisicoes():
     #tbl th:nth-child(2) {
         z-index: 11;
     }
+    .acoes-cell {
+        white-space: nowrap;
+        min-width: 130px;
+    }
+    
+    .acao-icone {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        margin: 0 2px;
+        border: none;
+        border-radius: 6px;
+        background: #f1f3f5;
+        text-decoration: none;
+        font-size: 16px;
+        cursor: pointer;
+        vertical-align: middle;
+    }
+    
+    .acao-icone:hover {
+        background: #e2e6ea;
+        transform: translateY(-1px);
+    }
+    
+    .acao-pdf {
+        background: #fde8e7;
+    }
+    
+    .acao-pdf:hover {
+        background: #f8cfcc;
+    }
     </style>
     
     <h3>Requisições</h3>
@@ -13114,14 +13195,29 @@ def requisicoes():
                 </select>
             </td>
             
-            <td style="white-space:nowrap;">
-                <a href="/requisicao/{{ r.id }}" title="Ver">🔍</a>
-                &nbsp;
-                <a href="/requisicoes/editar/{{ r.id }}" title="Editar">✏️</a>
-                &nbsp;
-                <button onclick="excluir({{ r.id }})" title="Excluir">🗑️</button>
+            <td class="acoes-cell">
+                {% set url_pdf = gerar_url_pdf_requisicao(r.chave) %}
+    
+                <a href="/requisicao/{{ r.id }}"
+                   class="acao-icone"
+                   title="Ver requisição">🔍</a>
+            
+                <a href="/requisicoes/editar/{{ r.id }}"
+                   class="acao-icone"
+                   title="Editar requisição">✏️</a>
+            
+                {% if url_pdf %}
+                    <a href="{{ url_pdf }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="acao-icone acao-pdf"
+                       title="Abrir PDF da requisição">📄</a>
+                {% endif %}
+            
+                <button onclick="excluir({{ r.id }})"
+                        class="acao-icone"
+                        title="Excluir">🗑️</button>
             </td>
-
         </tr>
         {% endfor %}
     </table>
@@ -13270,6 +13366,7 @@ function atualizarCampo(id, campo, valor){
         q=q,                     # ✅ mantém busca
         fmt=fmt,
         fmt_br=fmt_br,
+        gerar_url_pdf_requisicao=gerar_url_pdf_requisicao
     )
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])

@@ -18827,7 +18827,7 @@ selected
 
 <td>
 
-    {% set url_pdf = gerar_url_pdf_requisicao_eng(r.numero_ano, r.secretaria) %}
+    {% set url_pdf = gerar_url_pdf_requisicao(r.numero_ano, r.secretaria) %}
 
     <div class="acoes-eng">
 
@@ -19181,7 +19181,7 @@ window.onload = function(){
         request=request,
         user=session["user"],
         perfil=session["perfil"],
-        gerar_url_pdf_requisicao_eng=gerar_url_pdf_requisicao_eng
+        gerar_url_pdf_requisicao=gerar_url_pdf_requisicao
     )
 
 @app.route("/painel_reqs_engenharia")

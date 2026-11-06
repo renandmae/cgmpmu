@@ -12901,6 +12901,38 @@ def gerar_url_pdf_requisicao(chave):
         "plcVis372/frameset"
     )
     return base_url + "?" + urlencode(parametros)
+
+def gerar_url_pdf_requisicao_eng(numero_ano, secretaria):
+    partes = [
+        parte.strip()
+        for parte in str(numero_ano or "").split("/")
+    ]
+    if len(partes) < 2:
+        return None
+    numero = partes[0]
+    ano = partes[1]
+    if not numero.isdigit() or not ano.isdigit():
+        return None
+    # Identifica a sigla pela secretaria
+    texto = str(secretaria or "").upper()
+    siglas = [
+        "DMAE",
+        "ARESAN",
+        "FUTEL",
+        "FERUB",
+        "EMAM",
+        "IPREMU"
+    ]
+    sigla = next(
+        (s for s in siglas if s in texto),
+        "OUTRA"
+    )
+    # Caso o número já contenha a sigla, aproveita essa informação
+    if len(partes) >= 3 and partes[2]:
+        sigla = partes[2].upper()
+    chave = f"{numero}/{ano}/{sigla}"
+    
+    return gerar_url_pdf_requisicao(chave)
     
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
@@ -18827,7 +18859,7 @@ selected
 
 <td>
 
-    {% set url_pdf = gerar_url_pdf_requisicao(r.numero_ano, r.secretaria) %}
+    {% set url_pdf = gerar_url_pdf_requisicao_eng(r.numero_ano, r.secretaria) %}
 
     <div class="acoes-eng">
 
@@ -19181,7 +19213,7 @@ window.onload = function(){
         request=request,
         user=session["user"],
         perfil=session["perfil"],
-        gerar_url_pdf_requisicao=gerar_url_pdf_requisicao
+        gerar_url_pdf_requisicao_eng=gerar_url_pdf_requisicao_eng
     )
 
 @app.route("/painel_reqs_engenharia")

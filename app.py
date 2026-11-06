@@ -18382,7 +18382,7 @@ textarea{
 .col-monitor{width:90px}
 .col-beneficio{width:110px}
 .col-apont{width:400px}
-.col-acao{width:80px}
+.col-acao{width:145px}
 
 .auditada td{
     background:#bbf7d0 !important; /* verde */
@@ -18398,6 +18398,42 @@ textarea{
 
 .auditar td{
     background:#fde047 !important; /* amarelo */
+}
+
+/* Ações */
+.acoes-eng {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.acao-icone {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 7px;
+    background: #f1f3f5;
+    text-decoration: none;
+    font-size: 17px;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.acao-icone:hover {
+    background: #e2e6ea;
+}
+
+.acao-pdf {
+    background: #fde8e7;
+}
+
+.acao-pdf:hover {
+    background: #f8cfcc;
 }
 
 </style>
@@ -18791,15 +18827,37 @@ selected
 
 <td>
 
-<button
-class="btn btn-green"
-onclick="salvar({{r.id}})">
-💾
-</button>
+    {% set url_pdf = gerar_url_pdf_requisicao_eng(r.numero_ano, r.secretaria) %}
 
-<button class="btn btn-red" onclick="excluir({{r.id}})">
-🗑
-</button>
+    <div class="acoes-eng">
+
+        {% if url_pdf %}
+            <a href="{{ url_pdf }}"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="acao-icone acao-pdf"
+               title="Abrir PDF da requisição">
+                📄
+            </a>
+        {% endif %}
+
+        <button
+            type="button"
+            class="acao-icone"
+            onclick="salvar({{r.id}})"
+            title="Salvar alterações">
+            💾
+        </button>
+
+        <button
+            type="button"
+            class="acao-icone"
+            onclick="excluir({{r.id}})"
+            title="Excluir requisição">
+            🗑️
+        </button>
+
+    </div>
 
 </td>
 
@@ -19122,7 +19180,8 @@ window.onload = function(){
         total_paginas=total_paginas,
         request=request,
         user=session["user"],
-        perfil=session["perfil"]
+        perfil=session["perfil"],
+        gerar_url_pdf_requisicao_eng=gerar_url_pdf_requisicao_eng
     )
 
 @app.route("/painel_reqs_engenharia")

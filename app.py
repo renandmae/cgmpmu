@@ -7206,169 +7206,30 @@ def os_view(id):
     
         # ---------------- QUERY DINÂMICA ----------------
         sql = """
-            SELECT
-                h.id,
-                h.created_at,
-                h.data,
-                h.duracao_minutos,
-                h.atividade,
-                h.item_paint,
-                h.observacoes,
-                h.colaborador_id,
-                c.nome AS colaborador
-        
+            SELECT h.data, h.duracao_minutos, h.atividade, h.observacoes, c.nome as colaborador
             FROM horas h
-        
-            JOIN colaboradores c
-                ON c.id = h.colaborador_id
-        
+            JOIN colaboradores c ON c.id = h.colaborador_id
             WHERE h.os_codigo = %s
-        
             AND (
                 h.observacoes IS NULL
                 OR h.observacoes NOT ILIKE 'Lançamento automático%%'
             )
         """
-        
         params = [os['codigo']]
-        
+    
         if modo == 'mes' and mes:
-            sql += """
-                AND EXTRACT(MONTH FROM h.data) = %s
-                AND EXTRACT(YEAR FROM h.data) = %s
-            """
+            sql += " AND EXTRACT(MONTH FROM h.data) = %s AND EXTRACT(YEAR FROM h.data) = %s"
             params += [mes, ano]
-        
+    
         sql += " ORDER BY h.data DESC, h.id DESC"
-        
+    
         if modo == 'todos':
-            sql += " LIMIT 1000"
+            sql += " LIMIT 1000"  # proteção
         elif modo == 'recentes':
             sql += " LIMIT 100"
-        
+    
         cur.execute(sql, tuple(params))
         horas = cur.fetchall()
-        # =====================================================
-        # IDENTIFICAR CO-RESPONSÁVEIS DOS LANÇAMENTOS
-        # UTILIZANDO CREATED_AT
-        # =====================================================
-        
-        # Inicializa a lista de participantes
-        for h in horas:
-            h["coparticipantes"] = []
-        
-        
-        # Datas dos lançamentos principais encontrados
-        datas_horas = list({
-            h["data"]
-            for h in horas
-            if h["data"]
-        })
-        
-        
-        # Buscar lançamentos automáticos correspondentes
-        horas_automaticas = []
-        
-        if datas_horas:
-        
-            cur.execute("""
-                SELECT
-                    h.id,
-                    h.created_at,
-                    h.data,
-                    h.duracao_minutos,
-                    h.atividade,
-                    h.item_paint,
-                    h.observacoes,
-                    h.colaborador_id,
-                    c.nome AS colaborador
-        
-                FROM horas h
-        
-                JOIN colaboradores c
-                    ON c.id = h.colaborador_id
-        
-                WHERE h.os_codigo = %s
-        
-                  AND h.data = ANY(%s::date[])
-        
-                  AND h.observacoes ILIKE
-                      'Lançamento automático da O.S %%'
-        
-                ORDER BY h.id
-        
-            """, (
-                os["codigo"],
-                datas_horas
-            ))
-        
-            horas_automaticas = cur.fetchall()
-        
-        
-        # =====================================================
-        # VINCULAR CADA AUTOMÁTICO AO SEU LANÇAMENTO ORIGINAL
-        # =====================================================
-        
-        for auto in horas_automaticas:
-        
-            # Precisa ter horário de criação
-            if not auto["created_at"]:
-                continue
-        
-            for h in horas:
-        
-                # Precisa ter horário de criação
-                if not h["created_at"]:
-                    continue
-        
-                # ---------------------------------------------
-                # 1. MESMO HORÁRIO DE CRIAÇÃO
-                # ---------------------------------------------
-        
-                if auto["created_at"] != h["created_at"]:
-                    continue
-        
-                # ---------------------------------------------
-                # 2. MESMA ATIVIDADE
-                # ---------------------------------------------
-        
-                mesma_atividade = (
-                    auto["data"] == h["data"]
-                    and auto["duracao_minutos"] == h["duracao_minutos"]
-                    and auto["atividade"] == h["atividade"]
-                    and auto["item_paint"] == h["item_paint"]
-                )
-        
-                if not mesma_atividade:
-                    continue
-        
-                # ---------------------------------------------
-                # 3. IDENTIFICAR O RESPONSÁVEL ORIGINAL
-                # ---------------------------------------------
-        
-                obs_esperada = (
-                    f"Lançamento automático da O.S "
-                    f"{os['codigo']} por {h['colaborador']}"
-                )
-        
-                if h["observacoes"]:
-                    obs_esperada += f" | {h['observacoes']}"
-        
-                if auto["observacoes"] != obs_esperada:
-                    continue
-        
-                # ---------------------------------------------
-                # 4. ADICIONAR CO-RESPONSÁVEL
-                # ---------------------------------------------
-        
-                nome = auto["colaborador"]
-        
-                if (
-                    nome != h["colaborador"]
-                    and nome not in h["coparticipantes"]
-                ):
-        
-                    h["coparticipantes"].append(nome)
     
         # HORAS POR COLABORADOR
         cur.execute("""
@@ -7466,48 +7327,6 @@ def os_view(id):
         font-weight:bold;
         color:#2c5aa0;
     }}
-    /* =====================================
-   CO-RESPONSÁVEIS
-===================================== */
-
-.participantes-detalhes {
-    display: inline-block;
-    min-width: 75px;
-    position: relative;
-}
-
-.participantes-detalhes summary {
-    cursor: pointer;
-    color: #2563a8;
-    font-weight: bold;
-    font-size: 13px;
-    padding: 6px 9px;
-    border-radius: 6px;
-    background: #e4efff;
-    list-style: none;
-    white-space: nowrap;
-}
-
-.participantes-detalhes summary::-webkit-details-marker {
-    display: none;
-}
-
-.participantes-detalhes summary:hover {
-    background: #d2e4ff;
-}
-
-.participantes-lista {
-    margin-top: 6px;
-    padding: 9px 12px;
-    background: #ffffff;
-    border: 1px solid #cbd9eb;
-    border-radius: 8px;
-    color: #26384d;
-    font-size: 13px;
-    line-height: 1.9;
-    min-width: 170px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.10);
-}
     </style>
 
     <div class="titulo">
@@ -7538,11 +7357,10 @@ def os_view(id):
 
     html += """
         </div>
-    
+
         <table>
             <tr>
-                <th>Responsável</th>
-                <th>Co-responsáveis</th>
+                <th>Servidor</th>
                 <th>Data</th>
                 <th>Duração</th>
                 <th>Tipo</th>
@@ -7551,78 +7369,22 @@ def os_view(id):
     """
 
     for h in horas:
-    
         obs_raw = h["observacoes"] or ""
     
         obs_full = html_lib.escape(obs_raw)
     
         obs_short = obs_raw.strip()
-    
         if len(obs_short) > 120:
             obs_short = obs_short[:120] + "..."
-    
         obs_short = html_lib.escape(obs_short)
-    
-        # ==============================================
-        # CO-RESPONSÁVEIS
-        # ==============================================
-    
-        if h["coparticipantes"]:
-    
-            lista_nomes = "".join(
-                f"<div>{html_lib.escape(str(nome))}</div>"
-                for nome in h["coparticipantes"]
-            )
-    
-            participantes_html = f"""
-                <details class="participantes-detalhes">
-    
-                    <summary>
-                        👥 +{len(h['coparticipantes'])} ver
-                    </summary>
-    
-                    <div class="participantes-lista">
-                        {lista_nomes}
-                    </div>
-    
-                </details>
-            """
-    
-        else:
-    
-            participantes_html = "—"
-    
-        # ==============================================
-        # LINHA DO HISTÓRICO
-        # ==============================================
-    
+
         html += f"""
         <tr>
-    
-            <td>
-                {html_lib.escape(str(h['colaborador']))}
-            </td>
-    
-            <td>
-                {participantes_html}
-            </td>
-    
-            <td>
-                {fmt_data(h['data'])}
-            </td>
-    
-            <td>
-                {fmt_horas(h['duracao_minutos'])}
-            </td>
-    
-            <td>
-                {html_lib.escape(str(tipo_label(h['atividade'])))}
-            </td>
-    
-            <td title="{obs_full}">
-                {obs_short}
-            </td>
-    
+            <td>{h['colaborador']}</td>
+            <td>{fmt_data(h['data'])}</td>
+            <td>{fmt_horas(h['duracao_minutos'])}</td>
+            <td>{tipo_label(h['atividade'])}</td>
+            <td title="{obs_full}">{obs_short}</td>
         </tr>
         """
 

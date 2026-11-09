@@ -21864,6 +21864,71 @@ import io
 import psycopg2.extras
 from psycopg2 import sql
 
+@app.route("/api/checklist/requisicoes", methods=["GET"])
+def api_checklist_requisicoes():
+    """Lista requisições ADITAMENTO para sincronização do Google Forms.
+
+    Rota pública, somente leitura. Não filtra por status_analise:
+    inclui ANDAMENTO, ANALISANDO, ANALISADO e registros sem status.
+    """
+    con = None
+    try:
+        con = get_db()
+        with con.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    id,
+                    chave,
+                    requisicao_num,
+                    sigla,
+                    secretaria,
+                    contrato,
+                    status_analise
+                FROM requisicoes
+                WHERE UPPER(BTRIM(COALESCE(tipo, ''))) = 'ADITAMENTO'
+                ORDER BY
+                    secretaria NULLS LAST,
+                    requisicao_num NULLS LAST,
+                    chave NULLS LAST,
+                    id
+            """)
+            rows = cur.fetchall()
+
+        requisicoes_api = []
+        for row in rows:
+            requisicoes_api.append({
+                "id": int(row["id"]),
+                "chave": row.get("chave") or "",
+                "requisicao_num": row.get("requisicao_num") or "",
+                "sigla": row.get("sigla") or "",
+                "secretaria": row.get("secretaria") or "",
+                "contrato": row.get("contrato") or "",
+                "status_analise": row.get("status_analise") or ""
+            })
+
+        resposta = jsonify({
+            "success": True,
+            "total": len(requisicoes_api),
+            "filtro": {
+                "tipo": "ADITAMENTO",
+                "status_analise": "TODOS"
+            },
+            "requisicoes": requisicoes_api
+        })
+        resposta.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        return resposta
+
+    except Exception:
+        app.logger.exception("Erro na API de sincronização do checklist.")
+        return jsonify({
+            "success": False,
+            "erro": "Não foi possível consultar as requisições."
+        }), 500
+
+    finally:
+        if con is not None:
+            con.close()
+
 @app.route("/api/excel/<tabela>")
 def api_excel(tabela):
 

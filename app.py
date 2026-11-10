@@ -3275,22 +3275,40 @@ def recomendacoes_os():
     
     cur.execute("""
         SELECT
-            codigo,
-            COALESCE(resumo, '') AS resumo
+            o.codigo,
+            COALESCE(o.resumo, '') AS resumo
     
-        FROM os
+        FROM os o
     
-        WHERE codigo IS NOT NULL
-          AND TRIM(codigo) <> ''
+        WHERE o.codigo IS NOT NULL
+          AND TRIM(o.codigo) <> ''
+    
+          AND NOT EXISTS (
+              SELECT 1
+              FROM recomendacoes r
+              WHERE TRIM(r.os_codigo) = TRIM(o.codigo)
+          )
+    
+          AND NOT EXISTS (
+              SELECT 1
+              FROM recomendacao_monitoramento_config mc
+              WHERE TRIM(mc.os_codigo) = TRIM(o.codigo)
+          )
+    
+          AND NOT EXISTS (
+              SELECT 1
+              FROM recomendacao_monitoramentos rm
+              WHERE TRIM(rm.os_codigo) = TRIM(o.codigo)
+          )
     
         ORDER BY
             CASE
-                WHEN codigo ~ '/[0-9]{4}$'
-                THEN split_part(codigo, '/', 2)::int
+                WHEN o.codigo ~ '/[0-9]{4}$'
+                THEN split_part(o.codigo, '/', 2)::int
                 ELSE 0
             END DESC,
     
-            codigo DESC
+            o.codigo DESC
     """)
     
     os_disponiveis = cur.fetchall()
@@ -4039,6 +4057,52 @@ select {
 
         </div>
 
+        
+        <!-- ================================================= -->
+        <!-- O.S. CADASTRADAS NO SISTEMA SEM RECOMENDAÇÕES -->
+        <!-- ================================================= -->
+        
+        <div style="margin-bottom:15px;">
+        
+            <label>
+                <b>O.S. existentes no sistema (ainda sem recomendações)</b>
+            </label>
+        
+            <select
+                id="osDisponivel"
+                onchange="selecionarOS(this)"
+            >
+        
+                <option value="">
+                    Selecione uma O.S. cadastrada no sistema...
+                </option>
+        
+                {% for o in os_disponiveis %}
+        
+                <option value="{{ o.codigo }}">
+        
+                    {{ o.codigo }}
+        
+                    {% if o.resumo %}
+                        — {{ o.resumo }}
+                    {% endif %}
+        
+                </option>
+        
+                {% endfor %}
+        
+            </select>
+        
+            <div style="
+                margin-top:6px;
+                font-size:12px;
+                color:#64748b;
+            ">
+                Escolha uma O.S. já existente para carregar
+                automaticamente seu código e resumo.
+            </div>
+        
+        </div>
 
         <div class="os-box">
 

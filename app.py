@@ -21869,20 +21869,24 @@ from flask import request, jsonify
 
 
 def normalizar_tipo_checklist(valor):
-    texto = unicodedata.normalize(
-        "NFKD", str(valor or "")
-    ).encode("ASCII", "ignore").decode("ASCII")
-
-    return "".join(c for c in texto.upper() if c.isalnum())
+    texto = unicodedata.normalize("NFKD", str(valor or ""))
+    texto = "".join(
+        c for c in texto
+        if not unicodedata.combining(c)
+    )
+    return "".join(
+        c for c in texto.upper()
+        if c.isalnum()
+    )
 
 
 def familia_tipo_checklist(valor):
     tipo = normalizar_tipo_checklist(valor)
 
-    if tipo.startswith("ADITAMENTO"):
+    if tipo == "ADITAMENTO":
         return "ADITAMENTO"
 
-    if tipo.startswith(("CONTRATACAO", "CONTRATACOES")):
+    if tipo.startswith("CONTRATA"):
         return "CONTRATACAO"
 
     return None
@@ -21890,31 +21894,12 @@ def familia_tipo_checklist(valor):
 
 @app.route("/api/checklist/requisicoes", methods=["GET"])
 def api_checklist_requisicoes():
-    """
-    Lista requisições para os checklists de auditoria.
 
-    Compatibilidade:
-    /api/checklist/requisicoes?tipo=ADITAMENTO
-    /api/checklist/requisicoes?tipo=CONTRATACAO
-
-    Sem parâmetro, mantém o comportamento anterior:
-    ADITAMENTO.
-    """
-
-    tipo_solicitado = normalizar_tipo_checklist(
+    tipo_solicitado = familia_tipo_checklist(
         request.args.get("tipo", "ADITAMENTO")
     )
 
-    if tipo_solicitado == "TODOS":
-        familia_solicitada = "TODOS"
-    else:
-        familia_solicitada = familia_tipo_checklist(tipo_solicitado)
-
-    if familia_solicitada not in (
-        "ADITAMENTO",
-        "CONTRATACAO",
-        "TODOS"
-    ):
+    if tipo_solicitado not in ("ADITAMENTO", "CONTRATACAO"):
         return jsonify({
             "success": False,
             "erro": "Tipo de checklist inválido."
@@ -21952,14 +21937,11 @@ def api_checklist_requisicoes():
         requisicoes_api = []
 
         for row in rows:
+
             familia = familia_tipo_checklist(row.get("tipo"))
 
-            if not familia:
+            if familia != tipo_solicitado:
                 continue
-
-            if familia_solicitada != "TODOS":
-                if familia != familia_solicitada:
-                    continue
 
             requisicoes_api.append({
                 "id": int(row["id"]),
@@ -21976,7 +21958,7 @@ def api_checklist_requisicoes():
             "success": True,
             "total": len(requisicoes_api),
             "filtro": {
-                "tipo": familia_solicitada,
+                "tipo": tipo_solicitado,
                 "status_analise": "TODOS"
             },
             "requisicoes": requisicoes_api
@@ -21990,7 +21972,7 @@ def api_checklist_requisicoes():
 
     except Exception:
         app.logger.exception(
-            "Erro na API de sincronização dos checklists."
+            "Erro na API de requisições do checklist."
         )
 
         return jsonify({
@@ -22001,7 +21983,7 @@ def api_checklist_requisicoes():
     finally:
         if con is not None:
             con.close()
-
+            
 @app.route("/api/excel/<tabela>")
 def api_excel(tabela):
 

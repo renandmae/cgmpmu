@@ -21920,7 +21920,9 @@ def api_checklist_requisicoes():
                     secretaria,
                     contrato,
                     status_analise,
-                    tipo
+                    tipo,
+                    criterio,
+                    valor_requisicao::text AS valor_requisicao
                 FROM requisicoes
                 WHERE
                     UPPER(BTRIM(COALESCE(tipo, ''))) = 'ADITAMENTO'
@@ -21945,6 +21947,12 @@ def api_checklist_requisicoes():
 
             requisicoes_api.append({
                 "id": int(row["id"]),
+                "criterio": row.get("criterio") or "",
+                "valor_requisicao": (
+                    str(row["valor_requisicao"])
+                    if row.get("valor_requisicao") is not None
+                    else ""
+                )
                 "chave": row.get("chave") or "",
                 "requisicao_num": row.get("requisicao_num") or "",
                 "sigla": row.get("sigla") or "",

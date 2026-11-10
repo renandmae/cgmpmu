@@ -21952,7 +21952,7 @@ def api_checklist_requisicoes():
                     str(row["valor_requisicao"])
                     if row.get("valor_requisicao") is not None
                     else ""
-                )
+                ),
                 "chave": row.get("chave") or "",
                 "requisicao_num": row.get("requisicao_num") or "",
                 "sigla": row.get("sigla") or "",

@@ -3270,6 +3270,32 @@ def recomendacoes_os():
     os_cadastradas = cur.fetchall()
 
     # =========================================================
+    # TODAS AS O.S. CADASTRADAS NA TABELA PRINCIPAL
+    # =========================================================
+    
+    cur.execute("""
+        SELECT
+            codigo,
+            COALESCE(resumo, '') AS resumo
+    
+        FROM os
+    
+        WHERE codigo IS NOT NULL
+          AND TRIM(codigo) <> ''
+    
+        ORDER BY
+            CASE
+                WHEN codigo ~ '/[0-9]{4}$'
+                THEN split_part(codigo, '/', 2)::int
+                ELSE 0
+            END DESC,
+    
+            codigo DESC
+    """)
+    
+    os_disponiveis = cur.fetchall()
+
+    # =========================================================
     # POST
     # =========================================================
 
@@ -3981,7 +4007,7 @@ select {
         <div style="margin-bottom:15px;">
 
             <label>
-                <b>O.S. já cadastradas</b>
+                <b>O.S. que já possuem recomendações ou monitoramento</b>
             </label>
 
             <select
@@ -4019,18 +4045,28 @@ select {
             <div>
 
                 <label>
-                    <b>O.S</b>
+                    <b>Código da O.S. — Consulta ou cadastro manual</b>
                 </label>
-
+            
                 <input
                     type="text"
                     id="campoOS"
                     name="os"
                     value="{{ os_codigo }}"
-                    placeholder="Digite o código ou o nome da O.S..."
+                    placeholder="Ex.: 0.0/2026"
                     required
                 >
-
+            
+                <div style="
+                    margin-top:6px;
+                    font-size:12px;
+                    color:#64748b;
+                ">
+                    Não encontrou a O.S. nas listas acima?
+                    Digite o código manualmente e clique em Consultar.
+                    Na próxima etapa, informe o resumo da O.S.
+                </div>
+            
             </div>
 
 
@@ -4070,25 +4106,25 @@ select {
         >
     
         {% if os_resumo %}
-    
+
         <div style="
             margin-top:6px;
             font-size:12px;
             color:#16a34a;
         ">
-            ✓ Resumo carregado automaticamente.
+            ✓ Resumo carregado automaticamente ou recuperado de cadastro anterior.
         </div>
-    
+        
         {% else %}
-    
+        
         <div style="
             margin-top:6px;
             font-size:12px;
-            color:#64748b;
+            color:#d97706;
         ">
-            Informe manualmente o resumo desta O.S.
+            ⚠ Informe manualmente o resumo desta O.S antes de salvar.
         </div>
-    
+        
         {% endif %}
     
     </div>
@@ -5708,6 +5744,7 @@ document.addEventListener(
         os_codigo=os_codigo,
         os_resumo=os_resumo,
         os_cadastradas=os_cadastradas,
+        os_disponiveis=os_disponiveis,
         colaboradores=colaboradores,
         recomendacoes=recomendacoes,
         monitoramento=monitoramento,

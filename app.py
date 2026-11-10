@@ -21864,16 +21864,67 @@ import io
 import psycopg2.extras
 from psycopg2 import sql
 
+import unicodedata
+from flask import request, jsonify
+
+
+def normalizar_tipo_checklist(valor):
+    texto = unicodedata.normalize(
+        "NFKD", str(valor or "")
+    ).encode("ASCII", "ignore").decode("ASCII")
+
+    return "".join(c for c in texto.upper() if c.isalnum())
+
+
+def familia_tipo_checklist(valor):
+    tipo = normalizar_tipo_checklist(valor)
+
+    if tipo.startswith("ADITAMENTO"):
+        return "ADITAMENTO"
+
+    if tipo.startswith(("CONTRATACAO", "CONTRATACOES")):
+        return "CONTRATACAO"
+
+    return None
+
+
 @app.route("/api/checklist/requisicoes", methods=["GET"])
 def api_checklist_requisicoes():
-    """Lista requisições ADITAMENTO para sincronização do Google Forms.
-
-    Rota pública, somente leitura. Não filtra por status_analise:
-    inclui ANDAMENTO, ANALISANDO, ANALISADO e registros sem status.
     """
+    Lista requisições para os checklists de auditoria.
+
+    Compatibilidade:
+    /api/checklist/requisicoes?tipo=ADITAMENTO
+    /api/checklist/requisicoes?tipo=CONTRATACAO
+
+    Sem parâmetro, mantém o comportamento anterior:
+    ADITAMENTO.
+    """
+
+    tipo_solicitado = normalizar_tipo_checklist(
+        request.args.get("tipo", "ADITAMENTO")
+    )
+
+    if tipo_solicitado == "TODOS":
+        familia_solicitada = "TODOS"
+    else:
+        familia_solicitada = familia_tipo_checklist(tipo_solicitado)
+
+    if familia_solicitada not in (
+        "ADITAMENTO",
+        "CONTRATACAO",
+        "TODOS"
+    ):
+        return jsonify({
+            "success": False,
+            "erro": "Tipo de checklist inválido."
+        }), 400
+
     con = None
+
     try:
         con = get_db()
+
         with con.cursor() as cur:
             cur.execute("""
                 SELECT
@@ -21883,19 +21934,33 @@ def api_checklist_requisicoes():
                     sigla,
                     secretaria,
                     contrato,
-                    status_analise
+                    status_analise,
+                    tipo
                 FROM requisicoes
-                WHERE UPPER(BTRIM(COALESCE(tipo, ''))) = 'ADITAMENTO'
+                WHERE
+                    UPPER(BTRIM(COALESCE(tipo, ''))) = 'ADITAMENTO'
+                    OR UPPER(BTRIM(COALESCE(tipo, ''))) LIKE 'CONTRATA%'
                 ORDER BY
                     secretaria NULLS LAST,
                     requisicao_num NULLS LAST,
                     chave NULLS LAST,
                     id
             """)
+
             rows = cur.fetchall()
 
         requisicoes_api = []
+
         for row in rows:
+            familia = familia_tipo_checklist(row.get("tipo"))
+
+            if not familia:
+                continue
+
+            if familia_solicitada != "TODOS":
+                if familia != familia_solicitada:
+                    continue
+
             requisicoes_api.append({
                 "id": int(row["id"]),
                 "chave": row.get("chave") or "",
@@ -21903,23 +21968,31 @@ def api_checklist_requisicoes():
                 "sigla": row.get("sigla") or "",
                 "secretaria": row.get("secretaria") or "",
                 "contrato": row.get("contrato") or "",
-                "status_analise": row.get("status_analise") or ""
+                "status_analise": row.get("status_analise") or "",
+                "tipo": familia
             })
 
         resposta = jsonify({
             "success": True,
             "total": len(requisicoes_api),
             "filtro": {
-                "tipo": "ADITAMENTO",
+                "tipo": familia_solicitada,
                 "status_analise": "TODOS"
             },
             "requisicoes": requisicoes_api
         })
-        resposta.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+
+        resposta.headers["Cache-Control"] = (
+            "no-store, no-cache, must-revalidate, max-age=0"
+        )
+
         return resposta
 
     except Exception:
-        app.logger.exception("Erro na API de sincronização do checklist.")
+        app.logger.exception(
+            "Erro na API de sincronização dos checklists."
+        )
+
         return jsonify({
             "success": False,
             "erro": "Não foi possível consultar as requisições."

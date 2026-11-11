@@ -13057,6 +13057,18 @@ CHECKLIST_PLANILHAS = {
     "planilha_2": {
         "id": "1RYbTV2AzzVBswO_5gzDKSSSR1BiNuUF-Di3pZkjHs_s",
         "gid": 1076101217
+    },
+    "planilha_3": {
+        "id": "1r-tV6Pecy_TI74jebhA7wQMfaEBbzhaEO2PFOXp9J8I",
+        "gid": 1818821254
+    },
+    "planilha_4": {
+        "id": "1oLfGkaSge7Jx5RCeXv1Pv_OrMMG4Rhxcez1d7zAGY0w",
+        "gid": 650689614
+    },
+    "planilha_5": {
+        "id": "1NFr87VLSvs_dcQujmEeMXHixBfPiuMbyR3EBAurEh-M",
+        "gid": 2086986679
     }
 }
 

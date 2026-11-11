@@ -13050,8 +13050,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # ==========================================================
 
 CHECKLIST_PLANILHAS = {
-    "liquidacoes": "1teFFy38hvUmAn1Cfr6m0EXSaAhOvCUohtAH5MjQ6zbo",
-    "contratacoes": "1RYbTV2AzzVBswO_5gzDKSSSR1BiNuUF-Di3pZkjHs_s"
+    "planilha_1": {
+        "id": "1teFFy38hvUmAn1Cfr6m0EXSaAhOvCUohtAH5MjQ6zbo",
+        "gid": 262102344
+    },
+    "planilha_2": {
+        "id": "1RYbTV2AzzVBswO_5gzDKSSSR1BiNuUF-Di3pZkjHs_s",
+        "gid": 1076101217
+    }
 }
 
 # Mapeamento do código da secretaria para a entidade
@@ -13235,16 +13241,34 @@ def dados_chave_requisicao(chave):
 # DOWNLOAD DE UMA PLANILHA
 # ==========================================================
 
-def baixar_planilha_checklist(planilha_id):
+
+def baixar_planilha_checklist(planilha_id, gid=None):
 
     url = (
         f"https://docs.google.com/spreadsheets/d/"
-        f"{planilha_id}/export?format=csv&gid=0"
+        f"{planilha_id}/export"
     )
+
+    params = {
+        "format": "csv"
+    }
+
+    if gid is not None:
+        params["gid"] = str(gid)
 
     resposta = requests.get(
         url,
-        timeout=(3, 10)
+        params=params,
+        timeout=(10, 30),
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        }
+    )
+
+    print(
+        f"CHECKLIST HTTP: {resposta.status_code} "
+        f"| URL: {resposta.url} "
+        f"| CONTENT-TYPE: {resposta.headers.get('Content-Type')}"
     )
 
     resposta.raise_for_status()
@@ -13254,20 +13278,27 @@ def baixar_planilha_checklist(planilha_id):
         errors="replace"
     )
 
-    if conteudo.lstrip().lower().startswith(
-        ("<html", "<!doctype")
+    # Verifica se Google retornou uma página HTML
+    # em vez dos dados CSV
+    if (
+        conteudo.lstrip().lower().startswith("<html")
+        or conteudo.lstrip().lower().startswith("<!doctype html")
+        or "text/html" in resposta.headers.get(
+            "Content-Type", ""
+        ).lower()
     ):
         raise ValueError(
-            "Google Sheets não retornou CSV. "
-            "Verifique o compartilhamento da planilha."
+            "Google Sheets retornou HTML em vez de CSV. "
+            "Verifique o compartilhamento da planilha "
+            "e o GID da aba."
         )
 
     return conteudo
 
-
 # ==========================================================
 # CARREGA AS DUAS PLANILHAS COM CACHE
 # ==========================================================
+
 
 def carregar_checklists_google():
 
@@ -13298,16 +13329,16 @@ def carregar_checklists_google():
         for nome in CHECKLIST_PLANILHAS
     }
 
-    # Baixa as duas planilhas simultaneamente
     with ThreadPoolExecutor(max_workers=2) as executor:
 
         tarefas = {
             executor.submit(
                 baixar_planilha_checklist,
-                planilha_id
+                config["id"],
+                config["gid"]
             ): nome
 
-            for nome, planilha_id in CHECKLIST_PLANILHAS.items()
+            for nome, config in CHECKLIST_PLANILHAS.items()
         }
 
         for futuro in as_completed(tarefas):
@@ -13322,40 +13353,60 @@ def carregar_checklists_google():
                     io.StringIO(conteudo)
                 )
 
+                chaves_planilha = set()
                 linhas_validas = 0
 
                 for linha in leitor:
 
-                    # Coluna D = índice 3
+                    # Coluna D
                     if len(linha) <= 3:
                         continue
 
                     valor = linha[3]
 
-                    chaves = extrair_requisicoes_checklist(
-                        valor
-                    )
-
-                    todas_chaves.update(chaves)
+                    if not valor.strip():
+                        continue
 
                     linhas_validas += 1
 
-                if linhas_validas == 0:
-                    raise ValueError(
-                        "Planilha sem coluna D válida."
+                    encontradas = extrair_requisicoes_checklist(
+                        valor
                     )
 
+                    chaves_planilha.update(encontradas)
+
+                if linhas_validas == 0:
+                    raise ValueError(
+                        "Nenhuma linha válida encontrada na coluna D."
+                    )
+
+                todas_chaves.update(chaves_planilha)
+
                 fontes_ok[nome] = True
+
+                print(
+                    f"CHECKLIST {nome}: "
+                    f"{linhas_validas} linhas lidas | "
+                    f"{len(chaves_planilha)} combinações encontradas."
+                )
 
             except Exception as e:
 
                 print(
-                    f"ERRO CHECKLIST {nome}: {e}"
+                    f"ERRO CHECKLIST [{nome}]: "
+                    f"{type(e).__name__}: {e}"
                 )
 
     CHECKLIST_CACHE["chaves"] = todas_chaves
     CHECKLIST_CACHE["fontes_ok"] = fontes_ok
     CHECKLIST_CACHE["atualizado"] = agora
+
+    print(
+        "CHECKLIST RESULTADO:",
+        fontes_ok,
+        "| TOTAL DE COMBINAÇÕES:",
+        len(todas_chaves)
+    )
 
     return todas_chaves, fontes_ok
 

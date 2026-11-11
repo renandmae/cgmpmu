@@ -13034,7 +13034,375 @@ def gerar_url_pdf_requisicao_eng(numero_ano, secretaria):
     chave = f"{numero}/{ano}/{sigla}"
     
     return gerar_url_pdf_requisicao(chave)
-    
+
+
+import csv
+import io
+import re
+import time
+import unicodedata
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+# ==========================================================
+# CHECKLIST - CONSULTA NAS DUAS PLANILHAS DO GOOGLE SHEETS
+# ==========================================================
+
+CHECKLIST_PLANILHAS = {
+    "liquidacoes": "1teFFy38hvUmAn1Cfr6m0EXSaAhOvCUohtAH5MjQ6zbo",
+    "contratacoes": "1RYbTV2AzzVBswO_5gzDKSSSR1BiNuUF-Di3pZkjHs_s"
+}
+
+# Mapeamento do código da secretaria para a entidade
+CHECKLIST_UO = {
+    "17": "DMAE",
+    "18": "IPREMU",
+    "19": "FUTEL",
+    "20": "FERUB",
+    "21": "EMAM",
+    "38": "ARESAN"
+}
+
+CHECKLIST_SIGLAS = tuple(CHECKLIST_UO.values())
+
+# Cache
+CHECKLIST_CACHE = {
+    "atualizado": 0,
+    "chaves": set(),
+    "fontes_ok": {}
+}
+
+
+def normalizar_checklist_texto(valor):
+    texto = str(valor or "").upper()
+
+    texto = unicodedata.normalize("NFKD", texto)
+
+    texto = "".join(
+        c for c in texto
+        if not unicodedata.combining(c)
+    )
+
+    texto = texto.replace("–", "-").replace("—", "-")
+
+    return texto.strip()
+
+
+# ==========================================================
+# INTERPRETA UMA CÉLULA DA COLUNA D
+# ==========================================================
+
+def extrair_requisicoes_checklist(valor):
+
+    texto = normalizar_checklist_texto(valor)
+
+    if not texto:
+        return set()
+
+    # Identifica entidade da linha inteira
+    entidade = "PMU"
+
+    for sigla in CHECKLIST_SIGLAS:
+
+        if re.search(
+            rf"(?<![A-Z0-9]){sigla}(?![A-Z0-9])",
+            texto
+        ):
+            entidade = sigla
+            break
+
+    # Identifica o ano
+    anos = re.findall(
+        r"(?:/|-|\s)((?:19|20)\d{2})\b",
+        texto
+    )
+
+    ano = anos[-1] if anos else None
+
+    # Remove siglas da análise numérica
+    texto_numeros = texto
+
+    for sigla in CHECKLIST_SIGLAS:
+
+        texto_numeros = re.sub(
+            rf"(?<![A-Z0-9]){sigla}(?![A-Z0-9])",
+            " ",
+            texto_numeros
+        )
+
+    # Remove todos os anos encontrados
+    for ano_encontrado in set(anos):
+
+        texto_numeros = re.sub(
+            rf"(?<!\d){re.escape(ano_encontrado)}(?!\d)",
+            " ",
+            texto_numeros
+        )
+
+    # Extrai todos os números da célula
+    numeros = re.findall(
+        r"\d+",
+        texto_numeros
+    )
+
+    resultado = set()
+
+    for numero in numeros:
+
+        resultado.add((
+            numero,
+            ano,
+            entidade
+        ))
+
+    return resultado
+
+
+# ==========================================================
+# IDENTIFICA ENTIDADE DA REQUISIÇÃO NO BANCO
+# ==========================================================
+
+def entidade_requisicao_banco(r):
+
+    secretaria = str(
+        r.get("secretaria") or ""
+    ).strip()
+
+    # Os dois primeiros dígitos identificam a UO
+    m = re.match(
+        r"^\s*(\d{2})\b",
+        secretaria
+    )
+
+    if m:
+
+        codigo = m.group(1)
+
+        return CHECKLIST_UO.get(
+            codigo,
+            "PMU"
+        )
+
+    # Fallback: tenta identificar pela própria chave
+    chave = str(r.get("chave") or "")
+
+    for sigla in CHECKLIST_SIGLAS:
+
+        if re.search(
+            rf"(?<![A-Z0-9]){sigla}(?![A-Z0-9])",
+            chave.upper()
+        ):
+            return sigla
+
+    return "PMU"
+
+
+# ==========================================================
+# EXTRAI NÚMERO E ANO DA CHAVE DO SISTEMA
+# ==========================================================
+
+def dados_chave_requisicao(chave):
+
+    chave = str(chave or "").strip()
+
+    if not chave:
+        return None, None
+
+    # Primeiro componente: número da requisição
+    m = re.match(
+        r"^\s*(\d+)",
+        chave
+    )
+
+    if not m:
+        return None, None
+
+    numero = m.group(1)
+
+    # Identifica o ano na chave
+    anos = re.findall(
+        r"(?<!\d)(?:19|20)\d{2}(?!\d)",
+        chave
+    )
+
+    ano = anos[-1] if anos else None
+
+    return numero, ano
+
+
+# ==========================================================
+# DOWNLOAD DE UMA PLANILHA
+# ==========================================================
+
+def baixar_planilha_checklist(planilha_id):
+
+    url = (
+        f"https://docs.google.com/spreadsheets/d/"
+        f"{planilha_id}/export?format=csv&gid=0"
+    )
+
+    resposta = requests.get(
+        url,
+        timeout=(3, 10)
+    )
+
+    resposta.raise_for_status()
+
+    conteudo = resposta.content.decode(
+        "utf-8-sig",
+        errors="replace"
+    )
+
+    if conteudo.lstrip().lower().startswith(
+        ("<html", "<!doctype")
+    ):
+        raise ValueError(
+            "Google Sheets não retornou CSV. "
+            "Verifique o compartilhamento da planilha."
+        )
+
+    return conteudo
+
+
+# ==========================================================
+# CARREGA AS DUAS PLANILHAS COM CACHE
+# ==========================================================
+
+def carregar_checklists_google():
+
+    agora = time.time()
+
+    fontes_anteriores = CHECKLIST_CACHE["fontes_ok"]
+
+    ttl = (
+        300
+        if fontes_anteriores
+        and all(fontes_anteriores.values())
+        else 60
+    )
+
+    if (
+        CHECKLIST_CACHE["atualizado"]
+        and agora - CHECKLIST_CACHE["atualizado"] < ttl
+    ):
+        return (
+            CHECKLIST_CACHE["chaves"],
+            CHECKLIST_CACHE["fontes_ok"]
+        )
+
+    todas_chaves = set()
+
+    fontes_ok = {
+        nome: False
+        for nome in CHECKLIST_PLANILHAS
+    }
+
+    # Baixa as duas planilhas simultaneamente
+    with ThreadPoolExecutor(max_workers=2) as executor:
+
+        tarefas = {
+            executor.submit(
+                baixar_planilha_checklist,
+                planilha_id
+            ): nome
+
+            for nome, planilha_id in CHECKLIST_PLANILHAS.items()
+        }
+
+        for futuro in as_completed(tarefas):
+
+            nome = tarefas[futuro]
+
+            try:
+
+                conteudo = futuro.result()
+
+                leitor = csv.reader(
+                    io.StringIO(conteudo)
+                )
+
+                linhas_validas = 0
+
+                for linha in leitor:
+
+                    # Coluna D = índice 3
+                    if len(linha) <= 3:
+                        continue
+
+                    valor = linha[3]
+
+                    chaves = extrair_requisicoes_checklist(
+                        valor
+                    )
+
+                    todas_chaves.update(chaves)
+
+                    linhas_validas += 1
+
+                if linhas_validas == 0:
+                    raise ValueError(
+                        "Planilha sem coluna D válida."
+                    )
+
+                fontes_ok[nome] = True
+
+            except Exception as e:
+
+                print(
+                    f"ERRO CHECKLIST {nome}: {e}"
+                )
+
+    CHECKLIST_CACHE["chaves"] = todas_chaves
+    CHECKLIST_CACHE["fontes_ok"] = fontes_ok
+    CHECKLIST_CACHE["atualizado"] = agora
+
+    return todas_chaves, fontes_ok
+
+
+# ==========================================================
+# VERIFICA SE A REQUISIÇÃO POSSUI CHECKLIST
+# ==========================================================
+
+def verificar_checklist_requisicao(
+    requisicao,
+    chaves_planilhas,
+    fontes_ok
+):
+
+    numero, ano = dados_chave_requisicao(
+        requisicao.get("chave")
+    )
+
+    if not numero:
+        return "indisponivel"
+
+    entidade = entidade_requisicao_banco(
+        requisicao
+    )
+
+    # Compara número, ano e entidade
+    for numero_planilha, ano_planilha, entidade_planilha in chaves_planilhas:
+
+        if numero != numero_planilha:
+            continue
+
+        if entidade != entidade_planilha:
+            continue
+
+        if ano_planilha and ano and ano_planilha != ano:
+            continue
+
+        # Encontrou em qualquer uma das planilhas
+        return "sim"
+
+    # Só apresenta X quando as duas consultas funcionaram
+    if all(fontes_ok.values()):
+        return "nao"
+
+    # Se alguma planilha falhou, não afirma que não existe
+    return "indisponivel"
+
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
     if "user" not in session:
@@ -13263,6 +13631,20 @@ def requisicoes():
     
     # Detecta se existe página anterior
     tem_anterior = page > 1
+  
+    # ======================================================
+    # VERIFICA CHECKLIST DAS REQUISIÇÕES DA PÁGINA
+    # ======================================================
+    
+    checklist_chaves, checklist_fontes = carregar_checklists_google()
+    
+    for r in rows:
+    
+        r["checklist_status"] = verificar_checklist_requisicao(
+            r,
+            checklist_chaves,
+            checklist_fontes
+        )
     
     # Colaboradores (mantém como está)
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
@@ -13357,6 +13739,24 @@ def requisicoes():
     .acao-pdf:hover {
         background: #f8cfcc;
     }
+    .checklist-cell {
+        text-align: center;
+        min-width: 85px;
+        font-size: 22px;
+        font-weight: bold;
+    }
+    
+    .checklist-ok {
+        color: #198754;
+    }
+    
+    .checklist-nao {
+        color: #dc3545;
+    }
+    
+    .checklist-erro {
+        color: #e0a000;
+    }
     </style>
     
     <h3>Requisições</h3>
@@ -13420,6 +13820,7 @@ def requisicoes():
             <th>Ofício</th>
             <th>Monitoramento</th>
             <th>Ações</th>
+            <th>Checklist</th>
         </tr>
 
         {% for r in rows %}
@@ -13552,8 +13953,37 @@ def requisicoes():
                 <button onclick="excluir({{ r.id }})"
                         class="acao-icone"
                         title="Excluir">🗑️</button>
+            
+            </td>
+
+            <!-- CHECKLIST -->
+            <td class="checklist-cell">
+
+                {% if r.checklist_status == 'sim' %}
+
+                    <span class="checklist-ok"
+                          title="Checklist localizado nas planilhas">
+                        ✓
+                    </span>
+
+                {% elif r.checklist_status == 'nao' %}
+
+                    <span class="checklist-nao"
+                          title="Checklist não localizado">
+                        ✕
+                    </span>
+
+                {% else %}
+
+                    <span class="checklist-erro"
+                          title="Não foi possível consultar as duas planilhas">
+                        ?
+                    </span>
+
+                {% endif %}
             </td>
         </tr>
+        
         {% endfor %}
     </table>
     </div>

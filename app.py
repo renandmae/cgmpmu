@@ -13106,11 +13106,9 @@ def normalizar_checklist_texto(valor):
 
     return texto.strip()
 
-
 # ==========================================================
 # INTERPRETA UMA CÉLULA DA COLUNA D
 # ==========================================================
-
 def extrair_requisicoes_checklist(valor):
 
     texto = normalizar_checklist_texto(valor)
@@ -13118,7 +13116,11 @@ def extrair_requisicoes_checklist(valor):
     if not texto:
         return set()
 
-    # Identifica entidade da linha inteira
+    # ==================================================
+    # IDENTIFICA A ENTIDADE DA LINHA
+    # A sigla vale para todos os números encontrados
+    # ==================================================
+
     entidade = "PMU"
 
     for sigla in CHECKLIST_SIGLAS:
@@ -13130,15 +13132,22 @@ def extrair_requisicoes_checklist(valor):
             entidade = sigla
             break
 
-    # Identifica o ano
+    # ==================================================
+    # IDENTIFICA O ANO
+    # Aceita: /2026, -2026, _2026 ou espaço + 2026
+    # ==================================================
+
     anos = re.findall(
-        r"(?:/|-|\s)((?:19|20)\d{2})\b",
+        r"(?<!\d)((?:19|20)\d{2})(?!\d)",
         texto
     )
 
     ano = anos[-1] if anos else None
 
-    # Remove siglas da análise numérica
+    # ==================================================
+    # REMOVE AS SIGLAS DA ANÁLISE NUMÉRICA
+    # ==================================================
+
     texto_numeros = texto
 
     for sigla in CHECKLIST_SIGLAS:
@@ -13149,7 +13158,10 @@ def extrair_requisicoes_checklist(valor):
             texto_numeros
         )
 
-    # Remove todos os anos encontrados
+    # ==================================================
+    # REMOVE OS ANOS
+    # ==================================================
+
     for ano_encontrado in set(anos):
 
         texto_numeros = re.sub(
@@ -13158,24 +13170,23 @@ def extrair_requisicoes_checklist(valor):
             texto_numeros
         )
 
-    # Extrai todos os números da célula
+    # ==================================================
+    # EXTRAI TODOS OS NÚMEROS DA REQUISIÇÃO
+    # ==================================================
+
     numeros = re.findall(
         r"\d+",
         texto_numeros
     )
 
     resultado = set()
-
     for numero in numeros:
-
         resultado.add((
             numero,
             ano,
             entidade
         ))
-
     return resultado
-
 
 # ==========================================================
 # IDENTIFICA ENTIDADE DA REQUISIÇÃO NO BANCO

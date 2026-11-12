@@ -13499,7 +13499,6 @@ def baixar_planilha_checklist(planilha_id, gid=None):
 # CARREGA AS DUAS PLANILHAS COM CACHE
 # ==========================================================
 
-
 def carregar_checklists_google():
 
     agora = time.time()
@@ -13507,10 +13506,10 @@ def carregar_checklists_google():
     fontes_anteriores = CHECKLIST_CACHE["fontes_ok"]
 
     ttl = (
-        300
+        86400
         if fontes_anteriores
         and all(fontes_anteriores.values())
-        else 60
+        else 300
     )
 
     if (
@@ -13609,7 +13608,6 @@ def carregar_checklists_google():
     )
 
     return todas_chaves, fontes_ok
-
 
 # ==========================================================
 # VERIFICA SE A REQUISIÇÃO POSSUI CHECKLIST
@@ -13862,16 +13860,22 @@ def carregar_pdfs_checklist_drive():
 
     agora = time.time()
 
-    # Cache de 5 minutos
+    # 24 horas se funcionar; 5 minutos se houver falha
+    ttl = (
+        86400
+        if CHECKLIST_PDF_CACHE["ok"]
+        else 300
+    )
+
+    # Verifica se o cache ainda é válido
     if (
         CHECKLIST_PDF_CACHE["atualizado"]
-        and agora - CHECKLIST_PDF_CACHE["atualizado"] < 300
-        and CHECKLIST_PDF_CACHE["ok"]
+        and agora - CHECKLIST_PDF_CACHE["atualizado"] < ttl
     ):
 
         return (
             CHECKLIST_PDF_CACHE["arquivos"],
-            True
+            CHECKLIST_PDF_CACHE["ok"]
         )
 
     try:
@@ -13881,6 +13885,8 @@ def carregar_pdfs_checklist_drive():
         CHECKLIST_PDF_CACHE["arquivos"] = arquivos
         CHECKLIST_PDF_CACHE["atualizado"] = agora
         CHECKLIST_PDF_CACHE["ok"] = True
+
+        print("CHECKLIST DRIVE: cache atualizado com sucesso.")
 
         return arquivos, True
 
@@ -13892,10 +13898,14 @@ def carregar_pdfs_checklist_drive():
             str(e)
         )
 
+        CHECKLIST_PDF_CACHE["atualizado"] = agora
+        CHECKLIST_PDF_CACHE["ok"] = False
+
         return (
             CHECKLIST_PDF_CACHE["arquivos"],
             False
         )
+
 
 # ==========================================================
 # LOCALIZA PDF DA REQUISIÇÃO

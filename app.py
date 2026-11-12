@@ -7668,6 +7668,7 @@ def os_edit(id):
         equipe = ", ".join(request.form.getlist('equipe'))
         observacao = request.form.get('observacao')
         status = request.form.get('status')
+        monit = request.form.get('monit') or None
         plan = 1 if request.form.get('plan') else 0
         exec_ = 1 if request.form.get('exec') else 0
         rp = 1 if request.form.get('rp') else 0
@@ -7699,7 +7700,7 @@ def os_edit(id):
                     keys=%s, uo=%s,
                     plan0100=%s, exec0100=%s, rp0100=%s, rf0100=%s,
                     rp_dt_envio_ua=%s,
-                    rf_dt_envio_sup=%s, rf_dt_envio_ua=%s
+                    rf_dt_envio_sup=%s, rf_dt_envio_ua=%s, monit=%s
             
                 WHERE id=%s
             """, (
@@ -7712,7 +7713,7 @@ def os_edit(id):
                 plan0100, exec0100, rp0100, rf0100,
                 rp_dt_envio_ua,
                 rf_dt_envio_sup, rf_dt_envio_ua,
-            
+                monit,
                 id
             ))
 
@@ -7843,6 +7844,21 @@ def os_edit(id):
             <select name='status'>
                 <option {'selected' if os['status']=='Andamento' else ''}>Andamento</option>
                 <option {'selected' if os['status']=='Concluido' else ''}>Concluido</option>
+            </select>
+        </div>
+        <div>Monitoramento:<br>
+            <select name='monit'>
+                <option value='' {'selected' if not os.get('monit') else ''}>
+                    Selecione
+                </option>
+        
+                <option value='SIM' {'selected' if os.get('monit') == 'SIM' else ''}>
+                    SIM
+                </option>
+        
+                <option value='NÃO' {'selected' if os.get('monit') == 'NÃO' else ''}>
+                    NÃO
+                </option>
             </select>
         </div>
     </div>

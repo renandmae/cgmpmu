@@ -14199,64 +14199,7 @@ def requisicoes():
             <th>Monitoramento</th>
             <th>Ações</th>
             <th>Checklist</th>
-            <td class="pdf-checklist-cell">
-
-                {% if r.pdf_checklist %}
             
-                    {% if r.pdf_checklist|length == 1 %}
-            
-                        <a href="{{ r.pdf_checklist[0].link }}"
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           class="acao-icone acao-pdf"
-                           title="{{ r.pdf_checklist[0].nome }}">
-                            📄
-                        </a>
-            
-                    {% else %}
-            
-                        <details style="position:relative;">
-            
-                            <summary class="acao-icone acao-pdf"
-                                     title="Existem vários PDFs para esta requisição">
-                                📄 {{ r.pdf_checklist|length }}
-                            </summary>
-            
-                            <div class="pdf-lista">
-            
-                                {% for pdf in r.pdf_checklist %}
-            
-                                    <a href="{{ pdf.link }}"
-                                       target="_blank"
-                                       rel="noopener noreferrer">
-                                        📄 {{ pdf.nome }}
-                                    </a>
-            
-                                {% endfor %}
-            
-                            </div>
-            
-                        </details>
-            
-                    {% endif %}
-            
-                {% elif not r.pdf_checklist_consulta_ok %}
-            
-                    <span title="Não foi possível consultar o Google Drive"
-                          style="color:#e0a000;font-weight:bold;">
-                        ?
-                    </span>
-            
-                {% else %}
-            
-                    <span title="PDF não localizado"
-                          style="color:#999;">
-                        —
-                    </span>
-            
-                {% endif %}
-            
-            </td>
         </tr>
 
         {% for r in rows %}
@@ -14416,9 +14359,70 @@ def requisicoes():
                         ?
                     </span>
 
+                
+                {% endif %}
+            </td>
+
+            <!-- PDF CHECKLIST -->
+            <td class="pdf-checklist-cell">
+
+                {% if r.pdf_checklist %}
+
+                    {% if r.pdf_checklist|length == 1 %}
+
+                        <a href="{{ r.pdf_checklist[0].link }}"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           class="acao-icone acao-pdf"
+                           title="{{ r.pdf_checklist[0].nome }}">
+                            📄
+                        </a>
+
+                    {% else %}
+
+                        <details style="position:relative;">
+
+                            <summary class="acao-icone acao-pdf"
+                                     title="Existem vários PDFs">
+                                📄 {{ r.pdf_checklist|length }}
+                            </summary>
+
+                            <div class="pdf-lista">
+
+                                {% for pdf in r.pdf_checklist %}
+
+                                    <a href="{{ pdf.link }}"
+                                       target="_blank"
+                                       rel="noopener noreferrer">
+                                        📄 {{ pdf.nome }}
+                                    </a>
+
+                                {% endfor %}
+
+                            </div>
+
+                        </details>
+
+                    {% endif %}
+
+                {% elif not r.pdf_checklist_consulta_ok %}
+
+                    <span title="Erro na consulta ao Google Drive"
+                          style="color:#e0a000;font-weight:bold;">
+                        ?
+                    </span>
+
+                {% else %}
+
+                    <span title="PDF não localizado"
+                          style="color:#999;">
+                        —
+                    </span>
+
                 {% endif %}
             </td>
         </tr>
+        {% endfor %}
         
         {% endfor %}
     </table>

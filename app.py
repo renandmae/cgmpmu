@@ -14030,11 +14030,16 @@ def requisicoes():
     
     /* cabeçalho fixo */
     #tbl th {
-        position: sticky;
-        top: 0;
-        background: #dce8fb;
-        z-index: 10;
-    }
+    position: sticky;
+    top: 0;
+    background: #dce8fb !important;
+    color: #333;
+    z-index: 10;
+    text-align: center;
+    padding: 8px;
+    border: 1px solid #c5d3e5;
+    white-space: nowrap;
+}
     
     /* coluna chave */
     #tbl th:nth-child(1),
@@ -14210,7 +14215,7 @@ def requisicoes():
             <th>Monitoramento</th>
             <th>Ações</th>
             <th>Checklist</th>
-            
+            <th>PDF Checklist</th>
         </tr>
 
         {% for r in rows %}

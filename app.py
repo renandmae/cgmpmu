@@ -10797,6 +10797,34 @@ def minhas_delegacoes():
     requisicoes = cur.fetchall()
     con.close()
 
+    # ======================================================
+    # CHECKLIST E PDFs - REUTILIZA CACHE DA ROTA PRINCIPAL
+    # ======================================================
+
+    if requisicoes:
+
+        # Consulta às planilhas (cache compartilhado)
+        checklist_chaves, checklist_fontes = carregar_checklists_google()
+
+        # Consulta aos PDFs do Drive (cache compartilhado)
+        indice_pdfs, consulta_pdfs_ok = carregar_pdfs_checklist_drive()
+
+        for r in requisicoes:
+
+            # Status do checklist: sim, nao ou indisponivel
+            r["checklist_status"] = verificar_checklist_requisicao(
+                r,
+                checklist_chaves,
+                checklist_fontes
+            )
+
+            # PDFs correspondentes à requisição
+            r["pdf_checklist"] = localizar_pdf_requisicao(
+                r,
+                indice_pdfs
+            )
+            r["pdf_checklist_consulta_ok"] = consulta_pdfs_ok
+
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", """
 <h2>Minhas Requisições Delegadas</h2>
@@ -10889,8 +10917,8 @@ tr.analisado td:first-child::before {
 }
 
 .tabela-delegacoes {
-    width: 1380px;
-    min-width: 1380px;
+    width: 1580px;
+    min-width: 1580px;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
@@ -11009,6 +11037,7 @@ tr.analisado td:first-child::before {
 }
 
 /* ================= RESPONSIVIDADE ================= */
+
 @media (max-width: 700px) {
     .delegacoes-filtros {
         align-items: stretch;
@@ -11017,6 +11046,70 @@ tr.analisado td:first-child::before {
     .delegacoes-filtros input {
         flex-basis: 100%;
     }
+}
+/* INDICADOR DE CHECKLIST */
+
+.checklist-cell {
+    text-align: center;
+    font-size: 21px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.checklist-ok {
+    color: #198754;
+}
+
+.checklist-nao {
+    color: #dc3545;
+}
+
+.checklist-erro {
+    color: #e0a000;
+}
+
+/* PDF CHECKLIST */
+
+.pdf-checklist-cell {
+    text-align: center;
+    white-space: nowrap;
+    overflow: visible !important;
+}
+
+.pdf-lista {
+    position: absolute;
+    right: 0;
+    top: 35px;
+    z-index: 100;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 260px;
+    max-width: 400px;
+    max-height: 250px;
+    overflow-y: auto;
+    box-shadow: 0 3px 10px rgba(0,0,0,.15);
+}
+
+.pdf-lista a {
+    display: block;
+    padding: 7px;
+    color: #333;
+    text-decoration: none;
+    border-bottom: 1px solid #eee;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.pdf-lista a:hover {
+    background: #f1f3f5;
+}
+.pdf-checklist-cell summary {
+    list-style: none;
+    cursor: pointer;
+}
+.pdf-checklist-cell summary::-webkit-details-marker {
+    display: none;
 }
 </style>
 
@@ -11047,10 +11140,12 @@ tr.analisado td:first-child::before {
         <col style="width:95px">
         <col style="width:250px">
         <col style="width:105px">
+        <col style="width:85px">
+        <col style="width:110px">
     </colgroup>
     <tr>
         <th>Chave</th>
-        <th>Início</th>
+        <th>Atribuído</th>
         <th>Status</th>
         <th>Tipo</th>
         <th>Critério</th>
@@ -11060,6 +11155,8 @@ tr.analisado td:first-child::before {
         <th>Monit?</th>
         <th>Obs</th>
         <th style="text-align:center;">Ações</th>
+        <th style="text-align:center;">Checklist</th>
+        <th style="text-align:center;">PDF Checklist</th>
     </tr>
     {% for r in requisicoes %}
     <tr class="{{ r.status_analise|lower }}">
@@ -11147,10 +11244,97 @@ tr.analisado td:first-child::before {
                         📄
                     </a>
                 {% endif %}
-        
-            </div>
+            
+        </td>
+
+        <!-- CHECKLIST -->
+        <td class="checklist-cell" style="text-align:center;">
+
+            {% if r.checklist_status == 'sim' %}
+
+                <span class="checklist-ok"
+                      title="Checklist localizado nas planilhas">
+                    ✓
+                </span>
+
+            {% elif r.checklist_status == 'nao' %}
+
+                <span class="checklist-nao"
+                      title="Checklist não localizado">
+                    ✕
+                </span>
+
+            {% else %}
+
+                <span class="checklist-erro"
+                      title="Não foi possível consultar as planilhas">
+                    ?
+                </span>
+
+            {% endif %}
+
+        </td>
+
+        <!-- PDF CHECKLIST -->
+        <td class="pdf-checklist-cell" style="text-align:center;">
+
+            {% if r.pdf_checklist %}
+
+                {% if r.pdf_checklist|length == 1 %}
+
+                    <a href="{{ r.pdf_checklist[0].link }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="acao-icone acao-pdf"
+                       title="{{ r.pdf_checklist[0].nome }}">
+                        📄
+                    </a>
+
+                {% else %}
+
+                    <details style="position:relative;">
+
+                        <summary class="acao-icone acao-pdf"
+                                 title="Vários PDFs encontrados">
+                            📄 {{ r.pdf_checklist|length }}
+                        </summary>
+
+                        <div class="pdf-lista">
+
+                            {% for pdf in r.pdf_checklist %}
+
+                                <a href="{{ pdf.link }}"
+                                   target="_blank"
+                                   rel="noopener noreferrer">
+                                    📄 {{ pdf.nome }}
+                                </a>
+
+                            {% endfor %}
+
+                        </div>
+
+                    </details>
+
+                {% endif %}
+
+            {% elif not r.pdf_checklist_consulta_ok %}
+
+                <span style="color:#e0a000;"
+                      title="Falha na consulta ao Google Drive">
+                    ?
+                </span>
+
+            {% else %}
+
+                <span style="color:#999;"
+                      title="PDF não localizado">
+                    —
+                </span>
+
+            {% endif %}
         </td>
     </tr>
+
     {% endfor %}
 </table>
 </div>
@@ -11274,31 +11458,24 @@ document.querySelectorAll(
         .then(resp => {
 
             if (resp !== "OK") {
-
                 alert("Erro ao salvar");
-
                 console.error(resp);
-
                 return;
             }
 
             /* Atualiza a cor da linha ao mudar o status */
             if (this.classList.contains("status-select")) {
-
                 tr.className = this.value.toLowerCase();
-
             }
-
             aplicarFiltros();
-
         })
         .catch(err => {
-
             alert("Erro de rede");
             console.error(err);
         });
     });
 });
+
 /* ================= INICIALIZAÇÃO ================= */
 ativarBotao("ANDAMENTO");
 aplicarFiltros();
@@ -11315,7 +11492,7 @@ aplicarFiltros();
         perfil=session["perfil"],
         gerar_url_pdf_requisicao=gerar_url_pdf_requisicao
     )
-
+    
 # ---------------------------------------------------------
 # Visualizar uma requisição + histórico de horas associadas
 # ---------------------------------------------------------

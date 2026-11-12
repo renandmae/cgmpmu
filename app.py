@@ -13466,6 +13466,288 @@ def verificar_checklist_requisicao(
     # Se alguma planilha falhou, não afirma que não existe
     return "indisponivel"
 
+
+# ==========================================================
+# CHECKLIST PDF - GOOGLE DRIVE
+# ==========================================================
+
+DRIVE_CHECKLIST_FOLDER = "1X7Y-Y-quhNM9AmB2wugdYLGfjawsvx4A"
+
+GOOGLE_DRIVE_API_KEY = "AIzaSyBLrC9LKmQqe_DbLcR-tLb3zbkM9tCwzU4"
+DRIVE_API_URL = "https://www.googleapis.com/drive/v3/files"
+
+# Cache dos PDFs
+CHECKLIST_PDF_CACHE = {
+    "atualizado": 0,
+    "arquivos": {},
+    "ok": False
+}
+
+
+# ==========================================================
+# IDENTIFICA A REQUISIÇÃO PELO NOME DO PDF
+# ==========================================================
+
+def extrair_chave_pdf(nome_arquivo):
+
+    nome = str(nome_arquivo or "")
+
+    # Procura o trecho Req
+    m = re.search(
+        r"\bREQ(?:UISI[ÇC][AÃ]O)?\s*",
+        nome,
+        flags=re.IGNORECASE
+    )
+
+    if not m:
+        return set()
+
+    # Ignora tudo que vem antes de Req
+    trecho = nome[m.end():]
+
+    # Remove extensão
+    trecho = re.sub(
+        r"\.pdf$",
+        "",
+        trecho,
+        flags=re.IGNORECASE
+    )
+
+    # Reutiliza o interpretador das planilhas
+    return extrair_requisicoes_checklist(trecho)
+
+
+# ==========================================================
+# PERCORRE TODAS AS PASTAS E SUBPASTAS DO DRIVE
+# ==========================================================
+
+def listar_pdfs_drive_checklist():
+
+    if not GOOGLE_DRIVE_API_KEY:
+        raise ValueError(
+            "GOOGLE_DRIVE_API_KEY não configurada no Render."
+        )
+
+    pastas_pendentes = [
+        DRIVE_CHECKLIST_FOLDER
+    ]
+
+    pastas_visitadas = set()
+
+    arquivos_por_chave = {}
+
+    total_pdfs = 0
+
+    while pastas_pendentes:
+
+        pasta_id = pastas_pendentes.pop()
+
+        if pasta_id in pastas_visitadas:
+            continue
+
+        pastas_visitadas.add(pasta_id)
+
+        page_token = None
+
+        while True:
+
+            params = {
+                "key": GOOGLE_DRIVE_API_KEY,
+
+                "q": (
+                    f"'{pasta_id}' in parents "
+                    "and trashed = false"
+                ),
+
+                "pageSize": 1000,
+
+                "fields": (
+                    "nextPageToken,"
+                    "files(id,name,mimeType,webViewLink,modifiedTime)"
+                ),
+
+                "supportsAllDrives": True,
+                "includeItemsFromAllDrives": True
+            }
+
+            if page_token:
+                params["pageToken"] = page_token
+
+            resposta = requests.get(
+                DRIVE_API_URL,
+                params=params,
+                timeout=(5, 25)
+            )
+
+            resposta.raise_for_status()
+
+            dados = resposta.json()
+
+            for arquivo in dados.get("files", []):
+
+                nome = arquivo.get("name", "")
+
+                mime = arquivo.get("mimeType", "")
+
+                # Se for uma subpasta, entra nela também
+                if mime == "application/vnd.google-apps.folder":
+
+                    pastas_pendentes.append(
+                        arquivo["id"]
+                    )
+
+                    continue
+
+                # Considera somente PDFs
+                if (
+                    mime != "application/pdf"
+                    and not nome.lower().endswith(".pdf")
+                ):
+                    continue
+
+                total_pdfs += 1
+
+                # Identifica número, ano e entidade
+                chaves = extrair_chave_pdf(nome)
+
+                if not chaves:
+                    print(
+                        "PDF sem padrão de requisição:",
+                        nome
+                    )
+                    continue
+
+                link = arquivo.get("webViewLink")
+
+                if not link:
+                    link = (
+                        "https://drive.google.com/file/d/"
+                        f"{arquivo['id']}/view"
+                    )
+
+                registro_pdf = {
+                    "id": arquivo["id"],
+                    "nome": nome,
+                    "link": link,
+                    "modificado": arquivo.get(
+                        "modifiedTime", ""
+                    )
+                }
+
+                # Um PDF pode identificar mais de uma requisição
+                for chave in chaves:
+
+                    arquivos_por_chave.setdefault(
+                        chave, []
+                    ).append(registro_pdf)
+
+            page_token = dados.get("nextPageToken")
+
+            if not page_token:
+                break
+
+    # Ordena os PDFs pela última modificação
+    for chave in arquivos_por_chave:
+
+        arquivos_por_chave[chave].sort(
+            key=lambda x: x["modificado"],
+            reverse=True
+        )
+
+    print(
+        "CHECKLIST DRIVE:",
+        len(pastas_visitadas),
+        "pastas consultadas |",
+        total_pdfs,
+        "PDFs localizados |",
+        len(arquivos_por_chave),
+        "chaves identificadas"
+    )
+
+    return arquivos_por_chave
+
+# ==========================================================
+# CARREGAMENTO COM CACHE
+# ==========================================================
+
+def carregar_pdfs_checklist_drive():
+
+    agora = time.time()
+
+    # Cache de 5 minutos
+    if (
+        CHECKLIST_PDF_CACHE["atualizado"]
+        and agora - CHECKLIST_PDF_CACHE["atualizado"] < 300
+        and CHECKLIST_PDF_CACHE["ok"]
+    ):
+
+        return (
+            CHECKLIST_PDF_CACHE["arquivos"],
+            True
+        )
+
+    try:
+
+        arquivos = listar_pdfs_drive_checklist()
+
+        CHECKLIST_PDF_CACHE["arquivos"] = arquivos
+        CHECKLIST_PDF_CACHE["atualizado"] = agora
+        CHECKLIST_PDF_CACHE["ok"] = True
+
+        return arquivos, True
+
+    except Exception as e:
+
+        print(
+            "ERRO NA BUSCA DOS PDFs:",
+            type(e).__name__,
+            str(e)
+        )
+
+        return (
+            CHECKLIST_PDF_CACHE["arquivos"],
+            False
+        )
+
+# ==========================================================
+# LOCALIZA PDF DA REQUISIÇÃO
+# ==========================================================
+
+def localizar_pdf_requisicao(r, indice_pdfs):
+
+    numero, ano = dados_chave_requisicao(
+        r.get("chave")
+    )
+
+    if not numero or not ano:
+        return []
+
+    entidade = entidade_requisicao_banco(r)
+
+    chave = (
+        numero,
+        ano,
+        entidade
+    )
+
+    return indice_pdfs.get(chave, [])
+
+
+# ======================================================
+# LOCALIZA OS PDFs DOS CHECKLISTS
+# ======================================================
+
+indice_pdfs, consulta_pdfs_ok = carregar_pdfs_checklist_drive()
+
+for r in rows:
+
+    r["pdf_checklist"] = localizar_pdf_requisicao(
+        r,
+        indice_pdfs
+    )
+
+    r["pdf_checklist_consulta_ok"] = consulta_pdfs_ok
+
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
     if "user" not in session:
@@ -13820,6 +14102,40 @@ def requisicoes():
     .checklist-erro {
         color: #e0a000;
     }
+    .pdf-checklist-cell {
+    text-align: center;
+    min-width: 110px;
+}
+
+.pdf-lista {
+    position: absolute;
+    right: 0;
+    top: 32px;
+    z-index: 100;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 260px;
+    max-width: 400px;
+    max-height: 250px;
+    overflow-y: auto;
+    box-shadow: 0 3px 10px rgba(0,0,0,.15);
+}
+
+.pdf-lista a {
+    display: block;
+    padding: 7px;
+    color: #333;
+    text-decoration: none;
+    border-bottom: 1px solid #eee;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.pdf-lista a:hover {
+    background: #f1f3f5;
+}
     </style>
     
     <h3>Requisições</h3>
@@ -13884,6 +14200,64 @@ def requisicoes():
             <th>Monitoramento</th>
             <th>Ações</th>
             <th>Checklist</th>
+            <td class="pdf-checklist-cell">
+
+                {% if r.pdf_checklist %}
+            
+                    {% if r.pdf_checklist|length == 1 %}
+            
+                        <a href="{{ r.pdf_checklist[0].link }}"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           class="acao-icone acao-pdf"
+                           title="{{ r.pdf_checklist[0].nome }}">
+                            📄
+                        </a>
+            
+                    {% else %}
+            
+                        <details style="position:relative;">
+            
+                            <summary class="acao-icone acao-pdf"
+                                     title="Existem vários PDFs para esta requisição">
+                                📄 {{ r.pdf_checklist|length }}
+                            </summary>
+            
+                            <div class="pdf-lista">
+            
+                                {% for pdf in r.pdf_checklist %}
+            
+                                    <a href="{{ pdf.link }}"
+                                       target="_blank"
+                                       rel="noopener noreferrer">
+                                        📄 {{ pdf.nome }}
+                                    </a>
+            
+                                {% endfor %}
+            
+                            </div>
+            
+                        </details>
+            
+                    {% endif %}
+            
+                {% elif not r.pdf_checklist_consulta_ok %}
+            
+                    <span title="Não foi possível consultar o Google Drive"
+                          style="color:#e0a000;font-weight:bold;">
+                        ?
+                    </span>
+            
+                {% else %}
+            
+                    <span title="PDF não localizado"
+                          style="color:#999;">
+                        —
+                    </span>
+            
+                {% endif %}
+            
+            </td>
         </tr>
 
         {% for r in rows %}

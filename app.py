@@ -11165,7 +11165,6 @@ tr.analisado td:first-child::before {
         <th>Status</th>
         <th>Tipo</th>
         <th>Critério</th>
-        <th>Nota</th>
         <th>Nº Nota</th>
         <th>Ofício</th>
         <th>Monit?</th>
@@ -11173,6 +11172,7 @@ tr.analisado td:first-child::before {
         <th style="text-align:center;">Ações</th>
         <th style="text-align:center;">Checklist</th>
         <th style="text-align:center;">PDF Checklist</th>
+        <th>Revisão</th>
     </tr>
     {% for r in requisicoes %}
     <tr class="{{ r.status_analise|lower }}">
@@ -11190,15 +11190,6 @@ tr.analisado td:first-child::before {
     
         <td>{{ r.tipo or '' }}</td>
         <td>{{ r.criterio or '' }}</td>
-    
-        <!-- NOTA -->
-        <td>
-            <select class="campo-inline" data-id="{{ r.id }}" data-campo="nota">
-                <option value=""></option>
-                <option value="SIM" {{ "selected" if r.nota=="SIM" else "" }}>SIM</option>
-                <option value="NÃO" {{ "selected" if r.nota=="NÃO" else "" }}>NÃO</option>
-            </select>
-        </td>
     
         <!-- Nº NOTA -->
         <td>
@@ -11349,6 +11340,7 @@ tr.analisado td:first-child::before {
 
             {% endif %}
         </td>
+        <td>{{ r.criterio or '' }}</td>
     </tr>
 
     {% endfor %}
@@ -13310,8 +13302,8 @@ def extrair_requisicoes_checklist(valor):
         return set()
 
     # ==================================================
-    # IDENTIFICA A ENTIDADE DA LINHA
-    # A sigla vale para todos os números encontrados
+    # IDENTIFICA ENTIDADE
+    # Aceita DMAE grudado no ano: 2026DMAE
     # ==================================================
 
     entidade = "PMU"
@@ -13319,7 +13311,7 @@ def extrair_requisicoes_checklist(valor):
     for sigla in CHECKLIST_SIGLAS:
 
         if re.search(
-            rf"(?<![A-Z0-9]){sigla}(?![A-Z0-9])",
+            rf"(?<![A-Z]){sigla}(?![A-Z0-9])",
             texto
         ):
             entidade = sigla
@@ -13327,7 +13319,7 @@ def extrair_requisicoes_checklist(valor):
 
     # ==================================================
     # IDENTIFICA O ANO
-    # Aceita: /2026, -2026, _2026 ou espaço + 2026
+    # Aceita /2026, -2026, _2026 e 2026DMAE
     # ==================================================
 
     anos = re.findall(
@@ -13338,7 +13330,7 @@ def extrair_requisicoes_checklist(valor):
     ano = anos[-1] if anos else None
 
     # ==================================================
-    # REMOVE AS SIGLAS DA ANÁLISE NUMÉRICA
+    # REMOVE AS SIGLAS
     # ==================================================
 
     texto_numeros = texto
@@ -13346,7 +13338,7 @@ def extrair_requisicoes_checklist(valor):
     for sigla in CHECKLIST_SIGLAS:
 
         texto_numeros = re.sub(
-            rf"(?<![A-Z0-9]){sigla}(?![A-Z0-9])",
+            rf"(?<![A-Z]){sigla}(?![A-Z0-9])",
             " ",
             texto_numeros
         )
@@ -13364,7 +13356,7 @@ def extrair_requisicoes_checklist(valor):
         )
 
     # ==================================================
-    # EXTRAI TODOS OS NÚMEROS DA REQUISIÇÃO
+    # EXTRAI TODOS OS NÚMEROS
     # ==================================================
 
     numeros = re.findall(
@@ -13374,6 +13366,7 @@ def extrair_requisicoes_checklist(valor):
 
     resultado = set()
     for numero in numeros:
+
         resultado.add((
             numero,
             ano,
@@ -14013,7 +14006,6 @@ def requisicoes():
                         UPDATE requisicoes
                         SET
                             status_analise = %s,
-                            nota = NULLIF(%s,''),
                             num_nota = NULLIF(%s,''),
                             oficio = NULLIF(%s,''),
                             monitoramento = NULLIF(%s,''),
@@ -14022,7 +14014,6 @@ def requisicoes():
                         WHERE id = %s
                     """, (
                         status,
-                        nota,
                         num_nota,
                         oficio,
                         monitoramento,
@@ -14354,6 +14345,31 @@ def requisicoes():
 .pdf-lista a:hover {
     background: #f1f3f5;
 }
+.revisao-select {
+    min-width: 85px;
+    padding: 5px;
+    border-radius: 6px;
+    font-weight: bold;
+    text-align: center;
+    cursor: pointer;
+}
+
+.revisao-sim {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #198754;
+}
+
+.revisao-nao {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #dc3545;
+}
+
+.revisao-select:disabled {
+    opacity: 1;
+    cursor: not-allowed;
+}
     </style>
     
     <h3>Requisições</h3>
@@ -14412,13 +14428,13 @@ def requisicoes():
             <th>Responsável</th>
             <th>Início</th>
             <th>Fim</th>
-            <th>Nota</th>
             <th>Nº Nota</th>
             <th>Ofício</th>
             <th>Monitoramento</th>
             <th>Ações</th>
             <th>Checklist</th>
             <th>PDF Checklist</th>
+            <th>Revisão</th>
         </tr>
 
         {% for r in rows %}
@@ -14492,16 +14508,6 @@ def requisicoes():
                 <input type="date"
                        value="{{ r.data_fim or '' }}"
                        onchange="atualizarCampo({{ r.id }}, 'data_fim', this.value)">
-            </td>
-
-            <td>
-                <select onchange="salvar({{ r.id }})"
-                id="nota_{{ r.id }}"
-                style="min-width:75px;">
-                    <option value=""></option>
-                    <option value="SIM" {% if r.nota=='SIM' %}selected{% endif %}>SIM</option>
-                    <option value="NÃO" {% if r.nota=='NÃO' %}selected{% endif %}>NÃO</option>
-                </select>
             </td>
 
             <td>
@@ -14635,6 +14641,27 @@ def requisicoes():
                     </span>
                 {% endif %}
             </td>
+            
+            <td>
+                <select
+                    id="nota_{{ r.id }}"
+                    class="revisao-select {{ 'revisao-sim' if r.nota == 'SIM' else 'revisao-nao' }}"
+                    {% if perfil == 'admin' %}
+                        onchange="atualizarCorRevisao(this); salvar({{ r.id }})"
+                    {% else %}
+                        disabled
+                        title="Somente administradores podem alterar a revisão"
+                    {% endif %}
+                >
+                    <option value="SIM" {% if r.nota == 'SIM' %}selected{% endif %}>
+                        SIM
+                    </option>
+            
+                    <option value="NÃO" {% if r.nota != 'SIM' %}selected{% endif %}>
+                        NÃO
+                    </option>
+                </select>
+            </td>
         </tr>
         {% endfor %}
     </table>
@@ -14672,10 +14699,12 @@ function salvar(id, responsavelAlterado = false) {
         document.getElementById("servidor_" + id).value
     );
 
-    fd.append(
-        "nota",
-        document.getElementById("nota_" + id).value
-    );
+    if (podeAtribuirResponsavel) {
+        fd.append(
+            "nota",
+            document.getElementById("nota_" + id).value
+        );
+    }
 
     fd.append(
         "num_nota",
@@ -14766,6 +14795,19 @@ function atualizarCampo(id, campo, valor){
     fd.append("valor", valor);
 
     fetch("/requisicoes", { method:"POST", body:fd });
+}
+function atualizarCorRevisao(select) {
+
+    select.classList.remove(
+        "revisao-sim",
+        "revisao-nao"
+    );
+
+    if (select.value === "SIM") {
+        select.classList.add("revisao-sim");
+    } else {
+        select.classList.add("revisao-nao");
+    }
 }
     </script>
     """

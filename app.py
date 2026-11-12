@@ -11340,7 +11340,7 @@ tr.analisado td:first-child::before {
 
             {% endif %}
         </td>
-        <td>{{ r.criterio or '' }}</td>
+        <td>{{ r.nota or '' }}</td>
     </tr>
 
     {% endfor %}

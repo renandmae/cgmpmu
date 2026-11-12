@@ -14353,13 +14353,10 @@ def requisicoes():
                     </span>
 
                 {% else %}
-
                     <span class="checklist-erro"
                           title="Não foi possível consultar as duas planilhas">
                         ?
                     </span>
-
-                
                 {% endif %}
             </td>
 
@@ -14413,17 +14410,13 @@ def requisicoes():
                     </span>
 
                 {% else %}
-
                     <span title="PDF não localizado"
                           style="color:#999;">
                         —
                     </span>
-
                 {% endif %}
             </td>
         </tr>
-        {% endfor %}
-        
         {% endfor %}
     </table>
     </div>

@@ -13732,22 +13732,6 @@ def localizar_pdf_requisicao(r, indice_pdfs):
 
     return indice_pdfs.get(chave, [])
 
-
-# ======================================================
-# LOCALIZA OS PDFs DOS CHECKLISTS
-# ======================================================
-
-indice_pdfs, consulta_pdfs_ok = carregar_pdfs_checklist_drive()
-
-for r in rows:
-
-    r["pdf_checklist"] = localizar_pdf_requisicao(
-        r,
-        indice_pdfs
-    )
-
-    r["pdf_checklist_consulta_ok"] = consulta_pdfs_ok
-
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
     if "user" not in session:
@@ -13999,6 +13983,21 @@ def requisicoes():
     hoje = date.today().isoformat()
     
     con.close()
+
+    # ======================================================
+    # LOCALIZA OS PDFs DOS CHECKLISTS
+    # ======================================================
+    
+    indice_pdfs, consulta_pdfs_ok = carregar_pdfs_checklist_drive()
+    
+    for r in rows:
+    
+        r["pdf_checklist"] = localizar_pdf_requisicao(
+            r,
+            indice_pdfs
+        )
+    
+        r["pdf_checklist_consulta_ok"] = consulta_pdfs_ok
 
     html = """
     

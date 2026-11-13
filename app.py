@@ -11127,6 +11127,29 @@ tr.analisado td:first-child::before {
 .pdf-checklist-cell summary::-webkit-details-marker {
     display: none;
 }
+/* INDICADOR DE REVISÃO */
+
+.revisao-badge {
+    display: inline-block;
+    min-width: 48px;
+    padding: 5px 9px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.revisao-sim {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #198754;
+}
+
+.revisao-nao {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #dc3545;
+}
 </style>
 
 <div class="delegacoes-filtros">
@@ -11340,9 +11363,22 @@ tr.analisado td:first-child::before {
 
             {% endif %}
         </td>
-        <td>{{ r.nota or '' }}</td>
+        
+        <!-- REVISÃO -->
+        <td style="text-align:center;">
+            {% set revisao = (r.nota or 'NÃO')|upper %}
+            {% if revisao == 'SIM' %}
+                <span class="revisao-badge revisao-sim">
+                    SIM
+                </span>
+            {% else %}
+        
+                <span class="revisao-badge revisao-nao">
+                    NÃO
+                </span>
+            {% endif %}
+        </td>
     </tr>
-
     {% endfor %}
 </table>
 </div>
@@ -11431,11 +11467,6 @@ document.querySelectorAll(
         fd.append(
             "status_analise",
             tr.querySelector(".status-select").value
-        );
-
-        fd.append(
-            "nota",
-            tr.querySelector("[data-campo='nota']").value
         );
 
         fd.append(

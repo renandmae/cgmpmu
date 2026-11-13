@@ -10933,8 +10933,8 @@ tr.analisado td:first-child::before {
 }
 
 .tabela-delegacoes {
-    width: 1580px;
-    min-width: 1580px;
+    width: 1730px;
+    min-width: 1730px;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
@@ -11177,7 +11177,7 @@ tr.analisado td:first-child::before {
         <col style="width:100px">
         <col style="width:110px">
         <col style="width:95px">
-        <col style="width:250px">
+        <col style="width:400px">
         <col style="width:105px">
         <col style="width:85px">
         <col style="width:110px">
@@ -11251,7 +11251,7 @@ tr.analisado td:first-child::before {
                 data-id="{{ r.id }}"
                 data-campo="observacoes"
                 value="{{ r.observacoes or '' }}"
-                style="width:260px;">
+                style="width:100%;">
         </td>
         
         <td>

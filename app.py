@@ -16,7 +16,6 @@ import psycopg2.extras
 from psycopg2 import IntegrityError
 from datetime import datetime
 from urllib.parse import quote
-from urllib.parse import urlencode
 
 import requests
 
@@ -757,7 +756,6 @@ tr.analisado { background:#e6ffed; }
         {% endif %}
         
         <a href="/notas-auditoria">🧾 Notas Auditoria</a>
-        <a href="/notas-auditoria-documentos">📝 Emitir Nota Preventiva</a>
         </div>
         </div>
         
@@ -3270,50 +3268,6 @@ def recomendacoes_os():
     os_cadastradas = cur.fetchall()
 
     # =========================================================
-    # TODAS AS O.S. CADASTRADAS NA TABELA PRINCIPAL
-    # =========================================================
-    
-    cur.execute("""
-        SELECT
-            o.codigo,
-            COALESCE(o.resumo, '') AS resumo
-    
-        FROM os o
-    
-        WHERE o.codigo IS NOT NULL
-          AND TRIM(o.codigo) <> ''
-    
-          AND NOT EXISTS (
-              SELECT 1
-              FROM recomendacoes r
-              WHERE TRIM(r.os_codigo) = TRIM(o.codigo)
-          )
-    
-          AND NOT EXISTS (
-              SELECT 1
-              FROM recomendacao_monitoramento_config mc
-              WHERE TRIM(mc.os_codigo) = TRIM(o.codigo)
-          )
-    
-          AND NOT EXISTS (
-              SELECT 1
-              FROM recomendacao_monitoramentos rm
-              WHERE TRIM(rm.os_codigo) = TRIM(o.codigo)
-          )
-    
-        ORDER BY
-            CASE
-                WHEN o.codigo ~ '/[0-9]{4}$'
-                THEN split_part(o.codigo, '/', 2)::int
-                ELSE 0
-            END DESC,
-    
-            o.codigo DESC
-    """)
-    
-    os_disponiveis = cur.fetchall()
-
-    # =========================================================
     # POST
     # =========================================================
 
@@ -4025,7 +3979,7 @@ select {
         <div style="margin-bottom:15px;">
 
             <label>
-                <b>O.S. que já possuem recomendações ou monitoramento</b>
+                <b>O.S. já cadastradas</b>
             </label>
 
             <select
@@ -4057,80 +4011,24 @@ select {
 
         </div>
 
-        
-        <!-- ================================================= -->
-        <!-- O.S. CADASTRADAS NO SISTEMA SEM RECOMENDAÇÕES -->
-        <!-- ================================================= -->
-        
-        <div style="margin-bottom:15px;">
-        
-            <label>
-                <b>O.S. existentes no sistema (ainda sem recomendações)</b>
-            </label>
-        
-            <select
-                id="osDisponivel"
-                onchange="selecionarOS(this)"
-            >
-        
-                <option value="">
-                    Selecione uma O.S. cadastrada no sistema...
-                </option>
-        
-                {% for o in os_disponiveis %}
-        
-                <option value="{{ o.codigo }}">
-        
-                    {{ o.codigo }}
-        
-                    {% if o.resumo %}
-                        — {{ o.resumo }}
-                    {% endif %}
-        
-                </option>
-        
-                {% endfor %}
-        
-            </select>
-        
-            <div style="
-                margin-top:6px;
-                font-size:12px;
-                color:#64748b;
-            ">
-                Escolha uma O.S. já existente para carregar
-                automaticamente seu código e resumo.
-            </div>
-        
-        </div>
 
         <div class="os-box">
 
             <div>
 
                 <label>
-                    <b>Código da O.S. — Consulta ou cadastro manual</b>
+                    <b>O.S</b>
                 </label>
-            
+
                 <input
                     type="text"
                     id="campoOS"
                     name="os"
                     value="{{ os_codigo }}"
-                    placeholder="Ex.: 0.0/2026"
+                    placeholder="Digite o código ou o nome da O.S..."
                     required
                 >
-            
-                <div style="
-                    margin-top:6px;
-                    font-size:12px;
-                    color:#64748b;
-                ">
-                    Não encontrou a O.S. nas listas acima?
-                    Digite o código manualmente e clique em Consultar.
-                    Na próxima etapa, informe o resumo da O.S.
-                </div>
-            
+
             </div>
 
 
@@ -4170,25 +4068,25 @@ select {
         >
     
         {% if os_resumo %}
-
+    
         <div style="
             margin-top:6px;
             font-size:12px;
             color:#16a34a;
         ">
-            ✓ Resumo carregado automaticamente ou recuperado de cadastro anterior.
+            ✓ Resumo carregado automaticamente.
         </div>
-        
+    
         {% else %}
-        
+    
         <div style="
             margin-top:6px;
             font-size:12px;
-            color:#d97706;
+            color:#64748b;
         ">
-            ⚠ Informe manualmente o resumo desta O.S antes de salvar.
+            Informe manualmente o resumo desta O.S.
         </div>
-        
+    
         {% endif %}
     
     </div>
@@ -5808,7 +5706,6 @@ document.addEventListener(
         os_codigo=os_codigo,
         os_resumo=os_resumo,
         os_cadastradas=os_cadastradas,
-        os_disponiveis=os_disponiveis,
         colaboradores=colaboradores,
         recomendacoes=recomendacoes,
         monitoramento=monitoramento,
@@ -7668,7 +7565,6 @@ def os_edit(id):
         equipe = ", ".join(request.form.getlist('equipe'))
         observacao = request.form.get('observacao')
         status = request.form.get('status')
-        monit = request.form.get('monit') or None
         plan = 1 if request.form.get('plan') else 0
         exec_ = 1 if request.form.get('exec') else 0
         rp = 1 if request.form.get('rp') else 0
@@ -7700,7 +7596,7 @@ def os_edit(id):
                     keys=%s, uo=%s,
                     plan0100=%s, exec0100=%s, rp0100=%s, rf0100=%s,
                     rp_dt_envio_ua=%s,
-                    rf_dt_envio_sup=%s, rf_dt_envio_ua=%s, monit=%s
+                    rf_dt_envio_sup=%s, rf_dt_envio_ua=%s
             
                 WHERE id=%s
             """, (
@@ -7713,7 +7609,7 @@ def os_edit(id):
                 plan0100, exec0100, rp0100, rf0100,
                 rp_dt_envio_ua,
                 rf_dt_envio_sup, rf_dt_envio_ua,
-                monit,
+            
                 id
             ))
 
@@ -7844,21 +7740,6 @@ def os_edit(id):
             <select name='status'>
                 <option {'selected' if os['status']=='Andamento' else ''}>Andamento</option>
                 <option {'selected' if os['status']=='Concluido' else ''}>Concluido</option>
-            </select>
-        </div>
-        <div>Monitoramento:<br>
-            <select name='monit'>
-                <option value='' {'selected' if not os.get('monit') else ''}>
-                    Selecione
-                </option>
-        
-                <option value='SIM' {'selected' if os.get('monit') == 'SIM' else ''}>
-                    SIM
-                </option>
-        
-                <option value='NÃO' {'selected' if os.get('monit') == 'NÃO' else ''}>
-                    NÃO
-                </option>
             </select>
         </div>
     </div>
@@ -10813,141 +10694,56 @@ def minhas_delegacoes():
     requisicoes = cur.fetchall()
     con.close()
 
-    # ======================================================
-    # CHECKLIST E PDFs - REUTILIZA CACHE DA ROTA PRINCIPAL
-    # ======================================================
-
-    if requisicoes:
-
-        # Consulta às planilhas (cache compartilhado)
-        checklist_chaves, checklist_fontes = carregar_checklists_google()
-
-        # Consulta aos PDFs do Drive (cache compartilhado)
-        indice_pdfs, consulta_pdfs_ok = carregar_pdfs_checklist_drive()
-
-        for r in requisicoes:
-
-            # Status do checklist: sim, nao ou indisponivel
-            r["checklist_status"] = verificar_checklist_requisicao(
-                r,
-                checklist_chaves,
-                checklist_fontes
-            )
-
-            # PDFs correspondentes à requisição
-            r["pdf_checklist"] = localizar_pdf_requisicao(
-                r,
-                indice_pdfs
-            )
-            r["pdf_checklist_consulta_ok"] = consulta_pdfs_ok
-
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", """
 <h2>Minhas Requisições Delegadas</h2>
 
 <style>
-/* ================= CORES DOS STATUS ================= */
-
-tr.andamento td {
-    background-color: #ffe5e5;
+tr.andamento {
+    background-color: #ffe5e5; /* vermelho claro */
+    
 }
 
-tr.analisando td {
-    background-color: #fff7cc;
+tr.analisando {
+    background-color: #fff7cc; /* amarelo claro */
 }
 
-tr.analisado td {
-    background-color: #e5ffe5;
+tr.analisado {
+    background-color: #e5ffe5; /* verde claro */
 }
-
-/* Indicadores na chave */
 tr.andamento td:first-child::before {
-    content: "🔴 ";
+    content:"🔴 ";
 }
-
 tr.analisando td:first-child::before {
-    content: "🟡 ";
+    content:"🟡 ";
 }
-
 tr.analisado td:first-child::before {
-    content: "🟢 ";
+    content:"🟢 ";
 }
 
-/* ================= BOTÕES DE FILTRO ================= */
 
-.btn.andamento {
-    background: #d9534f;
-    color: #fff;
-}
-
-.btn.analisando {
-    background: #f0ad4e;
-    color: #000;
-}
-
-.btn.analisado {
-    background: #5cb85c;
-    color: #fff;
-}
-
-.btn.all {
-    background: #0275d8;
-    color: #fff;
-}
-
-.delegacoes-filtros .btn.ativo {
-    outline: 2px solid #000;
+/* Botões */
+.btn.andamento { background:#d9534f; color:#fff }
+.btn.analisando { background:#f0ad4e; color:#000 }
+.btn.analisado { background:#5cb85c; color:#fff }
+.btn.all { background:#0275d8; color:#fff }
+.btn.ativo {
+    outline: 3px solid #000;
+    transform: scale(1.05);
     font-weight: bold;
 }
 
-/* ================= FILTROS ================= */
-
-.delegacoes-filtros {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 15px;
-}
-
-.delegacoes-filtros input {
-    flex: 1 1 260px;
-    min-width: 220px;
-    max-width: 100%;
-    width: auto;
-    box-sizing: border-box;
-    padding: 9px 11px;
-    height: 38px;
-}
-
-/* ================= TABELA ================= */
+/* ================= RESPONSIVIDADE ================= */
 
 .table-container {
-    width: 100%;
-    max-width: 100%;
     overflow-x: auto;
-    overflow-y: auto;
     margin-top: 10px;
-    border: 1px solid #e2e5e9;
-    border-radius: 8px;
 }
 
+/* Largura mínima para evitar esmagamento */
 .tabela-delegacoes {
-    width: 1730px;
-    min-width: 1730px;
-    table-layout: fixed;
-    border-collapse: separate;
-    border-spacing: 0;
-}
-
-/* Células */
-.tabela-delegacoes th,
-.tabela-delegacoes td {
-    box-sizing: border-box;
-    padding: 8px 7px;
-    border-bottom: 1px solid #e5e7eb;
-    vertical-align: middle;
-    text-align: left;
+    min-width: 1350px;
+    border-collapse: collapse;
 }
 
 /* Cabeçalho fixo */
@@ -10955,208 +10751,50 @@ tr.analisado td:first-child::before {
     position: sticky;
     top: 0;
     background: #dce8fb;
-    z-index: 4;
-    white-space: nowrap;
-    height: 42px;
+    z-index: 2;
 }
 
-/* Primeira coluna congelada */
+/* Primeira coluna congelada e negrito */
 .tabela-delegacoes th:first-child,
 .tabela-delegacoes td:first-child {
     position: sticky;
     left: 0;
+    background: #fff;
+    font-weight: bold;
     z-index: 3;
-    font-weight: bold;
 }
 
-/* Cabeçalho da primeira coluna acima das demais */
-.tabela-delegacoes th:first-child {
-    z-index: 6;
-    background: #dce8fb;
+/* Ajustes específicos de largura */
+.tabela-delegacoes th:nth-child(3),
+.tabela-delegacoes td:nth-child(3) {
+    min-width: 130px; /* Status maior */
 }
 
-/* Preserva as cores dos status na coluna congelada */
-.tabela-delegacoes tr.andamento td:first-child {
-    background: #ffe5e5;
+.tabela-delegacoes th:nth-child(6),
+.tabela-delegacoes td:nth-child(6) {
+    min-width: 90px; /* Nota um pouco maior */
 }
 
-.tabela-delegacoes tr.analisando td:first-child {
-    background: #fff7cc;
+.tabela-delegacoes th:nth-child(10),
+.tabela-delegacoes td:nth-child(10) {
+    max-width: 180px; /* Resposta menor */
 }
 
-.tabela-delegacoes tr.analisado td:first-child {
-    background: #e5ffe5;
+.tabela-delegacoes th:nth-child(11),
+.tabela-delegacoes td:nth-child(11) {
+    max-width: 180px; /* Obs menor */
 }
 
-/* Evita conteúdo invadindo outras colunas */
+/* Evita quebra feia */
 .tabela-delegacoes td {
-    overflow: hidden;
-}
-
-.tabela-delegacoes td:nth-child(1),
-.tabela-delegacoes td:nth-child(4),
-.tabela-delegacoes td:nth-child(5) {
     white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-/* ================= CAMPOS INLINE ================= */
-
-.tabela-delegacoes input,
-.tabela-delegacoes select {
-    display: block;
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    height: 34px;
-    box-sizing: border-box;
-    padding: 5px 7px;
-    font-size: 13px;
-    margin: 0;
-}
-
-/* ================= AÇÕES ================= */
-
-.acoes-delegacao {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-}
-
-.acao-icone {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 7px;
-    background: #f1f3f5;
-    text-decoration: none;
-    font-size: 17px;
-    cursor: pointer;
-    box-sizing: border-box;
-}
-
-.acao-icone:hover {
-    background: #e2e6ea;
-}
-
-.acao-pdf {
-    background: #fde8e7;
-}
-
-.acao-pdf:hover {
-    background: #f8cfcc;
-}
-
-/* ================= RESPONSIVIDADE ================= */
-
-@media (max-width: 700px) {
-    .delegacoes-filtros {
-        align-items: stretch;
-    }
-
-    .delegacoes-filtros input {
-        flex-basis: 100%;
-    }
-}
-/* INDICADOR DE CHECKLIST */
-
-.checklist-cell {
-    text-align: center;
-    font-size: 21px;
-    font-weight: bold;
-    white-space: nowrap;
-}
-
-.checklist-ok {
-    color: #198754;
-}
-
-.checklist-nao {
-    color: #dc3545;
-}
-
-.checklist-erro {
-    color: #e0a000;
-}
-
-/* PDF CHECKLIST */
-
-.pdf-checklist-cell {
-    text-align: center;
-    white-space: nowrap;
-    overflow: visible !important;
-}
-
-.pdf-lista {
-    position: absolute;
-    right: 0;
-    top: 35px;
-    z-index: 100;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    padding: 10px;
-    min-width: 260px;
-    max-width: 400px;
-    max-height: 250px;
-    overflow-y: auto;
-    box-shadow: 0 3px 10px rgba(0,0,0,.15);
-}
-
-.pdf-lista a {
-    display: block;
-    padding: 7px;
-    color: #333;
-    text-decoration: none;
-    border-bottom: 1px solid #eee;
-    white-space: normal;
-    overflow-wrap: anywhere;
-}
-.pdf-lista a:hover {
-    background: #f1f3f5;
-}
-.pdf-checklist-cell summary {
-    list-style: none;
-    cursor: pointer;
-}
-.pdf-checklist-cell summary::-webkit-details-marker {
-    display: none;
-}
-/* INDICADOR DE REVISÃO */
-
-.revisao-badge {
-    display: inline-block;
-    min-width: 48px;
-    padding: 5px 9px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: bold;
-    text-align: center;
-}
-
-.revisao-sim {
-    background: #d1fae5;
-    color: #065f46;
-    border: 1px solid #198754;
-}
-
-.revisao-nao {
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #dc3545;
 }
 </style>
 
-<div class="delegacoes-filtros">
-    <input type="text"
-       id="filtro"
-       placeholder="Pesquisar requisições..."
-       >
+<div style="margin-bottom:15px;display:flex;gap:10px;flex-wrap:wrap">
+    <input type="text" id="filtro"
+           placeholder="Pesquisar..."
+           style="flex:1;padding:8px">
 
     <button onclick="filtrarStatus('')" class="btn all" id="btn-all">TODOS</button>
     <button onclick="filtrarStatus('ANDAMENTO')" class="btn andamento" id = "btn-andamento" >ANDAMENTO</button>
@@ -11167,35 +10805,18 @@ tr.analisado td:first-child::before {
 {% if requisicoes %}
 <div class="table-container">
 <table class="tabela-delegacoes">
-    <colgroup>
-        <col style="width:155px">
-        <col style="width:105px">
-        <col style="width:135px">
-        <col style="width:120px">
-        <col style="width:120px">
-        <col style="width:85px">
-        <col style="width:100px">
-        <col style="width:110px">
-        <col style="width:95px">
-        <col style="width:400px">
-        <col style="width:105px">
-        <col style="width:85px">
-        <col style="width:110px">
-    </colgroup>
     <tr>
         <th>Chave</th>
-        <th>Atribuído</th>
+        <th>Início</th>
         <th>Status</th>
         <th>Tipo</th>
         <th>Critério</th>
+        <th>Nota</th>
         <th>Nº Nota</th>
         <th>Ofício</th>
         <th>Monit?</th>
         <th>Obs</th>
-        <th style="text-align:center;">Ações</th>
-        <th style="text-align:center;">Checklist</th>
-        <th style="text-align:center;">PDF Checklist</th>
-        <th>Revisão</th>
+        <th>Ação</th>
     </tr>
     {% for r in requisicoes %}
     <tr class="{{ r.status_analise|lower }}">
@@ -11213,6 +10834,15 @@ tr.analisado td:first-child::before {
     
         <td>{{ r.tipo or '' }}</td>
         <td>{{ r.criterio or '' }}</td>
+    
+        <!-- NOTA -->
+        <td>
+            <select class="campo-inline" data-id="{{ r.id }}" data-campo="nota">
+                <option value=""></option>
+                <option value="SIM" {{ "selected" if r.nota=="SIM" else "" }}>SIM</option>
+                <option value="NÃO" {{ "selected" if r.nota=="NÃO" else "" }}>NÃO</option>
+            </select>
+        </td>
     
         <!-- Nº NOTA -->
         <td>
@@ -11251,132 +10881,11 @@ tr.analisado td:first-child::before {
                 data-id="{{ r.id }}"
                 data-campo="observacoes"
                 value="{{ r.observacoes or '' }}"
-                style="width:100%;">
+                style="width:260px;">
         </td>
         
         <td>
-            {% set url_pdf = gerar_url_pdf_requisicao(r.chave) %}
-        
-            <div class="acoes-delegacao">
-        
-                <a href="/requisicao/{{ r.id }}"
-                   class="acao-icone"
-                   title="Ver requisição">
-                    🔍
-                </a>
-        
-                {% if url_pdf %}
-                    <a href="{{ url_pdf }}"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       class="acao-icone acao-pdf"
-                       title="Abrir PDF / folha de rosto">
-                        📄
-                    </a>
-                {% endif %}
-            
-        </td>
-
-        <!-- CHECKLIST -->
-        <td class="checklist-cell" style="text-align:center;">
-
-            {% if r.checklist_status == 'sim' %}
-
-                <span class="checklist-ok"
-                      title="Checklist localizado nas planilhas">
-                    ✓
-                </span>
-
-            {% elif r.checklist_status == 'nao' %}
-
-                <span class="checklist-nao"
-                      title="Checklist não localizado">
-                    ✕
-                </span>
-
-            {% else %}
-
-                <span class="checklist-erro"
-                      title="Não foi possível consultar as planilhas">
-                    ?
-                </span>
-
-            {% endif %}
-
-        </td>
-
-        <!-- PDF CHECKLIST -->
-        <td class="pdf-checklist-cell" style="text-align:center;">
-
-            {% if r.pdf_checklist %}
-
-                {% if r.pdf_checklist|length == 1 %}
-
-                    <a href="{{ r.pdf_checklist[0].link }}"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       class="acao-icone acao-pdf"
-                       title="{{ r.pdf_checklist[0].nome }}">
-                        📄
-                    </a>
-
-                {% else %}
-
-                    <details style="position:relative;">
-
-                        <summary class="acao-icone acao-pdf"
-                                 title="Vários PDFs encontrados">
-                            📄 {{ r.pdf_checklist|length }}
-                        </summary>
-
-                        <div class="pdf-lista">
-
-                            {% for pdf in r.pdf_checklist %}
-
-                                <a href="{{ pdf.link }}"
-                                   target="_blank"
-                                   rel="noopener noreferrer">
-                                    📄 {{ pdf.nome }}
-                                </a>
-
-                            {% endfor %}
-
-                        </div>
-
-                    </details>
-
-                {% endif %}
-
-            {% elif not r.pdf_checklist_consulta_ok %}
-
-                <span style="color:#e0a000;"
-                      title="Falha na consulta ao Google Drive">
-                    ?
-                </span>
-
-            {% else %}
-
-                <span style="color:#999;"
-                      title="PDF não localizado">
-                    —
-                </span>
-
-            {% endif %}
-        </td>
-        
-        <!-- REVISÃO -->
-        <td style="text-align:center;">
-            {% set revisao = (r.nota or 'NÃO')|upper %}
-            {% if revisao == 'SIM' %}
-                <span class="revisao-badge revisao-sim">
-                    SIM
-                </span>
-            {% else %}
-        
-                <span class="revisao-badge revisao-nao">
-                    NÃO
-                </span>
-            {% endif %}
+            <a class="btn" href="/requisicao/{{ r.id }}">Ver</a>
         </td>
     </tr>
     {% endfor %}
@@ -11384,140 +10893,111 @@ tr.analisado td:first-child::before {
 </div>
 
 <script>
-
-let statusAtual = "ANDAMENTO";
-
-/* ================= FILTROS ================= */
-
-function ativarBotao(status) {
-
-    document.querySelectorAll(
-        ".delegacoes-filtros .btn"
-    ).forEach(b => b.classList.remove("ativo"));
-
-    if (status === "") {
-        document.getElementById("btn-all").classList.add("ativo");
-    } else {
-        document.getElementById(
-            "btn-" + status.toLowerCase()
-        ).classList.add("ativo");
-    }
-}
-
-function filtrarStatus(status) {
-
-    statusAtual = status;
-
-    ativarBotao(status);
-
-    aplicarFiltros();
-}
-
-function aplicarFiltros() {
-
-    const texto = document
-        .getElementById("filtro")
-        .value
-        .toLowerCase();
-
-    document.querySelectorAll(
-        ".tabela-delegacoes tr"
-    ).forEach((tr, i) => {
-
-        if (i === 0) return;
-
-        const matchTexto = tr.innerText
-            .toLowerCase()
-            .includes(texto);
-
-        const matchStatus =
-            !statusAtual ||
-            tr.classList.contains(statusAtual.toLowerCase());
-
-        tr.style.display =
-            (matchTexto && matchStatus) ? "" : "none";
-
-    });
-}
-
-document.getElementById("filtro")
-    .addEventListener("input", aplicarFiltros);
-
-
-/* ================= SALVAMENTO INLINE ================= */
-
-document.querySelectorAll(
-    ".campo-inline, .status-select"
-).forEach(el => {
-
-    const evento =
-        el.tagName === "SELECT" ? "change" : "blur";
-
-    el.addEventListener(evento, function() {
-
-        const tr = this.closest("tr");
-
-        const id = this.dataset.id;
-
-        const fd = new FormData();
-
-        fd.append("acao", "atualizar");
-        fd.append("id", id);
-
-        fd.append(
-            "status_analise",
-            tr.querySelector(".status-select").value
-        );
-
-        fd.append(
-            "num_nota",
-            tr.querySelector("[data-campo='num_nota']").value
-        );
-
-        fd.append(
-            "oficio",
-            tr.querySelector("[data-campo='oficio']").value
-        );
-
-        fd.append(
-            "monitoramento",
-            tr.querySelector("[data-campo='monitoramento']").value
-        );
-
-        fd.append(
-            "observacoes",
-            tr.querySelector("[data-campo='observacoes']").value
-        );
+document.querySelectorAll(".status-select").forEach(sel => {
+    sel.addEventListener("change", function () {
 
         fetch("/requisicoes", {
             method: "POST",
-            body: fd
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                acao: "atualizar",
+                id: this.dataset.id,
+                status_analise: this.value
+            })
         })
         .then(r => r.text())
         .then(resp => {
-
             if (resp !== "OK") {
-                alert("Erro ao salvar");
-                console.error(resp);
+                alert("Erro ao atualizar status");
                 return;
             }
-
-            /* Atualiza a cor da linha ao mudar o status */
-            if (this.classList.contains("status-select")) {
-                tr.className = this.value.toLowerCase();
-            }
-            aplicarFiltros();
+            let tr = this.closest("tr");
+            tr.className = this.value.toLowerCase();
         })
         .catch(err => {
             alert("Erro de rede");
             console.error(err);
         });
+
     });
 });
 
-/* ================= INICIALIZAÇÃO ================= */
-ativarBotao("ANDAMENTO");
-aplicarFiltros();
+let statusAtual = "ANDAMENTO"; // padrão
+
+function ativarBotao(status){
+    document.querySelectorAll(".btn").forEach(b => b.classList.remove("ativo"));
+
+    if(status === ""){
+        document.getElementById("btn-all").classList.add("ativo");
+    } else {
+        document.getElementById("btn-" + status.toLowerCase()).classList.add("ativo");
+    }
+}
+
+document.getElementById("filtro").addEventListener("keyup", aplicarFiltros);
+
+function filtrarStatus(status){
+    statusAtual = status;
+    ativarBotao(status);
+    aplicarFiltros();
+}
+
+function aplicarFiltros(){
+    let texto = document.getElementById("filtro").value.toLowerCase();
+
+    document.querySelectorAll("table tr").forEach((tr, i) => {
+        if (i === 0) return;
+
+        let matchTexto = tr.innerText.toLowerCase().includes(texto);
+        let matchStatus = !statusAtual || tr.classList.contains(statusAtual.toLowerCase());
+
+        tr.style.display = (matchTexto && matchStatus) ? "" : "none";
+    });
+}
+
+/* APLICA O FILTRO AO CARREGAR A PÁGINA */
+document.addEventListener("DOMContentLoaded", () => {
+    ativarBotao("ANDAMENTO");
+    aplicarFiltros();
+});
+
+document.querySelectorAll(".campo-inline, .status-select").forEach(el => {
+
+    let evento = el.tagName === "SELECT" ? "change" : "blur";
+
+    el.addEventListener(evento, function(){
+
+        let tr = this.closest("tr");
+        let id = this.dataset.id || tr.querySelector(".status-select").dataset.id;
+
+        let fd = new FormData();
+        fd.append("acao","atualizar");
+        fd.append("id", id);
+
+        fd.append("status_analise", tr.querySelector(".status-select").value);
+        fd.append("nota", tr.querySelector("[data-campo='nota']").value);
+        fd.append("num_nota", tr.querySelector("[data-campo='num_nota']").value);
+        fd.append("oficio", tr.querySelector("[data-campo='oficio']").value);
+        fd.append("monitoramento", tr.querySelector("[data-campo='monitoramento']").value);
+        fd.append("observacoes", tr.querySelector("[data-campo='observacoes']").value);
+
+        fetch("/requisicoes", { method:"POST", body: fd })
+        .then(r => r.text())
+        .then(resp => {
+            if(resp !== "OK"){
+                alert("Erro ao salvar");
+                console.error(resp);
+            }
+        })
+        .catch(err => {
+            alert("Erro de rede");
+            console.error(err);
+        });
+
+    });
+
+});
+
 </script>
 
 
@@ -11528,10 +11008,9 @@ aplicarFiltros();
         requisicoes=requisicoes,
         fmt=fmt,
         user=session["user"],
-        perfil=session["perfil"],
-        gerar_url_pdf_requisicao=gerar_url_pdf_requisicao
+        perfil=session["perfil"]
     )
-    
+
 # ---------------------------------------------------------
 # Visualizar uma requisição + histórico de horas associadas
 # ---------------------------------------------------------
@@ -13172,804 +12651,6 @@ def importar_requisicoes_completo():
     </script>
     """)
 
-def gerar_url_pdf_requisicao(chave):
-    partes = [
-        parte.strip()
-        for parte in str(chave or "").split("/")
-    ]
-    if len(partes) < 3:
-        return None
-    numero, ano, sigla = partes[:3]
-    if not numero.isdigit() or not ano.isdigit():
-        return None
-    empresas = {
-        "DMAE": 2,
-        "ARESAN": 62,
-        "FUTEL": 5,
-        "FERUB": 6,
-        "EMAM": 9,
-        "IPREMU": 3
-    }
-    cd_empresa = empresas.get(sigla.upper(), 1)
-    parametros = {
-        "__report": "../webcompras/WEB-INF/classes/rel/birt/requisicaoExternaTramitacao.rptdesign",
-        "jndiRelatorio": "java:comp/env/jdbc/webcompras",
-        "gestao": 1,
-        "cdEmpresa": cd_empresa,
-        "cdFilialEmpresa": 1,
-        "dtAnoRequisicao": ano,
-        "nrRequisicao": numero,
-        "nrEmpenho": 0,
-        "nrContrato": 0,
-        "nrSeq": 0,
-        "nrAnoLicitacao": 0,
-        "dtAnoEmpenho": 0,
-        "aditamento": 0,
-        "nrAditivoArg": 0,
-        "nrRenovacaoArg": 0,
-        "usuario": "****7533***",
-        "nomeUsuario": "Renan Justino Rezende Silva",
-        "__format": "pdf",
-        "__pageoverflow": 0,
-        "__overwrite": "true"
-    }
-    base_url = (
-        "https://webcompras.uberlandia.mg.gov.br/"
-        "plcVis372/frameset"
-    )
-    return base_url + "?" + urlencode(parametros)
-
-def gerar_url_pdf_requisicao_eng(numero_ano, secretaria):
-    partes = [
-        parte.strip()
-        for parte in str(numero_ano or "").split("/")
-    ]
-    if len(partes) < 2:
-        return None
-    numero = partes[0]
-    ano = partes[1]
-    if not numero.isdigit() or not ano.isdigit():
-        return None
-    # Identifica a sigla pela secretaria
-    texto = str(secretaria or "").upper()
-    siglas = [
-        "DMAE",
-        "ARESAN",
-        "FUTEL",
-        "FERUB",
-        "EMAM",
-        "IPREMU"
-    ]
-    sigla = next(
-        (s for s in siglas if s in texto),
-        "OUTRA"
-    )
-    # Caso o número já contenha a sigla, aproveita essa informação
-    if len(partes) >= 3 and partes[2]:
-        sigla = partes[2].upper()
-    chave = f"{numero}/{ano}/{sigla}"
-    
-    return gerar_url_pdf_requisicao(chave)
-
-
-import csv
-import io
-import re
-import time
-import unicodedata
-import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-
-# ==========================================================
-# CHECKLIST - CONSULTA NAS DUAS PLANILHAS DO GOOGLE SHEETS
-# ==========================================================
-
-CHECKLIST_PLANILHAS = {
-    "planilha_1": {
-        "id": "1teFFy38hvUmAn1Cfr6m0EXSaAhOvCUohtAH5MjQ6zbo",
-        "gid": 262102344
-    },
-    "planilha_2": {
-        "id": "1RYbTV2AzzVBswO_5gzDKSSSR1BiNuUF-Di3pZkjHs_s",
-        "gid": 1076101217
-    },
-    "planilha_3": {
-        "id": "1r-tV6Pecy_TI74jebhA7wQMfaEBbzhaEO2PFOXp9J8I",
-        "gid": 1818821254
-    },
-    "planilha_4": {
-        "id": "1oLfGkaSge7Jx5RCeXv1Pv_OrMMG4Rhxcez1d7zAGY0w",
-        "gid": 650689614
-    },
-    "planilha_5": {
-        "id": "1NFr87VLSvs_dcQujmEeMXHixBfPiuMbyR3EBAurEh-M",
-        "gid": 2086986679
-    }
-}
-
-# Mapeamento do código da secretaria para a entidade
-CHECKLIST_UO = {
-    "17": "DMAE",
-    "18": "IPREMU",
-    "19": "FUTEL",
-    "20": "FERUB",
-    "21": "EMAM",
-    "38": "ARESAN"
-}
-
-CHECKLIST_SIGLAS = tuple(CHECKLIST_UO.values())
-
-# Cache
-CHECKLIST_CACHE = {
-    "atualizado": 0,
-    "chaves": set(),
-    "fontes_ok": {}
-}
-
-
-def normalizar_checklist_texto(valor):
-    texto = str(valor or "").upper()
-
-    texto = unicodedata.normalize("NFKD", texto)
-
-    texto = "".join(
-        c for c in texto
-        if not unicodedata.combining(c)
-    )
-
-    texto = texto.replace("–", "-").replace("—", "-")
-
-    return texto.strip()
-
-# ==========================================================
-# INTERPRETA UMA CÉLULA DA COLUNA D
-# ==========================================================
-def extrair_requisicoes_checklist(valor):
-
-    texto = normalizar_checklist_texto(valor)
-
-    if not texto:
-        return set()
-
-    # ==================================================
-    # IDENTIFICA ENTIDADE
-    # Aceita DMAE grudado no ano: 2026DMAE
-    # ==================================================
-
-    entidade = "PMU"
-
-    for sigla in CHECKLIST_SIGLAS:
-
-        if re.search(
-            rf"(?<![A-Z]){sigla}(?![A-Z0-9])",
-            texto
-        ):
-            entidade = sigla
-            break
-
-    # ==================================================
-    # IDENTIFICA O ANO
-    # Aceita /2026, -2026, _2026 e 2026DMAE
-    # ==================================================
-
-    anos = re.findall(
-        r"(?<!\d)((?:19|20)\d{2})(?!\d)",
-        texto
-    )
-
-    ano = anos[-1] if anos else None
-
-    # ==================================================
-    # REMOVE AS SIGLAS
-    # ==================================================
-
-    texto_numeros = texto
-
-    for sigla in CHECKLIST_SIGLAS:
-
-        texto_numeros = re.sub(
-            rf"(?<![A-Z]){sigla}(?![A-Z0-9])",
-            " ",
-            texto_numeros
-        )
-
-    # ==================================================
-    # REMOVE OS ANOS
-    # ==================================================
-
-    for ano_encontrado in set(anos):
-
-        texto_numeros = re.sub(
-            rf"(?<!\d){re.escape(ano_encontrado)}(?!\d)",
-            " ",
-            texto_numeros
-        )
-
-    # ==================================================
-    # EXTRAI TODOS OS NÚMEROS
-    # ==================================================
-
-    numeros = re.findall(
-        r"\d+",
-        texto_numeros
-    )
-
-    resultado = set()
-    for numero in numeros:
-
-        resultado.add((
-            numero,
-            ano,
-            entidade
-        ))
-    return resultado
-
-# ==========================================================
-# IDENTIFICA ENTIDADE DA REQUISIÇÃO NO BANCO
-# ==========================================================
-
-def entidade_requisicao_banco(r):
-
-    secretaria = str(
-        r.get("secretaria") or ""
-    ).strip()
-
-    # Os dois primeiros dígitos identificam a UO
-    m = re.match(
-        r"^\s*(\d{2})\b",
-        secretaria
-    )
-
-    if m:
-
-        codigo = m.group(1)
-
-        return CHECKLIST_UO.get(
-            codigo,
-            "PMU"
-        )
-
-    # Fallback: tenta identificar pela própria chave
-    chave = str(r.get("chave") or "")
-
-    for sigla in CHECKLIST_SIGLAS:
-
-        if re.search(
-            rf"(?<![A-Z0-9]){sigla}(?![A-Z0-9])",
-            chave.upper()
-        ):
-            return sigla
-
-    return "PMU"
-
-
-# ==========================================================
-# EXTRAI NÚMERO E ANO DA CHAVE DO SISTEMA
-# ==========================================================
-
-def dados_chave_requisicao(chave):
-
-    chave = str(chave or "").strip()
-
-    if not chave:
-        return None, None
-
-    # Primeiro componente: número da requisição
-    m = re.match(
-        r"^\s*(\d+)",
-        chave
-    )
-
-    if not m:
-        return None, None
-
-    numero = m.group(1)
-
-    # Identifica o ano na chave
-    anos = re.findall(
-        r"(?<!\d)(?:19|20)\d{2}(?!\d)",
-        chave
-    )
-
-    ano = anos[-1] if anos else None
-
-    return numero, ano
-
-
-# ==========================================================
-# DOWNLOAD DE UMA PLANILHA
-# ==========================================================
-
-
-def baixar_planilha_checklist(planilha_id, gid=None):
-
-    url = (
-        f"https://docs.google.com/spreadsheets/d/"
-        f"{planilha_id}/export"
-    )
-
-    params = {
-        "format": "csv"
-    }
-
-    if gid is not None:
-        params["gid"] = str(gid)
-
-    resposta = requests.get(
-        url,
-        params=params,
-        timeout=(10, 30),
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        }
-    )
-
-    print(
-        f"CHECKLIST HTTP: {resposta.status_code} "
-        f"| URL: {resposta.url} "
-        f"| CONTENT-TYPE: {resposta.headers.get('Content-Type')}"
-    )
-
-    resposta.raise_for_status()
-
-    conteudo = resposta.content.decode(
-        "utf-8-sig",
-        errors="replace"
-    )
-
-    # Verifica se Google retornou uma página HTML
-    # em vez dos dados CSV
-    if (
-        conteudo.lstrip().lower().startswith("<html")
-        or conteudo.lstrip().lower().startswith("<!doctype html")
-        or "text/html" in resposta.headers.get(
-            "Content-Type", ""
-        ).lower()
-    ):
-        raise ValueError(
-            "Google Sheets retornou HTML em vez de CSV. "
-            "Verifique o compartilhamento da planilha "
-            "e o GID da aba."
-        )
-
-    return conteudo
-
-# ==========================================================
-# CARREGA AS DUAS PLANILHAS COM CACHE
-# ==========================================================
-
-def carregar_checklists_google():
-
-    agora = time.time()
-
-    fontes_anteriores = CHECKLIST_CACHE["fontes_ok"]
-
-    ttl = (
-        86400
-        if fontes_anteriores
-        and all(fontes_anteriores.values())
-        else 300
-    )
-
-    if (
-        CHECKLIST_CACHE["atualizado"]
-        and agora - CHECKLIST_CACHE["atualizado"] < ttl
-    ):
-        return (
-            CHECKLIST_CACHE["chaves"],
-            CHECKLIST_CACHE["fontes_ok"]
-        )
-
-    todas_chaves = set()
-
-    fontes_ok = {
-        nome: False
-        for nome in CHECKLIST_PLANILHAS
-    }
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-
-        tarefas = {
-            executor.submit(
-                baixar_planilha_checklist,
-                config["id"],
-                config["gid"]
-            ): nome
-
-            for nome, config in CHECKLIST_PLANILHAS.items()
-        }
-
-        for futuro in as_completed(tarefas):
-
-            nome = tarefas[futuro]
-
-            try:
-
-                conteudo = futuro.result()
-
-                leitor = csv.reader(
-                    io.StringIO(conteudo)
-                )
-
-                chaves_planilha = set()
-                linhas_validas = 0
-
-                for linha in leitor:
-
-                    # Coluna D
-                    if len(linha) <= 3:
-                        continue
-
-                    valor = linha[3]
-
-                    if not valor.strip():
-                        continue
-
-                    linhas_validas += 1
-
-                    encontradas = extrair_requisicoes_checklist(
-                        valor
-                    )
-
-                    chaves_planilha.update(encontradas)
-
-                if linhas_validas == 0:
-                    raise ValueError(
-                        "Nenhuma linha válida encontrada na coluna D."
-                    )
-
-                todas_chaves.update(chaves_planilha)
-
-                fontes_ok[nome] = True
-
-                print(
-                    f"CHECKLIST {nome}: "
-                    f"{linhas_validas} linhas lidas | "
-                    f"{len(chaves_planilha)} combinações encontradas."
-                )
-
-            except Exception as e:
-
-                print(
-                    f"ERRO CHECKLIST [{nome}]: "
-                    f"{type(e).__name__}: {e}"
-                )
-
-    CHECKLIST_CACHE["chaves"] = todas_chaves
-    CHECKLIST_CACHE["fontes_ok"] = fontes_ok
-    CHECKLIST_CACHE["atualizado"] = agora
-
-    print(
-        "CHECKLIST RESULTADO:",
-        fontes_ok,
-        "| TOTAL DE COMBINAÇÕES:",
-        len(todas_chaves)
-    )
-
-    return todas_chaves, fontes_ok
-
-# ==========================================================
-# VERIFICA SE A REQUISIÇÃO POSSUI CHECKLIST
-# ==========================================================
-
-def verificar_checklist_requisicao(
-    requisicao,
-    chaves_planilhas,
-    fontes_ok
-):
-
-    numero, ano = dados_chave_requisicao(
-        requisicao.get("chave")
-    )
-
-    if not numero:
-        return "indisponivel"
-
-    entidade = entidade_requisicao_banco(
-        requisicao
-    )
-
-    # Compara número, ano e entidade
-    for numero_planilha, ano_planilha, entidade_planilha in chaves_planilhas:
-
-        if numero != numero_planilha:
-            continue
-
-        if entidade != entidade_planilha:
-            continue
-
-        if ano_planilha and ano and ano_planilha != ano:
-            continue
-
-        # Encontrou em qualquer uma das planilhas
-        return "sim"
-
-    # Só apresenta X quando as duas consultas funcionaram
-    if all(fontes_ok.values()):
-        return "nao"
-
-    # Se alguma planilha falhou, não afirma que não existe
-    return "indisponivel"
-
-
-# ==========================================================
-# CHECKLIST PDF - GOOGLE DRIVE
-# ==========================================================
-
-DRIVE_CHECKLIST_FOLDER = "15eFq7HG3wp-DMnkSCHenWoCoNAJ7_yLu"
-
-GOOGLE_DRIVE_API_KEY = "AIzaSyBLrC9LKmQqe_DbLcR-tLb3zbkM9tCwzU4"
-DRIVE_API_URL = "https://www.googleapis.com/drive/v3/files"
-
-# Cache dos PDFs
-CHECKLIST_PDF_CACHE = {
-    "atualizado": 0,
-    "arquivos": {},
-    "ok": False
-}
-
-
-# ==========================================================
-# IDENTIFICA A REQUISIÇÃO PELO NOME DO PDF
-# ==========================================================
-
-def extrair_chave_pdf(nome_arquivo):
-
-    nome = str(nome_arquivo or "")
-
-    # Procura o trecho Req
-    m = re.search(
-        r"\bREQ(?:UISI[ÇC][AÃ]O)?\s*",
-        nome,
-        flags=re.IGNORECASE
-    )
-
-    if not m:
-        return set()
-
-    # Ignora tudo que vem antes de Req
-    trecho = nome[m.end():]
-
-    # Remove extensão
-    trecho = re.sub(
-        r"\.pdf$",
-        "",
-        trecho,
-        flags=re.IGNORECASE
-    )
-
-    # Reutiliza o interpretador das planilhas
-    return extrair_requisicoes_checklist(trecho)
-
-
-# ==========================================================
-# PERCORRE TODAS AS PASTAS E SUBPASTAS DO DRIVE
-# ==========================================================
-
-def listar_pdfs_drive_checklist():
-
-    if not GOOGLE_DRIVE_API_KEY:
-        raise ValueError(
-            "GOOGLE_DRIVE_API_KEY não configurada no Render."
-        )
-
-    pastas_pendentes = [
-        DRIVE_CHECKLIST_FOLDER
-    ]
-
-    pastas_visitadas = set()
-
-    arquivos_por_chave = {}
-
-    total_pdfs = 0
-
-    while pastas_pendentes:
-
-        pasta_id = pastas_pendentes.pop()
-
-        if pasta_id in pastas_visitadas:
-            continue
-
-        pastas_visitadas.add(pasta_id)
-
-        page_token = None
-
-        while True:
-
-            params = {
-                "key": GOOGLE_DRIVE_API_KEY,
-
-                "q": (
-                    f"'{pasta_id}' in parents "
-                    "and trashed = false"
-                ),
-
-                "pageSize": 1000,
-
-                "fields": (
-                    "nextPageToken,"
-                    "files(id,name,mimeType,webViewLink,modifiedTime)"
-                ),
-
-                "supportsAllDrives": True,
-                "includeItemsFromAllDrives": True
-            }
-
-            if page_token:
-                params["pageToken"] = page_token
-
-            resposta = requests.get(
-                DRIVE_API_URL,
-                params=params,
-                timeout=(5, 25)
-            )
-
-            resposta.raise_for_status()
-
-            dados = resposta.json()
-
-            for arquivo in dados.get("files", []):
-
-                nome = arquivo.get("name", "")
-
-                mime = arquivo.get("mimeType", "")
-
-                # Se for uma subpasta, entra nela também
-                if mime == "application/vnd.google-apps.folder":
-
-                    pastas_pendentes.append(
-                        arquivo["id"]
-                    )
-
-                    continue
-
-                # Considera somente PDFs
-                if (
-                    mime != "application/pdf"
-                    and not nome.lower().endswith(".pdf")
-                ):
-                    continue
-
-                total_pdfs += 1
-
-                # Identifica número, ano e entidade
-                chaves = extrair_chave_pdf(nome)
-
-                if not chaves:
-                    print(
-                        "PDF sem padrão de requisição:",
-                        nome
-                    )
-                    continue
-
-                link = arquivo.get("webViewLink")
-
-                if not link:
-                    link = (
-                        "https://drive.google.com/file/d/"
-                        f"{arquivo['id']}/view"
-                    )
-
-                registro_pdf = {
-                    "id": arquivo["id"],
-                    "nome": nome,
-                    "link": link,
-                    "modificado": arquivo.get(
-                        "modifiedTime", ""
-                    )
-                }
-
-                # Um PDF pode identificar mais de uma requisição
-                for chave in chaves:
-
-                    arquivos_por_chave.setdefault(
-                        chave, []
-                    ).append(registro_pdf)
-
-            page_token = dados.get("nextPageToken")
-
-            if not page_token:
-                break
-
-    # Ordena os PDFs pela última modificação
-    for chave in arquivos_por_chave:
-
-        arquivos_por_chave[chave].sort(
-            key=lambda x: x["modificado"],
-            reverse=True
-        )
-
-    print(
-        "CHECKLIST DRIVE:",
-        len(pastas_visitadas),
-        "pastas consultadas |",
-        total_pdfs,
-        "PDFs localizados |",
-        len(arquivos_por_chave),
-        "chaves identificadas"
-    )
-
-    return arquivos_por_chave
-
-# ==========================================================
-# CARREGAMENTO COM CACHE
-# ==========================================================
-
-def carregar_pdfs_checklist_drive():
-
-    agora = time.time()
-
-    # 24 horas se funcionar; 5 minutos se houver falha
-    ttl = (
-        86400
-        if CHECKLIST_PDF_CACHE["ok"]
-        else 300
-    )
-
-    # Verifica se o cache ainda é válido
-    if (
-        CHECKLIST_PDF_CACHE["atualizado"]
-        and agora - CHECKLIST_PDF_CACHE["atualizado"] < ttl
-    ):
-
-        return (
-            CHECKLIST_PDF_CACHE["arquivos"],
-            CHECKLIST_PDF_CACHE["ok"]
-        )
-
-    try:
-
-        arquivos = listar_pdfs_drive_checklist()
-
-        CHECKLIST_PDF_CACHE["arquivos"] = arquivos
-        CHECKLIST_PDF_CACHE["atualizado"] = agora
-        CHECKLIST_PDF_CACHE["ok"] = True
-
-        print("CHECKLIST DRIVE: cache atualizado com sucesso.")
-
-        return arquivos, True
-
-    except Exception as e:
-
-        print(
-            "ERRO NA BUSCA DOS PDFs:",
-            type(e).__name__,
-            str(e)
-        )
-
-        CHECKLIST_PDF_CACHE["atualizado"] = agora
-        CHECKLIST_PDF_CACHE["ok"] = False
-
-        return (
-            CHECKLIST_PDF_CACHE["arquivos"],
-            False
-        )
-
-
-# ==========================================================
-# LOCALIZA PDF DA REQUISIÇÃO
-# ==========================================================
-
-def localizar_pdf_requisicao(r, indice_pdfs):
-
-    numero, ano = dados_chave_requisicao(
-        r.get("chave")
-    )
-
-    if not numero or not ano:
-        return []
-
-    entidade = entidade_requisicao_banco(r)
-
-    chave = (
-        numero,
-        ano,
-        entidade
-    )
-
-    return indice_pdfs.get(chave, [])
-
 @app.route("/requisicoes", methods=["GET", "POST"])
 def requisicoes():
     if "user" not in session:
@@ -14037,6 +12718,7 @@ def requisicoes():
                         UPDATE requisicoes
                         SET
                             status_analise = %s,
+                            nota = NULLIF(%s,''),
                             num_nota = NULLIF(%s,''),
                             oficio = NULLIF(%s,''),
                             monitoramento = NULLIF(%s,''),
@@ -14045,6 +12727,7 @@ def requisicoes():
                         WHERE id = %s
                     """, (
                         status,
+                        nota,
                         num_nota,
                         oficio,
                         monitoramento,
@@ -14052,37 +12735,27 @@ def requisicoes():
                         observacoes,
                         req_id
                     ))
-                    
+    
                 else:
                     cur.execute("""
                         UPDATE requisicoes
                         SET
-                            status_analise = NULLIF(%s, ''),
-                            tipo = NULLIF(%s, ''),
-                            criterio = NULLIF(%s, ''),
-                    
-                            data_inicio = CASE
-                                WHEN NULLIF(%s, '') IS NOT NULL
-                                     AND requisicoes.data_inicio IS NULL
-                                THEN (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
-                                ELSE requisicoes.data_inicio
-                            END,
-                    
-                            servidor_id = NULLIF(%s, '')::INTEGER,
-                            nota = NULLIF(%s, ''),
-                            num_nota = NULLIF(%s, ''),
-                            oficio = NULLIF(%s, ''),
-                            monitoramento = NULLIF(%s, ''),
-                            monitoramento_resposta = NULLIF(%s, ''),
-                            observacoes = NULLIF(%s, '')
-                    
+                            status_analise = NULLIF(%s,''),
+                            tipo = NULLIF(%s,''),
+                            criterio = NULLIF(%s,''),
+                            servidor_id = NULLIF(%s,'')::INTEGER,
+                            nota = NULLIF(%s,''),
+                            num_nota = NULLIF(%s,''),
+                            oficio = NULLIF(%s,''),
+                            monitoramento = NULLIF(%s,''),
+                            monitoramento_resposta = NULLIF(%s,''),
+                            observacoes = NULLIF(%s,'')
                         WHERE id = %s
                     """, (
                         status,
                         tipo,
                         criterio,
-                        servidor_id,  # Verifica se há responsável selecionado
-                        servidor_id,  # Grava o responsável
+                        servidor_id,
                         nota,
                         num_nota,
                         oficio,
@@ -14196,20 +12869,6 @@ def requisicoes():
     
     # Detecta se existe página anterior
     tem_anterior = page > 1
-  
-    # ======================================================
-    # VERIFICA CHECKLIST DAS REQUISIÇÕES DA PÁGINA
-    # ======================================================
-    
-    checklist_chaves, checklist_fontes = carregar_checklists_google()
-    
-    for r in rows:
-    
-        r["checklist_status"] = verificar_checklist_requisicao(
-            r,
-            checklist_chaves,
-            checklist_fontes
-        )
     
     # Colaboradores (mantém como está)
     cur.execute("SELECT id, nome FROM colaboradores ORDER BY nome")
@@ -14219,21 +12878,6 @@ def requisicoes():
     hoje = date.today().isoformat()
     
     con.close()
-
-    # ======================================================
-    # LOCALIZA OS PDFs DOS CHECKLISTS
-    # ======================================================
-    
-    indice_pdfs, consulta_pdfs_ok = carregar_pdfs_checklist_drive()
-    
-    for r in rows:
-    
-        r["pdf_checklist"] = localizar_pdf_requisicao(
-            r,
-            indice_pdfs
-        )
-    
-        r["pdf_checklist_consulta_ok"] = consulta_pdfs_ok
 
     html = """
     
@@ -14255,16 +12899,11 @@ def requisicoes():
     
     /* cabeçalho fixo */
     #tbl th {
-    position: sticky;
-    top: 0;
-    background: #dce8fb !important;
-    color: #333;
-    z-index: 10;
-    text-align: center;
-    padding: 8px;
-    border: 1px solid #c5d3e5;
-    white-space: nowrap;
-}
+        position: sticky;
+        top: 0;
+        background: #dce8fb;
+        z-index: 10;
+    }
     
     /* coluna chave */
     #tbl th:nth-child(1),
@@ -14291,116 +12930,6 @@ def requisicoes():
     #tbl th:nth-child(2) {
         z-index: 11;
     }
-    .acoes-cell {
-        white-space: nowrap;
-        min-width: 130px;
-    }
-    
-    .acao-icone {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 30px;
-        height: 30px;
-        margin: 0 2px;
-        border: none;
-        border-radius: 6px;
-        background: #f1f3f5;
-        text-decoration: none;
-        font-size: 16px;
-        cursor: pointer;
-        vertical-align: middle;
-    }
-    
-    .acao-icone:hover {
-        background: #e2e6ea;
-        transform: translateY(-1px);
-    }
-    
-    .acao-pdf {
-        background: #fde8e7;
-    }
-    
-    .acao-pdf:hover {
-        background: #f8cfcc;
-    }
-    .checklist-cell {
-        text-align: center;
-        min-width: 85px;
-        font-size: 22px;
-        font-weight: bold;
-    }
-    
-    .checklist-ok {
-        color: #198754;
-    }
-    
-    .checklist-nao {
-        color: #dc3545;
-    }
-    
-    .checklist-erro {
-        color: #e0a000;
-    }
-    .pdf-checklist-cell {
-    text-align: center;
-    min-width: 110px;
-}
-
-.pdf-lista {
-    position: absolute;
-    right: 0;
-    top: 32px;
-    z-index: 100;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    padding: 10px;
-    min-width: 260px;
-    max-width: 400px;
-    max-height: 250px;
-    overflow-y: auto;
-    box-shadow: 0 3px 10px rgba(0,0,0,.15);
-}
-
-.pdf-lista a {
-    display: block;
-    padding: 7px;
-    color: #333;
-    text-decoration: none;
-    border-bottom: 1px solid #eee;
-    white-space: normal;
-    overflow-wrap: anywhere;
-}
-
-.pdf-lista a:hover {
-    background: #f1f3f5;
-}
-.revisao-select {
-    min-width: 85px;
-    padding: 5px;
-    border-radius: 6px;
-    font-weight: bold;
-    text-align: center;
-    cursor: pointer;
-}
-
-.revisao-sim {
-    background: #d1fae5;
-    color: #065f46;
-    border: 1px solid #198754;
-}
-
-.revisao-nao {
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #dc3545;
-}
-
-.revisao-select:disabled {
-    opacity: 1;
-    cursor: not-allowed;
-}
     </style>
     
     <h3>Requisições</h3>
@@ -14459,13 +12988,11 @@ def requisicoes():
             <th>Responsável</th>
             <th>Início</th>
             <th>Fim</th>
+            <th>Nota</th>
             <th>Nº Nota</th>
             <th>Ofício</th>
             <th>Monitoramento</th>
             <th>Ações</th>
-            <th>Checklist</th>
-            <th>PDF Checklist</th>
-            <th>Revisão</th>
         </tr>
 
         {% for r in rows %}
@@ -14515,7 +13042,7 @@ def requisicoes():
             </td>
 
             <td>
-                <select onchange="salvar({{ r.id }}, true)" id="servidor_{{ r.id }}">
+                <select onchange="salvar({{ r.id }})" id="servidor_{{ r.id }}">
                     <option value=""></option>
                     {% for col in colaboradores %}
                         <option value="{{ col.id }}" {% if r.servidor_id==col.id %}selected{% endif %}>
@@ -14526,12 +13053,9 @@ def requisicoes():
             </td>
 
             <td>
-                <input
-                    type="date"
-                    id="data_inicio_{{ r.id }}"
-                    value="{{ r.data_inicio if r.data_inicio else '' }}"
-                    onchange="atualizarCampo({{ r.id }}, 'data_inicio', this.value)"
-                >
+                <input type="date"
+                       value="{{ r.data_inicio if r.data_inicio else '' }}"
+                       onchange="atualizarCampo({{ r.id }}, 'data_inicio', this.value)">
 
             </td>
 
@@ -14539,6 +13063,16 @@ def requisicoes():
                 <input type="date"
                        value="{{ r.data_fim or '' }}"
                        onchange="atualizarCampo({{ r.id }}, 'data_fim', this.value)">
+            </td>
+
+            <td>
+                <select onchange="salvar({{ r.id }})"
+                id="nota_{{ r.id }}"
+                style="min-width:75px;">
+                    <option value=""></option>
+                    <option value="SIM" {% if r.nota=='SIM' %}selected{% endif %}>SIM</option>
+                    <option value="NÃO" {% if r.nota=='NÃO' %}selected{% endif %}>NÃO</option>
+                </select>
             </td>
 
             <td>
@@ -14566,247 +13100,47 @@ def requisicoes():
                 </select>
             </td>
             
-            <td class="acoes-cell">
-                {% set url_pdf = gerar_url_pdf_requisicao(r.chave) %}
-    
-                <a href="/requisicao/{{ r.id }}"
-                   class="acao-icone"
-                   title="Ver requisição">🔍</a>
-            
-                <a href="/requisicoes/editar/{{ r.id }}"
-                   class="acao-icone"
-                   title="Editar requisição">✏️</a>
-            
-                {% if url_pdf %}
-                    <a href="{{ url_pdf }}"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       class="acao-icone acao-pdf"
-                       title="Abrir PDF da requisição">📄</a>
-                {% endif %}
-            
-                <button onclick="excluir({{ r.id }})"
-                        class="acao-icone"
-                        title="Excluir">🗑️</button>
-            
+            <td style="white-space:nowrap;">
+                <a href="/requisicao/{{ r.id }}" title="Ver">🔍</a>
+                &nbsp;
+                <a href="/requisicoes/editar/{{ r.id }}" title="Editar">✏️</a>
+                &nbsp;
+                <button onclick="excluir({{ r.id }})" title="Excluir">🗑️</button>
             </td>
 
-            <!-- CHECKLIST -->
-            <td class="checklist-cell">
-
-                {% if r.checklist_status == 'sim' %}
-
-                    <span class="checklist-ok"
-                          title="Checklist localizado nas planilhas">
-                        ✓
-                    </span>
-
-                {% elif r.checklist_status == 'nao' %}
-
-                    <span class="checklist-nao"
-                          title="Checklist não localizado">
-                        ✕
-                    </span>
-
-                {% else %}
-                    <span class="checklist-erro"
-                          title="Não foi possível consultar as duas planilhas">
-                        ?
-                    </span>
-                {% endif %}
-            </td>
-
-            <!-- PDF CHECKLIST -->
-            <td class="pdf-checklist-cell">
-
-                {% if r.pdf_checklist %}
-
-                    {% if r.pdf_checklist|length == 1 %}
-
-                        <a href="{{ r.pdf_checklist[0].link }}"
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           class="acao-icone acao-pdf"
-                           title="{{ r.pdf_checklist[0].nome }}">
-                            📄
-                        </a>
-
-                    {% else %}
-
-                        <details style="position:relative;">
-
-                            <summary class="acao-icone acao-pdf"
-                                     title="Existem vários PDFs">
-                                📄 {{ r.pdf_checklist|length }}
-                            </summary>
-
-                            <div class="pdf-lista">
-
-                                {% for pdf in r.pdf_checklist %}
-
-                                    <a href="{{ pdf.link }}"
-                                       target="_blank"
-                                       rel="noopener noreferrer">
-                                        📄 {{ pdf.nome }}
-                                    </a>
-
-                                {% endfor %}
-
-                            </div>
-
-                        </details>
-
-                    {% endif %}
-
-                {% elif not r.pdf_checklist_consulta_ok %}
-
-                    <span title="Erro na consulta ao Google Drive"
-                          style="color:#e0a000;font-weight:bold;">
-                        ?
-                    </span>
-
-                {% else %}
-                    <span title="PDF não localizado"
-                          style="color:#999;">
-                        —
-                    </span>
-                {% endif %}
-            </td>
-            
-            <td>
-                <select
-                    id="nota_{{ r.id }}"
-                    class="revisao-select {{ 'revisao-sim' if r.nota == 'SIM' else 'revisao-nao' }}"
-                    {% if perfil == 'admin' %}
-                        onchange="atualizarCorRevisao(this); salvar({{ r.id }})"
-                    {% else %}
-                        disabled
-                        title="Somente administradores podem alterar a revisão"
-                    {% endif %}
-                >
-                    <option value="SIM" {% if r.nota == 'SIM' %}selected{% endif %}>
-                        SIM
-                    </option>
-            
-                    <option value="NÃO" {% if r.nota != 'SIM' %}selected{% endif %}>
-                        NÃO
-                    </option>
-                </select>
-            </td>
         </tr>
         {% endfor %}
     </table>
     </div>
     <script>
 
-    const podeAtribuirResponsavel =
-    {% if perfil == 'admin' %}true{% else %}false{% endif %};
+    function salvar(id){
+        let fd = new FormData();
+        fd.append("acao","atualizar");
+        fd.append("id",id);
+        fd.append("status_analise", document.getElementById("status_"+id).value);
+        fd.append("tipo", document.getElementById("tipo_"+id).value);
+        fd.append("criterio", document.getElementById("criterio_"+id).value);
+        fd.append("servidor_id", document.getElementById("servidor_"+id).value);
 
+        fd.append("nota", document.getElementById("nota_"+id).value);
+        fd.append("num_nota", document.getElementById("num_nota_"+id).value);
+        fd.append("oficio", document.getElementById("oficio_"+id).value);
+        fd.append("monitoramento", document.getElementById("monitoramento_"+id).value);
 
-function salvar(id, responsavelAlterado = false) {
-
-    const fd = new FormData();
-
-    fd.append("acao", "atualizar");
-    fd.append("id", id);
-
-    fd.append(
-        "status_analise",
-        document.getElementById("status_" + id).value
-    );
-
-    fd.append(
-        "tipo",
-        document.getElementById("tipo_" + id).value
-    );
-
-    fd.append(
-        "criterio",
-        document.getElementById("criterio_" + id).value
-    );
-
-    fd.append(
-        "servidor_id",
-        document.getElementById("servidor_" + id).value
-    );
-
-    if (podeAtribuirResponsavel) {
-        fd.append(
-            "nota",
-            document.getElementById("nota_" + id).value
-        );
+        fetch("/requisicoes", { method:"POST", body: fd })
+            .then(r => r.text())
+            .then(resp => {
+                if (resp !== "OK") {
+                    alert("Erro ao salvar");
+                    console.error(resp);
+                }
+            })
+            .catch(err => {
+                alert("Erro de rede");
+                console.error(err);
+            });
     }
-
-    fd.append(
-        "num_nota",
-        document.getElementById("num_nota_" + id).value
-    );
-
-    fd.append(
-        "oficio",
-        document.getElementById("oficio_" + id).value
-    );
-
-    fd.append(
-        "monitoramento",
-        document.getElementById("monitoramento_" + id).value
-    );
-
-    fetch("/requisicoes", {
-        method: "POST",
-        body: fd
-    })
-    .then(response => response.text())
-    .then(resp => {
-
-        if (resp !== "OK") {
-            alert("Erro ao salvar");
-            console.error(resp);
-            return;
-        }
-
-        // Preencher a data na tela após atribuir o responsável.
-        if (
-            responsavelAlterado &&
-            podeAtribuirResponsavel
-        ) {
-
-            const responsavel =
-                document.getElementById("servidor_" + id);
-
-            const campoInicio =
-                document.getElementById("data_inicio_" + id);
-
-            if (
-                responsavel &&
-                responsavel.value &&
-                campoInicio &&
-                !campoInicio.value
-            ) {
-
-                const agora = new Date();
-
-                const ano = agora.getFullYear();
-
-                const mes = String(
-                    agora.getMonth() + 1
-                ).padStart(2, "0");
-
-                const dia = String(
-                    agora.getDate()
-                ).padStart(2, "0");
-
-                campoInicio.value =
-                    `${ano}-${mes}-${dia}`;
-            }
-        }
-
-    })
-    .catch(err => {
-        alert("Erro de rede");
-        console.error(err);
-    });
-}
 
     function excluir(id){
         if(!confirm("Excluir esta requisição?")) return;
@@ -14827,19 +13161,6 @@ function atualizarCampo(id, campo, valor){
 
     fetch("/requisicoes", { method:"POST", body:fd });
 }
-function atualizarCorRevisao(select) {
-
-    select.classList.remove(
-        "revisao-sim",
-        "revisao-nao"
-    );
-
-    if (select.value === "SIM") {
-        select.classList.add("revisao-sim");
-    } else {
-        select.classList.add("revisao-nao");
-    }
-}
     </script>
     """
 
@@ -14856,7 +13177,6 @@ function atualizarCorRevisao(select) {
         q=q,                     # ✅ mantém busca
         fmt=fmt,
         fmt_br=fmt_br,
-        gerar_url_pdf_requisicao=gerar_url_pdf_requisicao
     )
 
 @app.route("/requisicoes/editar/<int:id>", methods=["GET","POST"])
@@ -19670,7 +17990,7 @@ textarea{
 .col-monitor{width:90px}
 .col-beneficio{width:110px}
 .col-apont{width:400px}
-.col-acao{width:145px}
+.col-acao{width:80px}
 
 .auditada td{
     background:#bbf7d0 !important; /* verde */
@@ -19686,42 +18006,6 @@ textarea{
 
 .auditar td{
     background:#fde047 !important; /* amarelo */
-}
-
-/* Ações */
-.acoes-eng {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    white-space: nowrap;
-}
-
-.acao-icone {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 7px;
-    background: #f1f3f5;
-    text-decoration: none;
-    font-size: 17px;
-    cursor: pointer;
-    box-sizing: border-box;
-}
-
-.acao-icone:hover {
-    background: #e2e6ea;
-}
-
-.acao-pdf {
-    background: #fde8e7;
-}
-
-.acao-pdf:hover {
-    background: #f8cfcc;
 }
 
 </style>
@@ -20115,37 +18399,15 @@ selected
 
 <td>
 
-    {% set url_pdf = gerar_url_pdf_requisicao_eng(r.numero_ano, r.secretaria) %}
+<button
+class="btn btn-green"
+onclick="salvar({{r.id}})">
+💾
+</button>
 
-    <div class="acoes-eng">
-
-        {% if url_pdf %}
-            <a href="{{ url_pdf }}"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="acao-icone acao-pdf"
-               title="Abrir PDF da requisição">
-                📄
-            </a>
-        {% endif %}
-
-        <button
-            type="button"
-            class="acao-icone"
-            onclick="salvar({{r.id}})"
-            title="Salvar alterações">
-            💾
-        </button>
-
-        <button
-            type="button"
-            class="acao-icone"
-            onclick="excluir({{r.id}})"
-            title="Excluir requisição">
-            🗑️
-        </button>
-
-    </div>
+<button class="btn btn-red" onclick="excluir({{r.id}})">
+🗑
+</button>
 
 </td>
 
@@ -20468,8 +18730,7 @@ window.onload = function(){
         total_paginas=total_paginas,
         request=request,
         user=session["user"],
-        perfil=session["perfil"],
-        gerar_url_pdf_requisicao_eng=gerar_url_pdf_requisicao_eng
+        perfil=session["perfil"]
     )
 
 @app.route("/painel_reqs_engenharia")
@@ -21465,1615 +19726,6 @@ def req_eng_salvar(id):
 
     return jsonify(ok=True)
 
-# ================================================================
-# MÓDULO ADITIVO: NOTA DE AUDITORIA PREVENTIVA
-#
-# Como integrar:
-# 1) No app.py existente, cole TODO este bloco antes de @app.route("/seed")
-#    (e antes do if __name__ == "__main__").
-# 2) Não substitua o app.py inteiro por este arquivo.
-# 3) O bloco reutiliza app, get_db, BASE, render_template_string, request,
-#    session, redirect, jsonify, io, os e quote definidos no app.py original.
-# 4) Execute a migração SQL e configure a autorização Google descritas nas
-#    instruções do módulo.
-#
-# O modelo já pode usar {{monitoramento_check}}.
-# Os campos narrativos usam Quill; o HTML seguro fica no TEXT do PostgreSQL.
-# Na geração do Docs, listas, negrito e alinhamento são aplicados via Google Docs API.
-# ================================================================
-
-# ================================================================
-# NOTAS DE AUDITORIA PREVENTIVA - Google Docs/Drive + PostgreSQL
-# Implementação aditiva: não substitui as rotas antigas de N.A.
-# ================================================================
-import json as _na_json
-import re as _na_re
-from html import escape as _na_html_escape
-from html.parser import HTMLParser as _NAHTMLParser
-from datetime import date as _na_date, datetime as _na_datetime
-from werkzeug.utils import secure_filename as _na_secure_filename
-
-NA_GOOGLE_TEMPLATE_ID = os.environ.get(
-    "NA_GOOGLE_TEMPLATE_ID",
-    "1tkPlSnUjmiJ-U5QcNhdZg-OOCjgiDpZ5-TnhXtxhrhE",
-)
-NA_GOOGLE_DOCUMENTS_FOLDER_ID = os.environ.get(
-    "NA_GOOGLE_DOCUMENTS_FOLDER_ID",
-    "1BO2dXm5kGsRN-rndGJQLKkQZfMbmG_vk",
-)
-NA_GOOGLE_RESPONSES_FOLDER_ID = os.environ.get(
-    "NA_GOOGLE_RESPONSES_FOLDER_ID",
-    "1Z5KRuXLq88AJIthVxowFdwIBmchdeFw9",
-)
-NA_GOOGLE_PDFS_FOLDER_ID = os.environ.get(
-    "NA_GOOGLE_PDFS_FOLDER_ID",
-    "1EPM1pHYd2mAH69cF6A25Fit54-ef84Qx",
-)
-NA_GOOGLE_SCOPES = [
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/documents",
-]
-NA_MAX_RESPONSE_PDF_BYTES = 20 * 1024 * 1024
-
-
-def _na_ensure_schema(cur):
-    """Cria as tabelas novas sem alterar as tabelas legadas do sistema."""
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS na_documentos (
-        id BIGSERIAL PRIMARY KEY,
-        na_numero TEXT NOT NULL UNIQUE,
-        requisicao_numeros TEXT NOT NULL DEFAULT '',
-        oficio_numero TEXT NOT NULL DEFAULT '',
-        contrato_numero TEXT NOT NULL DEFAULT '',
-        empresa TEXT NOT NULL DEFAULT '',
-        objeto_contratacao TEXT NOT NULL DEFAULT '',
-        data_emissao DATE NOT NULL DEFAULT CURRENT_DATE,
-        data_analise DATE,
-        orgao_origem TEXT NOT NULL DEFAULT '',
-        identificacao_problema TEXT NOT NULL DEFAULT '',
-        analise_causa_raiz TEXT NOT NULL DEFAULT '',
-        observacoes_complementares TEXT NOT NULL DEFAULT '',
-        exige_monitoramento BOOLEAN NOT NULL DEFAULT FALSE,
-        prazo_resposta DATE,
-        monitoramento TEXT NOT NULL DEFAULT '',
-        responsaveis_na TEXT NOT NULL DEFAULT '',
-        matriculas TEXT NOT NULL DEFAULT '',
-        resposta_url TEXT,
-        google_doc_id TEXT,
-        google_doc_url TEXT,
-        pdf_file_id TEXT,
-        pdf_url TEXT,
-        pdf_gerado_em TIMESTAMP,
-        estado TEXT NOT NULL DEFAULT 'RASCUNHO',
-        criado_por INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL,
-        criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
-        atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
-    )
-    """)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS na_documento_responsaveis (
-        nota_id BIGINT NOT NULL REFERENCES na_documentos(id) ON DELETE CASCADE,
-        colaborador_id INTEGER NOT NULL REFERENCES colaboradores(id) ON DELETE RESTRICT,
-        matricula TEXT NOT NULL DEFAULT '',
-        ordem INTEGER NOT NULL DEFAULT 1,
-        PRIMARY KEY (nota_id, colaborador_id)
-    )
-    """)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS na_documento_requisicoes (
-        nota_id BIGINT NOT NULL REFERENCES na_documentos(id) ON DELETE CASCADE,
-        requisicao_id INTEGER NOT NULL REFERENCES requisicoes(id) ON DELETE CASCADE,
-        PRIMARY KEY (nota_id, requisicao_id)
-    )
-    """)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS na_documento_pdfs (
-        id BIGSERIAL PRIMARY KEY,
-        nota_id BIGINT NOT NULL REFERENCES na_documentos(id) ON DELETE CASCADE,
-        drive_file_id TEXT NOT NULL,
-        drive_url TEXT NOT NULL,
-        nome_arquivo TEXT NOT NULL,
-        gerado_por INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL,
-        gerado_em TIMESTAMP NOT NULL DEFAULT NOW()
-    )
-    """)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS na_respostas (
-        id BIGSERIAL PRIMARY KEY,
-        nota_id BIGINT NOT NULL REFERENCES na_documentos(id) ON DELETE CASCADE,
-        drive_file_id TEXT NOT NULL,
-        drive_url TEXT NOT NULL,
-        nome_arquivo TEXT NOT NULL,
-        enviado_por INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL,
-        enviado_em TIMESTAMP NOT NULL DEFAULT NOW()
-    )
-    """)
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_na_documentos_numero ON na_documentos(na_numero)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_na_doc_resp_colaborador ON na_documento_responsaveis(colaborador_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_na_doc_req_req ON na_documento_requisicoes(requisicao_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_na_respostas_nota ON na_respostas(nota_id, enviado_em DESC)")
-
-
-def _na_google_services():
-    """Obtém credenciais OAuth de usuário e cria clientes Drive/Docs.
-
-    GOOGLE_OAUTH_TOKEN_JSON deve conter o JSON gerado por google_oauth_setup.py,
-    ou GOOGLE_OAUTH_TOKEN_FILE deve apontar para um arquivo com o mesmo conteúdo.
-    """
-    raw = os.environ.get("GOOGLE_OAUTH_TOKEN_JSON", "").strip()
-    token_file = os.environ.get("GOOGLE_OAUTH_TOKEN_FILE", "").strip()
-    if raw:
-        token_info = _na_json.loads(raw)
-    elif token_file and os.path.isfile(token_file):
-        with open(token_file, "r", encoding="utf-8") as f:
-            token_info = _na_json.load(f)
-    else:
-        raise RuntimeError(
-            "Integração Google não configurada. Gere o token OAuth e configure "
-            "GOOGLE_OAUTH_TOKEN_JSON no ambiente do Render."
-        )
-
-    try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request as GoogleAuthRequest
-        from googleapiclient.discovery import build
-    except ImportError as exc:
-        raise RuntimeError(
-            "Bibliotecas Google ausentes. Instale google-api-python-client, "
-            "google-auth e google-auth-oauthlib."
-        ) from exc
-
-    creds = Credentials.from_authorized_user_info(token_info, scopes=NA_GOOGLE_SCOPES)
-    if creds.expired and creds.refresh_token:
-        creds.refresh(GoogleAuthRequest())
-    if not creds.valid:
-        raise RuntimeError("Token Google inválido/expirado; gere um novo token OAuth.")
-    drive = build("drive", "v3", credentials=creds, cache_discovery=False)
-    docs = build("docs", "v1", credentials=creds, cache_discovery=False)
-    return drive, docs
-
-
-def _na_fmt_date(value):
-    if not value:
-        return ""
-    if isinstance(value, (_na_date, _na_datetime)):
-        return value.strftime("%d/%m/%Y")
-    s = str(value).strip()
-    try:
-        return _na_datetime.strptime(s[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
-    except ValueError:
-        try:
-            return _na_datetime.strptime(s[:10], "%d/%m/%Y").strftime("%d/%m/%Y")
-        except ValueError:
-            return s
-
-
-def _na_parse_date(value):
-    if not value:
-        return None
-    value = str(value).strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
-        try:
-            return _na_datetime.strptime(value[:10], fmt).date()
-        except ValueError:
-            pass
-    return None
-
-
-def _na_clean_filename(value):
-    value = _na_secure_filename(str(value or "Nota_Auditoria")) or "Nota_Auditoria"
-    return value[:120]
-
-
-def _na_note_access(cur, nota_id):
-    cur.execute("SELECT * FROM na_documentos WHERE id=%s", (nota_id,))
-    note = cur.fetchone()
-    if not note:
-        return None
-    if session.get("perfil") == "admin":
-        return note
-    cur.execute("""
-        SELECT EXISTS (
-            SELECT 1 FROM na_documento_responsaveis nr
-            WHERE nr.nota_id=%s AND nr.colaborador_id=%s
-        ) OR EXISTS (
-            SELECT 1 FROM na_documento_requisicoes ndq
-            JOIN requisicoes r ON r.id=ndq.requisicao_id
-            WHERE ndq.nota_id=%s AND r.servidor_id=%s
-        ) AS autorizado
-    """, (nota_id, session.get("user_id"), nota_id, session.get("user_id")))
-    linked = cur.fetchone()
-    if note.get("criado_por") == session.get("user_id") or (linked and linked.get("autorizado")):
-        return note
-    return None
-
-
-def _na_selected_requisitions(cur, req_ids):
-    if not req_ids:
-        return []
-    params = [req_ids]
-    sql = """
-        SELECT id, chave, requisicao_num, sigla, secretaria, contrato,
-               nome_fornecedor, oficio, natureza_despesa, item_despesa,
-               tipo_documento, num_nota
-        FROM requisicoes
-        WHERE id = ANY(%s)
-    """
-    if session.get("perfil") != "admin":
-        sql += " AND servidor_id=%s"
-        params.append(session.get("user_id"))
-    sql += " ORDER BY array_position(%s::int[], id)"
-    params.append(req_ids)
-    cur.execute(sql, params)
-    rows = cur.fetchall()
-    return rows
-
-
-# Campos narrativos com editor rico. O HTML é armazenado no PostgreSQL e
-# convertido em texto formatado ao gerar o Google Docs.
-_NA_RICH_FIELDS = (
-    "identificacao_problema",
-    "analise_causa_raiz",
-    "observacoes_complementares",
-    "monitoramento",
-)
-
-
-def _na_rich_marker(field):
-    return "[[NA_RICH_" + field.upper() + "]]"
-
-
-class _NASanitizeRichHTML(_NAHTMLParser):
-    """Sanitizador mínimo: permite somente marcação de texto e alinhamento."""
-    ALLOWED = {"p", "div", "br", "strong", "b", "em", "i", "u", "ol", "ul", "li", "span"}
-    VOID = {"br"}
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.out = []
-        self.suppress_depth = 0
-
-    def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
-        attrs = dict(attrs)
-        if tag in ("script", "style", "iframe", "object", "svg", "math"):
-            self.suppress_depth += 1
-            return
-        if self.suppress_depth or tag not in self.ALLOWED:
-            return
-        safe_attrs = []
-        if tag in ("p", "div"):
-            cls = attrs.get("class", "")
-            allowed_classes = [c for c in cls.split() if c in {
-                "ql-align-left", "ql-align-center", "ql-align-right", "ql-align-justify"
-            }]
-            if allowed_classes:
-                safe_attrs.append(("class", " ".join(allowed_classes)))
-            style = attrs.get("style", "")
-            m = _na_re.search(r"text-align\s*:\s*(left|right|center|justify)\s*;?", style, _na_re.I)
-            if m:
-                safe_attrs.append(("style", "text-align: " + m.group(1).lower() + ";"))
-        if tag == "li" and attrs.get("data-list") in ("bullet", "ordered"):
-            safe_attrs.append(("data-list", attrs["data-list"]))
-        attr_text = "".join(f' {k}="{_na_html_escape(v, quote=True)}"' for k, v in safe_attrs)
-        self.out.append(f"<{tag}{attr_text}>")
-
-    def handle_endtag(self, tag):
-        tag = tag.lower()
-        if tag in ("script", "style", "iframe", "object", "svg", "math"):
-            if self.suppress_depth:
-                self.suppress_depth -= 1
-            return
-        if self.suppress_depth or tag not in self.ALLOWED or tag in self.VOID:
-            return
-        self.out.append(f"</{tag}>")
-
-    def handle_data(self, data):
-        if not self.suppress_depth:
-            self.out.append(_na_html_escape(data))
-
-    def result(self):
-        return "".join(self.out)
-
-
-def _na_sanitize_rich_html(value):
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    parser = _NASanitizeRichHTML()
-    parser.feed(raw)
-    parser.close()
-    return parser.result()
-
-
-def _na_editor_initial_html(value):
-    """Prepara valor salvo (HTML novo ou texto legado) para carregar no Quill."""
-    raw = str(value or "")
-    if not raw:
-        return ""
-    if _na_re.search(r"<\s*(p|div|br|ol|ul|li|strong|b|em|i|u|span)\b", raw, _na_re.I):
-        return _na_sanitize_rich_html(raw)
-    lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    return "".join("<p>" + (_na_html_escape(line) if line else "<br>") + "</p>" for line in lines)
-
-
-class _NARichHTMLToBlocks(_NAHTMLParser):
-    """Converte saída HTML do Quill em parágrafos, listas e trechos formatados."""
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.blocks = []
-        self.current = None
-        self.flags = {"bold": False, "italic": False, "underline": False}
-        self.flag_stack = []
-        self.list_stack = []
-        self.suppress_depth = 0
-
-    def _start_block(self, list_type=None, align="JUSTIFIED"):
-        self.current = {"segments": [], "list": list_type, "align": align}
-
-    def _ensure_block(self):
-        if self.current is None:
-            lt = self.list_stack[-1] if self.list_stack else None
-            self._start_block(lt, "JUSTIFIED")
-
-    def _append(self, text):
-        if not text:
-            return
-        self._ensure_block()
-        fmt = dict(self.flags)
-        segs = self.current["segments"]
-        if segs and segs[-1]["fmt"] == fmt:
-            segs[-1]["text"] += text
-        else:
-            segs.append({"text": text, "fmt": fmt})
-
-    def _flush(self, force=False):
-        if self.current is not None:
-            if self.current["segments"] or force:
-                self.blocks.append(self.current)
-            self.current = None
-
-    @staticmethod
-    def _alignment(attrs):
-        attrs = dict(attrs)
-        cls = attrs.get("class", "")
-        if "ql-align-justify" in cls:
-            return "JUSTIFIED"
-        if "ql-align-center" in cls:
-            return "CENTER"
-        if "ql-align-right" in cls:
-            return "END"
-        if "ql-align-left" in cls:
-            return "START"
-        style = attrs.get("style", "")
-        m = _na_re.search(r"text-align\s*:\s*(left|right|center|justify)", style, _na_re.I)
-        if m:
-            return {"left": "START", "right": "END", "center": "CENTER", "justify": "JUSTIFIED"}[m.group(1).lower()]
-        # O modelo institucional já usa alinhamento justificado.
-        # Se o editor não emitir classe/estilo explícito, mantém esse padrão.
-        return "JUSTIFIED"
-
-    def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
-        attrs_dict = dict(attrs)
-        if tag in ("script", "style", "iframe", "object", "svg", "math"):
-            self.suppress_depth += 1
-            return
-        if self.suppress_depth:
-            return
-        if tag in ("p", "div"):
-            self._flush()
-            self._start_block(None, self._alignment(attrs))
-        elif tag in ("ol", "ul"):
-            self._flush()
-            self.list_stack.append("ordered" if tag == "ol" else "bullet")
-        elif tag == "li":
-            self._flush()
-            lt = attrs_dict.get("data-list")
-            if lt not in ("bullet", "ordered"):
-                lt = self.list_stack[-1] if self.list_stack else None
-            self._start_block(lt, self._alignment(attrs))
-        elif tag == "br":
-            self._flush(force=True)
-        elif tag in ("strong", "b", "em", "i", "u", "span"):
-            self.flag_stack.append((tag, dict(self.flags)))
-            if tag in ("strong", "b"):
-                self.flags["bold"] = True
-            elif tag in ("em", "i"):
-                self.flags["italic"] = True
-            elif tag == "u":
-                self.flags["underline"] = True
-            elif tag == "span":
-                style = attrs_dict.get("style", "")
-                if _na_re.search(r"font-weight\s*:\s*(bold|[6-9]00)", style, _na_re.I):
-                    self.flags["bold"] = True
-                if _na_re.search(r"font-style\s*:\s*italic", style, _na_re.I):
-                    self.flags["italic"] = True
-                if _na_re.search(r"text-decoration[^;]*underline", style, _na_re.I):
-                    self.flags["underline"] = True
-
-    def handle_endtag(self, tag):
-        tag = tag.lower()
-        if tag in ("script", "style", "iframe", "object", "svg", "math"):
-            if self.suppress_depth:
-                self.suppress_depth -= 1
-            return
-        if self.suppress_depth:
-            return
-        if tag in ("p", "div", "li"):
-            self._flush(force=(tag == "li"))
-        elif tag in ("ol", "ul"):
-            self._flush()
-            if self.list_stack:
-                self.list_stack.pop()
-        elif tag in ("strong", "b", "em", "i", "u", "span"):
-            for i in range(len(self.flag_stack) - 1, -1, -1):
-                saved_tag, saved_flags = self.flag_stack[i]
-                if saved_tag == tag:
-                    self.flags = saved_flags
-                    self.flag_stack = self.flag_stack[:i]
-                    break
-
-    def handle_data(self, data):
-        if not self.suppress_depth:
-            self._append(data)
-
-    def result(self):
-        self._flush()
-        return self.blocks
-
-
-def _na_utf16_len(value):
-    return len(str(value).encode("utf-16-le")) // 2
-
-
-def _na_html_to_blocks(value):
-    raw = str(value or "")
-    if not raw.strip():
-        return []
-    if not _na_re.search(r"<\s*(p|div|br|ol|ul|li|strong|b|em|i|u|span)\b", raw, _na_re.I):
-        lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-        return [{"segments": ([{"text": line, "fmt": {"bold": False, "italic": False, "underline": False}}] if line else []), "list": None, "align": "JUSTIFIED"} for line in lines]
-    parser = _NARichHTMLToBlocks()
-    parser.feed(_na_sanitize_rich_html(raw))
-    parser.close()
-    blocks = parser.result()
-    if not blocks:
-        text_only = _NAHTMLParser(convert_charrefs=True)
-        # fallback handled through a simple parser instance above in normal cases
-        return []
-    # A BR or explicit newline may occur inside an inline segment. Split it
-    # into separate paragraphs so all Google Docs ranges remain accurate.
-    expanded = []
-    for block in blocks:
-        parts = [{"segments": [], "list": block.get("list"), "align": block.get("align", "JUSTIFIED")}]
-        for seg in block.get("segments", []):
-            chunks = seg["text"].split("\n")
-            for i, chunk in enumerate(chunks):
-                if chunk:
-                    parts[-1]["segments"].append({"text": chunk, "fmt": dict(seg["fmt"])})
-                if i < len(chunks) - 1:
-                    parts.append({"segments": [], "list": None, "align": block.get("align", "JUSTIFIED")})
-        expanded.extend(parts)
-    return expanded
-
-
-def _na_find_text_range(document, needle):
-    """Localiza placeholder e retorna índices nativos do Google Docs API."""
-    def walk(obj):
-        if isinstance(obj, dict):
-            if "textRun" in obj:
-                yield obj
-            else:
-                for v in obj.values():
-                    yield from walk(v)
-        elif isinstance(obj, list):
-            for v in obj:
-                yield from walk(v)
-    body = document.get("body", {}).get("content", [])
-    for element in walk(body):
-        text_run = element.get("textRun", {}).get("content", "")
-        pos = text_run.find(needle)
-        if pos >= 0 and element.get("startIndex") is not None:
-            start = int(element["startIndex"]) + _na_utf16_len(text_run[:pos])
-            return start, start + _na_utf16_len(needle)
-    raise RuntimeError("Não encontrei no Google Docs o marcador de conteúdo formatado: " + needle)
-
-
-def _na_insert_rich_placeholder(docs, document_id, placeholder, html_value):
-    """Substitui marcador por texto e aplica negrito, listas e alinhamento no Docs."""
-    doc = docs.documents().get(documentId=document_id).execute()
-    start, end = _na_find_text_range(doc, placeholder)
-    blocks = _na_html_to_blocks(html_value)
-    requests = [{"deleteContentRange": {"range": {"startIndex": start, "endIndex": end}}}]
-    if not blocks:
-        docs.documents().batchUpdate(documentId=document_id, body={"requests": requests}).execute()
-        return
-
-    def block_text(block):
-        return "".join(seg["text"] for seg in block.get("segments", []))
-
-    text_value = "\n".join(block_text(b) for b in blocks)
-    # Quill pode enviar HTML com um parágrafo vazio (por exemplo, <p><br></p>).
-    # A API do Google Docs rejeita insertText com texto vazio; nesse caso basta
-    # excluir o marcador e deixar o campo em branco no documento.
-    if not text_value:
-        docs.documents().batchUpdate(
-            documentId=document_id, body={"requests": requests}
-        ).execute()
-        return
-
-    requests.append({"insertText": {"location": {"index": start}, "text": text_value}})
-
-    # Reseta só negrito/itálico/sublinhado herdado do placeholder; mantém fonte e tamanho do modelo.
-    if text_value:
-        requests.append({"updateTextStyle": {
-            "range": {"startIndex": start, "endIndex": start + _na_utf16_len(text_value)},
-            "textStyle": {"bold": False, "italic": False, "underline": False},
-            "fields": "bold,italic,underline",
-        }})
-
-    offsets = []
-    paragraph_style_requests = []
-    offset = 0
-    for idx, block in enumerate(blocks):
-        txt = block_text(block)
-        offsets.append((offset, txt))
-        local = 0
-        for seg in block.get("segments", []):
-            seg_txt = seg["text"]
-            fmt = seg.get("fmt", {})
-            style = {k: True for k in ("bold", "italic", "underline") if fmt.get(k)}
-            if style and seg_txt:
-                requests.append({"updateTextStyle": {
-                    "range": {
-                        "startIndex": start + offset + local,
-                        "endIndex": start + offset + local + _na_utf16_len(seg_txt),
-                    },
-                    "textStyle": style,
-                    "fields": ",".join(style.keys()),
-                }})
-            local += _na_utf16_len(seg_txt)
-        # Deixa o alinhamento para uma segunda chamada à API, depois que o texto
-        # realmente existe no Docs. Assim os ranges são aplicados sobre os
-        # parágrafos finais, e não junto à substituição do marcador.
-        paragraph_end = start + offset + _na_utf16_len(txt) + 1
-        paragraph_style_requests.append({"updateParagraphStyle": {
-            "range": {"startIndex": start + offset, "endIndex": paragraph_end},
-            "paragraphStyle": {"alignment": block.get("align", "JUSTIFIED")},
-            "fields": "alignment",
-        }})
-        offset += _na_utf16_len(txt)
-        if idx < len(blocks) - 1:
-            offset += 1  # separador \n inserido entre parágrafos
-
-    # Aplica numeração/marcadores agrupando linhas consecutivas do mesmo tipo.
-    i = 0
-    while i < len(blocks):
-        list_type = blocks[i].get("list")
-        if list_type not in ("bullet", "ordered"):
-            i += 1
-            continue
-        j = i
-        while j + 1 < len(blocks) and blocks[j + 1].get("list") == list_type:
-            j += 1
-        first_start = start + offsets[i][0]
-        last_text = offsets[j][1]
-        last_end = start + offsets[j][0] + _na_utf16_len(last_text) + 1
-        preset = "BULLET_DISC_CIRCLE_SQUARE" if list_type == "bullet" else "NUMBERED_DECIMAL_ALPHA_ROMAN"
-        requests.append({"createParagraphBullets": {
-            "range": {"startIndex": first_start, "endIndex": last_end},
-            "bulletPreset": preset,
-        }})
-        i = j + 1
-
-    docs.documents().batchUpdate(documentId=document_id, body={"requests": requests}).execute()
-
-    # Segunda etapa: força o alinhamento depois da inserção e da criação das listas.
-    # O conteúdo permanece editável no Google Docs e negrito/listas são preservados.
-    if paragraph_style_requests:
-        docs.documents().batchUpdate(
-            documentId=document_id,
-            body={"requests": paragraph_style_requests},
-        ).execute()
-
-
-def _na_build_doc_values(note, responsaveis=None):
-    responsaveis = responsaveis or []
-    names = [str(r.get("nome") or "").strip() for r in responsaveis if r.get("nome")]
-    matriculas = [str(r.get("matricula") or "").strip() for r in responsaveis if r.get("nome")]
-    sim_nao = "Sim ( X ) Não (   )" if note.get("exige_monitoramento") else "Sim (   ) Não ( X )"
-    prazo = _na_fmt_date(note.get("prazo_resposta"))
-    return {
-        "{{data_emissao}}": _na_fmt_date(note.get("data_emissao")),
-        "{{requisicao_numeros}}": str(note.get("requisicao_numeros") or ""),
-        "{{oficio_numero}}": str(note.get("oficio_numero") or ""),
-        "{{contrato_numero}}": str(note.get("contrato_numero") or ""),
-        "{{empresa}}": str(note.get("empresa") or ""),
-        "{{na_numero}}": str(note.get("na_numero") or ""),
-        "{{objeto_contratacao}}": str(note.get("objeto_contratacao") or ""),
-        "{{data_analise}}": _na_fmt_date(note.get("data_analise")),
-        "{{orgao_origem}}": str(note.get("orgao_origem") or ""),
-        "{{identificacao_problema}}": _na_rich_marker("identificacao_problema"),
-        "{{analise_causa_raiz}}": _na_rich_marker("analise_causa_raiz"),
-        "{{observacoes_complementares}}": _na_rich_marker("observacoes_complementares"),
-        "{{prazo_resposta}}": prazo,
-        "{{monitoramento}}": _na_rich_marker("monitoramento"),
-        "{{responsaveis_na}}": ", ".join(names) or str(note.get("responsaveis_na") or ""),
-        "{{matriculas}}": ", ".join(matriculas) or str(note.get("matriculas") or ""),
-        "{{monitoramento_check}}": sim_nao,
-        "{{exige_monitoramento}}": sim_nao,
-    }
-
-
-def _na_create_google_doc(nota_id):
-    """Cria o documento pelo modelo e substitui cópias antigas pelo nome.
-
-    Se houver documento com o nome padrão na pasta, a nova versão é criada
-    primeiro e preenchida; só depois as versões antigas com o mesmo nome são
-    movidas para a lixeira. Se o documento tiver sido excluído manualmente,
-    não dependemos do ID antigo do PostgreSQL: simplesmente criamos outro.
-    """
-    drive, docs = _na_google_services()
-    conn = get_db()
-    cur = conn.cursor()
-    new_doc_id = None
-    try:
-        _na_ensure_schema(cur)
-        note = _na_note_access(cur, nota_id)
-        if not note:
-            raise PermissionError("Nota não encontrada ou sem permissão de acesso.")
-
-        # Captura PDFs já emitidos. Ao regenerar o Word, deixam de corresponder
-        # à versão atual e seus registros/arquivos serão removidos.
-        cur.execute("SELECT drive_file_id FROM na_documento_pdfs WHERE nota_id=%s", (nota_id,))
-        old_pdf_rows = cur.fetchall()
-        old_pdf_ids = {r["drive_file_id"] for r in old_pdf_rows if r.get("drive_file_id")}
-        if note.get("pdf_file_id"):
-            old_pdf_ids.add(note["pdf_file_id"])
-
-        cur.execute("""
-            SELECT c.nome, nr.matricula, nr.ordem
-            FROM na_documento_responsaveis nr
-            JOIN colaboradores c ON c.id=nr.colaborador_id
-            WHERE nr.nota_id=%s ORDER BY nr.ordem, c.nome
-        """, (nota_id,))
-        responsible_rows = cur.fetchall()
-        values = _na_build_doc_values(note, responsible_rows)
-        titulo = _na_clean_filename(f"{note['na_numero']} - Nota de Auditoria Preventiva")
-
-        # Localiza por nome e pasta, não apenas pelo ID salvo no banco. Isso
-        # permite recuperar o caso em que alguém apagou o documento no Drive.
-        titulo_q = titulo.replace("\\", "\\\\").replace("'", "\\'")
-        q = (
-            f"name = '{titulo_q}' "
-            f"and '{NA_GOOGLE_DOCUMENTS_FOLDER_ID}' in parents "
-            "and mimeType = 'application/vnd.google-apps.document' "
-            "and trashed = false"
-        )
-        existing_files = drive.files().list(
-            q=q,
-            pageSize=100,
-            orderBy="createdTime desc",
-            fields="files(id,name,webViewLink,mimeType,parents,createdTime)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-        ).execute().get("files", [])
-
-        copia = drive.files().copy(
-            fileId=NA_GOOGLE_TEMPLATE_ID,
-            body={"name": titulo, "parents": [NA_GOOGLE_DOCUMENTS_FOLDER_ID]},
-            fields="id,name,webViewLink,parents",
-            supportsAllDrives=True,
-        ).execute()
-        new_doc_id = copia["id"]
-
-        replacements = []
-        for tag, value in values.items():
-            replacements.append({
-                "replaceAllText": {
-                    "containsText": {"text": tag, "matchCase": True},
-                    "replaceText": value,
-                }
-            })
-        # Compatibilidade com modelo antigo; o modelo atual usa {{monitoramento_check}}.
-        replacements.append({
-            "replaceAllText": {
-                "containsText": {"text": "Sim (   ) Não (   )", "matchCase": True},
-                "replaceText": values["{{monitoramento_check}}"],
-            }
-        })
-        docs.documents().batchUpdate(
-            documentId=new_doc_id, body={"requests": replacements}
-        ).execute()
-
-        # Os campos narrativos são inseridos como texto formatado do editor rico,
-        # preservando listas numeradas, marcadores, negrito/itálico/sublinhado e alinhamento.
-        for field in _NA_RICH_FIELDS:
-            placeholder = _na_rich_marker(field)
-            _na_insert_rich_placeholder(docs, new_doc_id, placeholder, note.get(field) or "")
-
-        doc_url = copia.get("webViewLink") or f"https://docs.google.com/document/d/{new_doc_id}/edit"
-
-        # Atualiza primeiro o cadastro. Assim, se a limpeza dos arquivos antigos
-        # falhar, o banco já aponta para o novo documento válido.
-        # A Nota mantém somente o PDF atual. Ao regenerar o Word, o PDF anterior
-        # fica obsoleto: excluímos o registro antes de salvar a nova versão do Docs.
-        # A tabela na_respostas não é alterada.
-        cur.execute("DELETE FROM na_documento_pdfs WHERE nota_id=%s", (nota_id,))
-        cur.execute("""
-            UPDATE na_documentos SET
-                google_doc_id=%s,
-                google_doc_url=%s,
-                pdf_file_id=NULL,
-                pdf_url=NULL,
-                pdf_gerado_em=NULL,
-                estado='RASCUNHO',
-                atualizado_em=NOW()
-            WHERE id=%s
-        """, (new_doc_id, doc_url, nota_id))
-        conn.commit()
-
-        # A nova cópia já está preenchida e registrada. Agora move as cópias
-        # antigas de mesmo nome para a lixeira, mantendo-as recuperáveis.
-        antigos_movidos = 0
-        falhas_limpeza = 0
-        for old in existing_files:
-            old_id = old.get("id")
-            if not old_id or old_id == new_doc_id:
-                continue
-            try:
-                drive.files().update(
-                    fileId=old_id,
-                    body={"trashed": True},
-                    fields="id,trashed",
-                    supportsAllDrives=True,
-                ).execute()
-                antigos_movidos += 1
-            except Exception as cleanup_exc:
-                falhas_limpeza += 1
-                # Não desfazemos a nova versão funcional por falha de limpeza.
-                print(f"Aviso: não foi possível mover documento antigo {old_id} para a lixeira: {cleanup_exc}")
-
-        # Os PDFs anteriormente emitidos também deixam de ser atuais. Tente
-        # enviá-los à lixeira; 404 significa que já foram apagados manualmente.
-        for old_pdf_id in old_pdf_ids:
-            try:
-                drive.files().update(
-                    fileId=old_pdf_id,
-                    body={"trashed": True},
-                    fields="id,trashed",
-                    supportsAllDrives=True,
-                ).execute()
-                antigos_movidos += 1
-            except Exception as cleanup_exc:
-                status = getattr(getattr(cleanup_exc, "resp", None), "status", None)
-                if status == 404:
-                    continue
-                falhas_limpeza += 1
-                print(f"Aviso: não foi possível mover PDF antigo {old_pdf_id} para a lixeira: {cleanup_exc}")
-
-        if falhas_limpeza:
-            msg = (f"Google Docs regenerado e link atualizado. {antigos_movidos} arquivo(s) antigo(s) foram para a lixeira; "
-                   f"{falhas_limpeza} não puderam ser movidos. Os registros antigos de PDF foram removidos do banco; gere o PDF atualizado.")
-        elif antigos_movidos:
-            msg = (f"Google Docs regenerado. {antigos_movidos} arquivo(s) antigo(s), incluindo PDFs emitidos da versão anterior, "
-                   "foram movidos para a lixeira. Os registros antigos de PDF foram removidos; revise o documento e gere o PDF novamente.")
-        else:
-            msg = "Google Docs criado/recuperado; os links antigos de PDF foram removidos do cadastro. Revise o documento e gere o PDF. As respostas anexadas foram preservadas."
-        return new_doc_id, doc_url, msg
-    except Exception:
-        conn.rollback()
-        # Se a criação falhou antes de atualizar o cadastro, tenta remover a
-        # cópia incompleta para não deixar um documento parcial no Drive.
-        if new_doc_id:
-            try:
-                drive.files().update(
-                    fileId=new_doc_id, body={"trashed": True}, fields="id,trashed",
-                    supportsAllDrives=True,
-                ).execute()
-            except Exception:
-                pass
-        raise
-    finally:
-        cur.close()
-        conn.close()
-
-
-def _na_user_can_see_list_sql():
-    if session.get("perfil") == "admin":
-        return "", []
-    return " AND (n.criado_por=%s OR EXISTS (SELECT 1 FROM na_documento_responsaveis nr WHERE nr.nota_id=n.id AND nr.colaborador_id=%s) OR EXISTS (SELECT 1 FROM na_documento_requisicoes ndq JOIN requisicoes r ON r.id=ndq.requisicao_id WHERE ndq.nota_id=n.id AND r.servidor_id=%s)) ", [session.get("user_id"), session.get("user_id"), session.get("user_id")]
-
-
-def _na_render(html, **context):
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
-        user=session.get("user"),
-        perfil=session.get("perfil"),
-        request=request,
-        **context,
-    )
-
-
-def _na_load_form_data(cur, note=None):
-    cur.execute("SELECT id, nome FROM colaboradores WHERE nome IS NOT NULL ORDER BY nome")
-    colaboradores = cur.fetchall()
-    responsaveis_selecionados = {}
-    req_selected = []
-    respostas = []
-    pdfs = []
-    if note:
-        cur.execute("""
-            SELECT nr.colaborador_id, nr.matricula, nr.ordem
-            FROM na_documento_responsaveis nr WHERE nr.nota_id=%s
-        """, (note["id"],))
-        responsaveis_selecionados = {str(r["colaborador_id"]): r["matricula"] for r in cur.fetchall()}
-        cur.execute("""
-            SELECT r.id, r.chave, r.requisicao_num, r.sigla, r.secretaria,
-                   r.contrato, r.nome_fornecedor, r.oficio, r.natureza_despesa,
-                   r.item_despesa, r.tipo_documento, r.num_nota
-            FROM na_documento_requisicoes l JOIN requisicoes r ON r.id=l.requisicao_id
-            WHERE l.nota_id=%s ORDER BY r.id
-        """, (note["id"],))
-        req_selected = cur.fetchall()
-        cur.execute("SELECT * FROM na_respostas WHERE nota_id=%s ORDER BY enviado_em DESC", (note["id"],))
-        respostas = cur.fetchall()
-        # A Nota mantém somente o PDF emitido atual; respostas continuam com histórico próprio.
-        cur.execute("SELECT * FROM na_documento_pdfs WHERE nota_id=%s ORDER BY gerado_em DESC, id DESC LIMIT 1", (note["id"],))
-        pdfs = cur.fetchall()
-    return colaboradores, responsaveis_selecionados, req_selected, respostas, pdfs
-
-
-def _na_form_html(note, colaboradores, responsaveis_selecionados, req_selected, respostas, pdfs, mensagem=""):
-    is_new = not note or not note.get("id")
-    form_action = "/notas-auditoria-documentos/nova" if is_new else f"/notas-auditoria-documentos/{note['id']}"
-    note = dict(note or {})
-    if not note.get("data_emissao"):
-        note["data_emissao"] = _na_date.today()
-    if not note.get("data_analise"):
-        note["data_analise"] = _na_date.today()
-    html = r"""
-    <style>
-      .na-wrap{max-width:1180px;margin:18px auto;padding:0 12px;color:#1f2937}
-      .na-card{background:#fff;border:1px solid #dbe4ef;border-radius:14px;padding:20px;margin:14px 0;box-shadow:0 4px 14px #1e3a5f0d}
-      .na-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-      .na-grid .wide{grid-column:1/-1}
-      .na-field label{display:block;font-size:13px;font-weight:700;margin:0 0 5px;color:#374151}
-      .na-field input,.na-field textarea,.na-field select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:10px;background:#fff;color:#111827;font:inherit}
-      .na-field textarea{min-height:105px;resize:vertical}
-      .na-muted{font-size:13px;color:#64748b;line-height:1.5}
-      .na-btn{display:inline-block;border:0;border-radius:8px;padding:10px 15px;background:#1d4ed8;color:white!important;font-weight:700;cursor:pointer;text-decoration:none;margin:3px 4px 3px 0}
-      .na-btn.gray{background:#475569}.na-btn.green{background:#15803d}.na-btn.orange{background:#b45309}
-      .na-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}
-      .na-tab{background:#e2e8f0;color:#1e293b;border:0;border-radius:8px;padding:10px 15px;cursor:pointer;font-weight:700}
-      .na-tab.active{background:#1d4ed8;color:#fff}
-      .na-panel{display:none}.na-panel.active{display:block}
-      .na-msg{padding:12px 14px;border-radius:8px;background:#eff6ff;border:1px solid #bfdbfe;margin:10px 0;white-space:pre-line}
-      .na-warning{padding:12px 14px;border-radius:8px;background:#fff7ed;border:1px solid #fed7aa;margin:10px 0;white-space:pre-line}
-      .na-resp-row{display:grid;grid-template-columns:minmax(220px,1fr) minmax(160px,240px);align-items:center;gap:12px;padding:9px;border-bottom:1px solid #e5e7eb}
-      .na-resp-row label{display:flex;gap:8px;align-items:center;font-weight:600}
-      .na-resp-row input[type=text]{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px}
-      .na-req-results{border:1px solid #dbe4ef;border-radius:8px;background:white;max-height:240px;overflow:auto;margin-top:5px}
-      .na-req-option{display:block;width:100%;text-align:left;border:0;background:#fff;padding:10px;border-bottom:1px solid #e5e7eb;cursor:pointer;color:#1f2937}
-      .na-req-option:hover{background:#eff6ff}
-      .na-chip{display:inline-flex;align-items:center;gap:7px;background:#dbeafe;color:#1e40af;border-radius:999px;padding:5px 9px;margin:4px;font-size:13px}
-      .na-chip button{border:0;background:transparent;font-weight:bold;cursor:pointer;color:#1e40af}
-      .na-table{width:100%;border-collapse:collapse}.na-table th,.na-table td{padding:9px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}
-      .na-rich-box{border:1px solid #cbd5e1;border-radius:9px;overflow:hidden;background:#fff}
-      .na-rich-toolbar{border-bottom:1px solid #dbe4ef;background:#f8fafc}
-      .na-rich-editor{min-height:155px;background:#fff;color:#111827;font-size:14px}
-      .na-rich-editor .ql-editor{min-height:155px;line-height:1.55}
-      .na-rich-hint{font-size:12px;color:#64748b;margin:5px 0 10px}
-      .na-rich-source{display:none!important}
-      @media(max-width:740px){.na-grid{grid-template-columns:1fr}.na-resp-row{grid-template-columns:1fr}.na-card{padding:14px}}
-    </style>
-    <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
-    <div class="na-wrap">
-      <p><a href="/notas-auditoria-documentos">← Voltar à lista de Notas Preventivas</a></p>
-      <h2>🧾 {{ 'Nova Nota de Auditoria Preventiva' if is_new else 'Nota de Auditoria Preventiva — ' ~ note.na_numero }}</h2>
-      {% if mensagem %}<div class="na-msg">{{mensagem}}</div>{% endif %}
-      {% if not is_new and note.google_doc_id %}
-        <div class="na-warning">Ao regenerar o Google Docs, será criada uma nova cópia do modelo com os dados atualmente salvos no cadastro. A versão anterior com o mesmo nome será movida para a lixeira; edições feitas diretamente nela não serão copiadas para a nova versão. O PDF da versão anterior será removido do cadastro e enviado para a lixeira do Drive; será necessário gerar o PDF atualizado. As respostas anexadas permanecem intactas.</div>
-      {% endif %}
-      <div class="na-tabs">
-        <button type="button" class="na-tab active" data-panel="dados">1. Dados da Nota</button>
-        <button type="button" class="na-tab" data-panel="documento">2. Documento / PDF</button>
-        {% if not is_new %}<button type="button" class="na-tab" data-panel="resposta">3. Resposta à Nota</button>{% endif %}
-      </div>
-      <section class="na-panel active" id="panel-dados">
-       <form method="post" action="{{form_action}}" id="na-form">
-        <div class="na-card">
-          <h3>Identificação</h3>
-          <div class="na-grid">
-            <div class="na-field"><label>Nº da Nota de Auditoria *</label><input name="na_numero" required value="{{note.na_numero or ''}}" placeholder="Ex.: NA. 028/2026"></div>
-            <div class="na-field"><label>Data de emissão</label><input type="date" name="data_emissao" value="{{note.data_emissao.isoformat() if note.data_emissao and note.data_emissao.strftime is defined else (note.data_emissao or '')}}" required></div>
-            <div class="na-field wide"><label>Localizar requisições existentes</label><input id="na-req-search" type="search" autocomplete="off" placeholder="Digite número, secretaria, fornecedor ou contrato"><div id="na-req-results" class="na-req-results" hidden></div><div id="na-req-chips"></div><div class="na-muted">Selecione as requisições relacionadas para preencher os campos abaixo. Você também pode corrigir os dados manualmente.</div></div>
-            <div id="na-req-hidden"></div>
-            <div class="na-field"><label>Nº Requisição</label><input name="requisicao_numeros" id="na-requisicao-numeros" value="{{note.requisicao_numeros or ''}}" placeholder="Preenchido pelas requisições selecionadas"></div>
-            <div class="na-field"><label>Ofício nº</label><input name="oficio_numero" id="na-oficio" value="{{note.oficio_numero or ''}}"></div>
-            <div class="na-field"><label>Contrato nº</label><input name="contrato_numero" id="na-contrato" value="{{note.contrato_numero or ''}}"></div>
-            <div class="na-field"><label>Empresa</label><input name="empresa" id="na-empresa" value="{{note.empresa or ''}}"></div>
-            <div class="na-field wide"><label>Objeto da contratação</label><textarea name="objeto_contratacao" id="na-objeto">{{note.objeto_contratacao or ''}}</textarea></div>
-            <div class="na-field"><label>Data da análise</label><input type="date" name="data_analise" value="{{note.data_analise.isoformat() if note.data_analise and note.data_analise.strftime is defined else (note.data_analise or '')}}"></div>
-            <div class="na-field"><label>Origem (órgão ou entidade)</label><input name="orgao_origem" id="na-origem" value="{{note.orgao_origem or ''}}"></div>
-          </div>
-        </div>
-        <div class="na-card">
-          <h3>2. Definição do problema</h3>
-          <div class="na-field"><label>Apontamentos encontrados</label><div class="na-rich-box"><div id="na-toolbar-identificacao_problema" class="na-rich-toolbar"><span class="ql-formats"><button type="button" class="ql-bold" title="Negrito"></button><button type="button" class="ql-italic" title="Itálico"></button><button type="button" class="ql-underline" title="Sublinhado"></button></span><span class="ql-formats"><button type="button" class="ql-list" value="ordered" title="Lista numerada"></button><button type="button" class="ql-list" value="bullet" title="Lista com marcadores"></button></span><span class="ql-formats"><select class="ql-align" title="Alinhamento"><option selected></option><option value="center"></option><option value="right"></option><option value="justify"></option></select><button type="button" class="ql-clean" title="Limpar formatação"></button></span></div><div id="na-editor-identificacao_problema" class="na-rich-editor"></div></div><textarea class="na-rich-source" id="na-source-identificacao_problema" name="identificacao_problema" aria-hidden="true">{{rich_html.identificacao_problema}}</textarea><div class="na-rich-hint">Use a barra para aplicar negrito, listas numeradas ou marcadores e alinhar o texto. O conteúdo será salvo no cadastro e usado para gerar o documento.</div></div>
-          <h3>3. Análise da causa raiz</h3>
-          <div class="na-field"><label>Documentos analisados e análise</label><div class="na-rich-box"><div id="na-toolbar-analise_causa_raiz" class="na-rich-toolbar"><span class="ql-formats"><button type="button" class="ql-bold" title="Negrito"></button><button type="button" class="ql-italic" title="Itálico"></button><button type="button" class="ql-underline" title="Sublinhado"></button></span><span class="ql-formats"><button type="button" class="ql-list" value="ordered" title="Lista numerada"></button><button type="button" class="ql-list" value="bullet" title="Lista com marcadores"></button></span><span class="ql-formats"><select class="ql-align" title="Alinhamento"><option selected></option><option value="center"></option><option value="right"></option><option value="justify"></option></select><button type="button" class="ql-clean" title="Limpar formatação"></button></span></div><div id="na-editor-analise_causa_raiz" class="na-rich-editor"></div></div><textarea class="na-rich-source" id="na-source-analise_causa_raiz" name="analise_causa_raiz" aria-hidden="true">{{rich_html.analise_causa_raiz}}</textarea><div class="na-rich-hint">Use a barra para aplicar negrito, listas numeradas ou marcadores e alinhar o texto. O conteúdo será salvo no cadastro e usado para gerar o documento.</div></div>
-          <h3>4. Observações complementares</h3>
-          <div class="na-field"><label>Recomendações e observações</label><div class="na-rich-box"><div id="na-toolbar-observacoes_complementares" class="na-rich-toolbar"><span class="ql-formats"><button type="button" class="ql-bold" title="Negrito"></button><button type="button" class="ql-italic" title="Itálico"></button><button type="button" class="ql-underline" title="Sublinhado"></button></span><span class="ql-formats"><button type="button" class="ql-list" value="ordered" title="Lista numerada"></button><button type="button" class="ql-list" value="bullet" title="Lista com marcadores"></button></span><span class="ql-formats"><select class="ql-align" title="Alinhamento"><option selected></option><option value="center"></option><option value="right"></option><option value="justify"></option></select><button type="button" class="ql-clean" title="Limpar formatação"></button></span></div><div id="na-editor-observacoes_complementares" class="na-rich-editor"></div></div><textarea class="na-rich-source" id="na-source-observacoes_complementares" name="observacoes_complementares" aria-hidden="true">{{rich_html.observacoes_complementares}}</textarea><div class="na-rich-hint">Use a barra para aplicar negrito, listas numeradas ou marcadores e alinhar o texto. O conteúdo será salvo no cadastro e usado para gerar o documento.</div></div>
-        </div>
-        <div class="na-card">
-          <h3>5. Exige monitoramento?</h3>
-          <div class="na-grid">
-            <div class="na-field"><label>Monitoramento</label><select name="exige_monitoramento" id="na-exige-monitoramento"><option value="nao" {% if not note.exige_monitoramento %}selected{% endif %}>Não</option><option value="sim" {% if note.exige_monitoramento %}selected{% endif %}>Sim</option></select></div>
-            <div class="na-field"><label>Prazo de resposta</label><input type="date" name="prazo_resposta" value="{{note.prazo_resposta.isoformat() if note.prazo_resposta and note.prazo_resposta.strftime is defined else (note.prazo_resposta or '')}}"></div>
-          </div>
-          <h3>6. Monitoramento realizado</h3>
-          <div class="na-field"><label>Registro do monitoramento</label><div class="na-rich-box"><div id="na-toolbar-monitoramento" class="na-rich-toolbar"><span class="ql-formats"><button type="button" class="ql-bold" title="Negrito"></button><button type="button" class="ql-italic" title="Itálico"></button><button type="button" class="ql-underline" title="Sublinhado"></button></span><span class="ql-formats"><button type="button" class="ql-list" value="ordered" title="Lista numerada"></button><button type="button" class="ql-list" value="bullet" title="Lista com marcadores"></button></span><span class="ql-formats"><select class="ql-align" title="Alinhamento"><option selected></option><option value="center"></option><option value="right"></option><option value="justify"></option></select><button type="button" class="ql-clean" title="Limpar formatação"></button></span></div><div id="na-editor-monitoramento" class="na-rich-editor"></div></div><textarea class="na-rich-source" id="na-source-monitoramento" name="monitoramento" aria-hidden="true">{{rich_html.monitoramento}}</textarea><div class="na-rich-hint">Use a barra para aplicar negrito, listas numeradas ou marcadores e alinhar o texto. O conteúdo será salvo no cadastro e usado para gerar o documento.</div></div>
-          <p class="na-muted">O texto da LGPD previsto no modelo oficial será mantido no Google Docs modelo.</p>
-        </div>
-        <div class="na-card">
-          <h3>Responsáveis pela Nota de Auditoria</h3>
-          <p class="na-muted">Marque um ou mais colaboradores da tabela existente. Informe a matrícula no campo ao lado de cada responsável selecionado.</p>
-          {% for c in colaboradores %}
-            <div class="na-resp-row">
-              <label><input type="checkbox" name="responsavel_ids" value="{{c.id}}" data-resp-check="{{c.id}}" {% if (c.id|string) in responsaveis_selecionados %}checked{% endif %}> {{c.nome}}</label>
-              <input type="text" name="matricula_{{c.id}}" data-matricula="{{c.id}}" placeholder="Matrícula" value="{{responsaveis_selecionados.get(c.id|string, '')}}" {% if (c.id|string) not in responsaveis_selecionados %}disabled{% endif %}>
-            </div>
-          {% endfor %}
-        </div>
-        <div class="na-card">
-          <button class="na-btn green" type="submit" name="acao" value="salvar">💾 Salvar cadastro</button>
-          {% if not is_new and note.google_doc_id %}
-            <button class="na-btn orange" type="submit" name="acao" value="salvar_criar_doc" onclick="return confirm('Salvar as alterações e regenerar o Google Docs? A versão anterior com o mesmo nome será movida para a lixeira; edições feitas diretamente nela não serão mantidas.');">💾 Salvar e regenerar Google Docs</button>
-          {% else %}
-            <button class="na-btn" type="submit" name="acao" value="salvar_criar_doc">💾 Salvar e criar Google Docs</button>
-          {% endif %}
-          <a class="na-btn gray" href="/notas-auditoria-documentos">Cancelar</a>
-        </div>
-       </form>
-      </section>
-      <section class="na-panel" id="panel-documento">
-        <div class="na-card">
-          <h3>Google Docs e PDF</h3>
-          {% if note.google_doc_url %}
-            <p><a class="na-btn" target="_blank" rel="noopener" href="{{note.google_doc_url}}">📝 Abrir / editar no Google Docs</a></p>
-          {% endif %}
-          {% if not is_new %}
-            <p class="na-muted">O botão abaixo gera novamente o documento a partir do modelo e dos dados salvos no formulário. Se já existir um arquivo com o mesmo nome na pasta, a versão antiga será movida para a lixeira. Se você apagou o arquivo no Drive, o sistema cria uma nova cópia e atualiza o link automaticamente.</p>
-            <form method="post" action="/notas-auditoria-documentos/{{note.id}}/gerar-documento" onsubmit="return confirm('Gerar novamente a Nota a partir do modelo? A versão antiga com o mesmo nome será movida para a lixeira e as edições feitas diretamente nela não serão mantidas.');"><button class="na-btn orange" type="submit">♻️ Regenerar Google Docs</button></form>
-          {% else %}
-            <p class="na-muted">Salve o cadastro primeiro. Você também pode usar “Salvar e criar Google Docs” no formulário para gerar o documento em uma única etapa.</p>
-          {% endif %}
-          {% if note.google_doc_id %}
-            <form method="post" action="/notas-auditoria-documentos/{{note.id}}/gerar-pdf"><button class="na-btn green" type="submit">📄 Gerar / atualizar PDF no Drive</button></form>
-          {% endif %}
-          {% if note.pdf_url %}<p>PDF mais recente: <a target="_blank" rel="noopener" href="{{note.pdf_url}}">Abrir PDF emitido</a> {% if note.pdf_gerado_em %}<span class="na-muted">({{note.pdf_gerado_em.strftime('%d/%m/%Y %H:%M') if note.pdf_gerado_em.strftime is defined else note.pdf_gerado_em}})</span>{% endif %}</p>{% endif %}
-          {% if pdfs %}<h4>PDF atual</h4><table class="na-table"><tr><th>Arquivo</th><th>Gerado em</th></tr>{% for p in pdfs %}<tr><td><a target="_blank" rel="noopener" href="{{p.drive_url}}">{{p.nome_arquivo}}</a></td><td>{{p.gerado_em.strftime('%d/%m/%Y %H:%M') if p.gerado_em.strftime is defined else p.gerado_em}}</td></tr>{% endfor %}</table>{% endif %}
-        </div>
-      </section>
-      {% if not is_new %}
-      <section class="na-panel" id="panel-resposta">
-        <div class="na-card">
-          <h3>Resposta à Nota de Auditoria</h3>
-          <p class="na-muted">Envie aqui o PDF da resposta recebida. O arquivo será guardado na pasta de respostas configurada no Google Drive e o link ficará associado à Nota.</p>
-          <form method="post" enctype="multipart/form-data" action="/notas-auditoria-documentos/{{note.id}}/respostas/upload">
-            <div class="na-field"><label>Arquivo de resposta (PDF, máximo 20 MB)</label><input type="file" name="resposta_pdf" accept="application/pdf,.pdf" required></div>
-            <button class="na-btn green" type="submit">⬆ Enviar resposta em PDF</button>
-          </form>
-          {% if note.resposta_url %}<p>Última resposta: <a target="_blank" rel="noopener" href="{{note.resposta_url}}">Abrir PDF da resposta</a></p>{% endif %}
-          {% if respostas %}<h4>Histórico de respostas</h4><table class="na-table"><tr><th>Arquivo</th><th>Enviado em</th></tr>{% for a in respostas %}<tr><td><a target="_blank" rel="noopener" href="{{a.drive_url}}">{{a.nome_arquivo}}</a></td><td>{{a.enviado_em.strftime('%d/%m/%Y %H:%M') if a.enviado_em.strftime is defined else a.enviado_em}}</td></tr>{% endfor %}</table>{% endif %}
-        </div>
-      </section>
-      {% endif %}
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-    <script>
-    (function(){
-      const richFields = ['identificacao_problema','analise_causa_raiz','observacoes_complementares','monitoramento'];
-      const richEditors = {};
-      function safeInitialHtml(raw){
-        if(!raw) return '';
-        if(/<\s*(p|div|br|ol|ul|li|strong|b|em|i|u|span)\b/i.test(raw)) return raw;
-        return raw.replace(/\r\n?/g,'\n').split('\n').map(line=>'<p>'+line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>').join('');
-      }
-      richFields.forEach(field=>{
-        const toolbar = document.getElementById('na-toolbar-'+field);
-        const host = document.getElementById('na-editor-'+field);
-        const source = document.getElementById('na-source-'+field);
-        if(!toolbar || !host || !source) return;
-        if(typeof Quill === 'undefined'){
-          // Fallback acessível: se a CDN estiver bloqueada, mantém edição em texto simples.
-          source.classList.remove('na-rich-source');
-          source.removeAttribute('aria-hidden');
-          source.rows = 8;
-          source.style.display = 'block';
-          const box = host.closest('.na-rich-box');
-          if(box) box.style.display = 'none';
-          const raw = source.value || '';
-          if(/<\s*(p|div|br|ol|ul|li|strong|b|em|i|u|span)\b/i.test(raw)){
-            const tmp = document.createElement('div');
-            tmp.innerHTML = raw;
-            source.value = tmp.textContent || tmp.innerText || '';
-          }
-          return;
-        }
-        const quill = new Quill(host, {
-          theme: 'snow',
-          modules: { toolbar: toolbar },
-          formats: ['bold','italic','underline','list','align']
-        });
-        const initial = safeInitialHtml(source.value);
-        if(initial) quill.clipboard.dangerouslyPasteHTML(initial, 'silent');
-        richEditors[field] = {quill, source};
-      });
-      const notaForm = document.getElementById('na-form');
-      if(notaForm){
-        notaForm.addEventListener('submit',()=>{
-          Object.values(richEditors).forEach(({quill,source})=>{ source.value = quill.root.innerHTML; });
-        });
-      }
-      const tabs=[...document.querySelectorAll('.na-tab')];
-      tabs.forEach(btn=>btn.addEventListener('click',()=>{
-        tabs.forEach(t=>t.classList.toggle('active',t===btn));
-        document.querySelectorAll('.na-panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+btn.dataset.panel));
-      }));
-      document.querySelectorAll('[data-resp-check]').forEach(ch=>{
-        const inp=document.querySelector('[data-matricula="'+ch.value+'"]');
-        const apply=()=>{ if(inp){inp.disabled=!ch.checked; inp.required=ch.checked;} };
-        ch.addEventListener('change',apply); apply();
-      });
-      const search=document.getElementById('na-req-search');
-      const results=document.getElementById('na-req-results');
-      const chips=document.getElementById('na-req-chips');
-      const hidden=document.getElementById('na-req-hidden');
-      const selected=new Map();
-      const existing={{ req_selected|tojson }};
-      existing.forEach(r=>selected.set(String(r.id),r));
-      function uniq(items,key){return [...new Set(items.map(x=>(x[key]||'').trim()).filter(Boolean))].join(', ')}
-      function autofill(){
-        const arr=[...selected.values()];
-        const fields={
-          'na-requisicao-numeros':arr.map(r=>r.chave || ((r.requisicao_num||'')+(r.sigla?' / '+r.sigla:''))).filter(Boolean).join('; '),
-          'na-oficio':uniq(arr,'oficio'),
-          'na-contrato':uniq(arr,'contrato'),
-          'na-empresa':uniq(arr,'nome_fornecedor'),
-          'na-origem':uniq(arr,'secretaria'),
-          'na-objeto':uniq(arr,'item_despesa') || uniq(arr,'natureza_despesa') || uniq(arr,'tipo_documento')
-        };
-        Object.entries(fields).forEach(([id,val])=>{const el=document.getElementById(id);if(el && val)el.value=val;});
-        if(arr.length===1 && arr[0].num_nota){const n=document.querySelector('[name="na_numero"]');if(n&&!n.value)n.value=arr[0].num_nota;}
-      }
-      function drawSelected(){
-        chips.innerHTML=''; hidden.innerHTML='';
-        selected.forEach((r,id)=>{
-          const chip=document.createElement('span');chip.className='na-chip';
-          const label=r.chave || ((r.requisicao_num||'')+(r.sigla?' / '+r.sigla:'')) || ('Requisição '+id);
-          chip.appendChild(document.createTextNode(label+' '));
-          const del=document.createElement('button');del.type='button';del.textContent='×';del.setAttribute('aria-label','Remover requisição');del.onclick=()=>{selected.delete(id);drawSelected();autofill();};chip.appendChild(del);chips.appendChild(chip);
-          const hid=document.createElement('input');hid.type='hidden';hid.name='requisicao_ids';hid.value=id;hidden.appendChild(hid);
-        });
-      }
-      function drawResults(items){results.innerHTML='';if(!items.length){results.hidden=false;results.textContent='Nenhuma requisição encontrada.';return;}
-        items.forEach(r=>{if(selected.has(String(r.id)))return;const b=document.createElement('button');b.type='button';b.className='na-req-option';
-          b.textContent=(r.chave||r.requisicao_num||'Requisição')+' — '+(r.secretaria||'Órgão não informado')+' — '+(r.nome_fornecedor||'Fornecedor não informado');
-          b.onclick=()=>{selected.set(String(r.id),r);results.hidden=true;search.value='';drawSelected();autofill();};results.appendChild(b);});results.hidden=false;
-      }
-      let timer;
-      if(search){search.addEventListener('input',()=>{clearTimeout(timer);const q=search.value.trim();timer=setTimeout(()=>fetch('/api/notas-auditoria-documentos/requisicoes?q='+encodeURIComponent(q)).then(r=>r.ok?r.json():[]).then(drawResults).catch(()=>drawResults([])),220);});search.addEventListener('focus',()=>{if(!search.value.trim())search.dispatchEvent(new Event('input'));});document.addEventListener('click',e=>{if(!results.contains(e.target)&&e.target!==search)results.hidden=true;});}
-      drawSelected();
-    })();
-    </script>
-    """
-    rich_html = {field: _na_editor_initial_html(note.get(field)) for field in _NA_RICH_FIELDS}
-    return _na_render(html, note=note, colaboradores=colaboradores,
-                      responsaveis_selecionados=responsaveis_selecionados,
-                      req_selected=req_selected, respostas=respostas, pdfs=pdfs,
-                      rich_html=rich_html, mensagem=mensagem, is_new=is_new, form_action=form_action)
-
-
-def _na_save_form(nota_id=None):
-    con = get_db()
-    cur = con.cursor()
-    try:
-        _na_ensure_schema(cur)
-        if nota_id:
-            current = _na_note_access(cur, nota_id)
-            if not current:
-                con.close()
-                return "Nota não encontrada ou sem permissão de acesso.", 404
-        else:
-            current = None
-
-        na_numero = (request.form.get("na_numero") or "").strip()
-        if not na_numero:
-            con.close()
-            return "O número da Nota de Auditoria é obrigatório.", 400
-        data_emissao = _na_parse_date(request.form.get("data_emissao")) or _na_date.today()
-        data_analise = _na_parse_date(request.form.get("data_analise"))
-        prazo_resposta = _na_parse_date(request.form.get("prazo_resposta"))
-        exige_monitoramento = request.form.get("exige_monitoramento") == "sim"
-        req_ids = []
-        for raw_id in request.form.getlist("requisicao_ids"):
-            try:
-                rid = int(raw_id)
-                if rid > 0 and rid not in req_ids:
-                    req_ids.append(rid)
-            except (ValueError, TypeError):
-                pass
-        req_rows = _na_selected_requisitions(cur, req_ids)
-        req_ids = [int(r["id"]) for r in req_rows]
-        requisicao_numeros = (request.form.get("requisicao_numeros") or "").strip()
-        if not requisicao_numeros and req_rows:
-            requisicao_numeros = "; ".join(
-                str(r.get("chave") or ((r.get("requisicao_num") or "") + (" / " + r.get("sigla") if r.get("sigla") else "")))
-                for r in req_rows
-            )
-
-        resp_ids = []
-        for raw_id in request.form.getlist("responsavel_ids"):
-            try:
-                rid = int(raw_id)
-                if rid > 0 and rid not in resp_ids:
-                    resp_ids.append(rid)
-            except (ValueError, TypeError):
-                pass
-        collaborators = []
-        if resp_ids:
-            cur.execute("SELECT id, nome FROM colaboradores WHERE id=ANY(%s) ORDER BY nome", (resp_ids,))
-            by_id = {int(r["id"]): r for r in cur.fetchall()}
-            for order, rid in enumerate(resp_ids, 1):
-                c = by_id.get(rid)
-                if not c:
-                    continue
-                matricula = (request.form.get(f"matricula_{rid}") or "").strip()
-                if not matricula:
-                    con.rollback()
-                    con.close()
-                    return f"Informe a matrícula de {c['nome']} ou desmarque esse responsável.", 400
-                collaborators.append({"id": rid, "nome": c["nome"], "matricula": matricula, "ordem": order})
-        responsaveis_na = ", ".join(c["nome"] for c in collaborators)
-        matriculas = ", ".join(c["matricula"] for c in collaborators)
-
-        values = (
-            na_numero,
-            requisicao_numeros,
-            (request.form.get("oficio_numero") or "").strip(),
-            (request.form.get("contrato_numero") or "").strip(),
-            (request.form.get("empresa") or "").strip(),
-            (request.form.get("objeto_contratacao") or "").strip(),
-            data_emissao,
-            data_analise,
-            (request.form.get("orgao_origem") or "").strip(),
-            _na_sanitize_rich_html(request.form.get("identificacao_problema") or ""),
-            _na_sanitize_rich_html(request.form.get("analise_causa_raiz") or ""),
-            _na_sanitize_rich_html(request.form.get("observacoes_complementares") or ""),
-            exige_monitoramento,
-            prazo_resposta,
-            _na_sanitize_rich_html(request.form.get("monitoramento") or ""),
-            responsaveis_na,
-            matriculas,
-        )
-        if current:
-            cur.execute("""
-                UPDATE na_documentos SET
-                    na_numero=%s, requisicao_numeros=%s, oficio_numero=%s,
-                    contrato_numero=%s, empresa=%s, objeto_contratacao=%s,
-                    data_emissao=%s, data_analise=%s, orgao_origem=%s,
-                    identificacao_problema=%s, analise_causa_raiz=%s,
-                    observacoes_complementares=%s, exige_monitoramento=%s,
-                    prazo_resposta=%s, monitoramento=%s, responsaveis_na=%s,
-                    matriculas=%s, atualizado_em=NOW()
-                WHERE id=%s
-            """, values + (nota_id,))
-            saved_id = nota_id
-        else:
-            cur.execute("""
-                INSERT INTO na_documentos (
-                    na_numero, requisicao_numeros, oficio_numero, contrato_numero,
-                    empresa, objeto_contratacao, data_emissao, data_analise,
-                    orgao_origem, identificacao_problema, analise_causa_raiz,
-                    observacoes_complementares, exige_monitoramento, prazo_resposta,
-                    monitoramento, responsaveis_na, matriculas, criado_por
-                ) VALUES (
-                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
-                ) RETURNING id
-            """, values + (session.get("user_id"),))
-            saved_id = cur.fetchone()["id"]
-
-        cur.execute("DELETE FROM na_documento_responsaveis WHERE nota_id=%s", (saved_id,))
-        for c in collaborators:
-            cur.execute("""
-                INSERT INTO na_documento_responsaveis(nota_id,colaborador_id,matricula,ordem)
-                VALUES(%s,%s,%s,%s)
-            """, (saved_id, c["id"], c["matricula"], c["ordem"]))
-        cur.execute("DELETE FROM na_documento_requisicoes WHERE nota_id=%s", (saved_id,))
-        for rid in req_ids:
-            cur.execute("INSERT INTO na_documento_requisicoes(nota_id,requisicao_id) VALUES(%s,%s)", (saved_id, rid))
-        con.commit()
-    except Exception as exc:
-        con.rollback()
-        if "duplicate key" in str(exc).lower() or "unique constraint" in str(exc).lower():
-            con.close()
-            return "Já existe uma Nota com esse número. Informe outro número ou abra a nota existente.", 400
-        con.close()
-        raise
-    finally:
-        try:
-            cur.close()
-        except Exception:
-            pass
-        try:
-            con.close()
-        except Exception:
-            pass
-
-    message = "Cadastro salvo no PostgreSQL."
-    action = request.form.get("acao")
-    if action == "salvar_criar_doc":
-        try:
-            _, _, google_msg = _na_create_google_doc(saved_id)
-            message += " " + google_msg
-        except Exception as exc:
-            message += " O cadastro foi salvo, mas não foi possível criar o Google Docs: " + str(exc)[:500]
-    return redirect(f"/notas-auditoria-documentos/{saved_id}?msg={quote(message)}")
-
-
-@app.route("/notas-auditoria-documentos", methods=["GET"])
-def na_documentos_lista():
-    if "user" not in session:
-        return redirect("/")
-    con = get_db()
-    cur = con.cursor()
-    try:
-        _na_ensure_schema(cur)
-        busca = (request.args.get("busca") or "").strip()
-        where, params = _na_user_can_see_list_sql()
-        sql_query = """
-            SELECT n.id,n.na_numero,n.requisicao_numeros,n.empresa,n.estado,
-                   n.exige_monitoramento,n.google_doc_url,n.pdf_url,n.resposta_url,
-                   n.data_emissao,n.atualizado_em,
-                   (SELECT STRING_AGG(c.nome, ', ' ORDER BY nr.ordem)
-                    FROM na_documento_responsaveis nr JOIN colaboradores c ON c.id=nr.colaborador_id
-                    WHERE nr.nota_id=n.id) AS responsaveis
-            FROM na_documentos n WHERE 1=1
-        """
-        if where:
-            where = where.replace("n.criado_por", "n.criado_por").replace("nr.nota_id=n.id", "nr.nota_id=n.id")
-            sql_query += where
-        if busca:
-            sql_query += " AND (n.na_numero ILIKE %s OR n.empresa ILIKE %s OR n.requisicao_numeros ILIKE %s)"
-            params.extend([f"%{busca}%", f"%{busca}%", f"%{busca}%"])
-        sql_query += " ORDER BY n.criado_em DESC LIMIT 500"
-        cur.execute(sql_query, params)
-        notas = cur.fetchall()
-        con.commit()
-    finally:
-        cur.close()
-        con.close()
-    html = r"""
-    <style>
-      .nal-wrap{max-width:1280px;margin:20px auto;padding:0 12px}.nal-card{background:#fff;border:1px solid #dbe4ef;border-radius:14px;padding:20px;box-shadow:0 4px 16px #1e3a5f0d}.nal-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.nal-search{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:15px 0}.nal-search input{padding:10px;border:1px solid #cbd5e1;border-radius:8px;min-width:260px}.nal-table{width:100%;border-collapse:collapse;background:#fff}.nal-table th,.nal-table td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.nal-table th{background:#eaf1fb;color:#1e40af}.nal-btn{display:inline-block;padding:9px 13px;border-radius:8px;background:#1d4ed8;color:#fff!important;text-decoration:none;font-weight:700}
-      @media(max-width:750px){.nal-card{overflow:auto}}
-    </style>
-    <div class="nal-wrap"><div class="nal-card">
-      <div class="nal-top"><h2>🧾 Notas de Auditoria Preventiva</h2><a class="nal-btn" href="/notas-auditoria-documentos/nova">＋ Nova Nota</a></div>
-      <form method="get" class="nal-search"><input name="busca" value="{{request.args.get('busca','')}}" placeholder="Buscar número, empresa ou requisição"><button class="nal-btn" type="submit">Pesquisar</button><a href="/notas-auditoria-documentos">Limpar</a></form>
-      <div style="overflow:auto"><table class="nal-table"><thead><tr><th>Nº N.A.</th><th>Requisições</th><th>Empresa</th><th>Responsáveis</th><th>Emissão</th><th>Status</th><th>Documentos</th><th>Ação</th></tr></thead><tbody>
-      {% for n in notas %}<tr><td><b>{{n.na_numero}}</b></td><td>{{n.requisicao_numeros or '—'}}</td><td>{{n.empresa or '—'}}</td><td>{{n.responsaveis or '—'}}</td><td>{{n.data_emissao.strftime('%d/%m/%Y') if n.data_emissao and n.data_emissao.strftime is defined else (n.data_emissao or '—')}}</td><td>{{n.estado}}{% if n.exige_monitoramento %}<br><small>Monitoramento</small>{% endif %}</td><td>{% if n.google_doc_url %}<a target="_blank" rel="noopener" href="{{n.google_doc_url}}">Docs</a>{% endif %}{% if n.pdf_url %} · <a target="_blank" rel="noopener" href="{{n.pdf_url}}">PDF</a>{% endif %}{% if n.resposta_url %} · <a target="_blank" rel="noopener" href="{{n.resposta_url}}">Resposta</a>{% endif %}</td><td><a class="nal-btn" href="/notas-auditoria-documentos/{{n.id}}">Abrir</a></td></tr>{% else %}<tr><td colspan="8">Nenhuma Nota cadastrada.</td></tr>{% endfor %}
-      </tbody></table></div><p style="font-size:12px;color:#64748b">Exibindo até 500 registros. Acesso restrito conforme perfil, autoria, responsabilidade e requisições vinculadas.</p>
-    </div></div>
-    """
-    return _na_render(html, notas=notas)
-
-
-@app.route("/notas-auditoria-documentos/nova", methods=["GET", "POST"])
-def na_documento_novo():
-    if "user" not in session:
-        return redirect("/")
-    if request.method == "POST":
-        return _na_save_form(None)
-    con = get_db()
-    cur = con.cursor()
-    try:
-        _na_ensure_schema(cur)
-        colaboradores, selected_resps, req_selected, respostas, pdfs = _na_load_form_data(cur, None)
-        con.commit()
-    finally:
-        cur.close()
-        con.close()
-    return _na_form_html({}, colaboradores, selected_resps, req_selected, respostas, pdfs, request.args.get("msg", ""))
-
-
-@app.route("/notas-auditoria-documentos/<int:nota_id>", methods=["GET", "POST"])
-def na_documento_editar(nota_id):
-    if "user" not in session:
-        return redirect("/")
-    if request.method == "POST":
-        return _na_save_form(nota_id)
-    con = get_db()
-    cur = con.cursor()
-    try:
-        _na_ensure_schema(cur)
-        note = _na_note_access(cur, nota_id)
-        if not note:
-            return "Nota não encontrada ou sem permissão de acesso.", 404
-        colaboradores, selected_resps, req_selected, respostas, pdfs = _na_load_form_data(cur, note)
-        con.commit()
-    finally:
-        cur.close()
-        con.close()
-    return _na_form_html(note, colaboradores, selected_resps, req_selected, respostas, pdfs, request.args.get("msg", ""))
-
-
-@app.route("/api/notas-auditoria-documentos/requisicoes", methods=["GET"])
-def na_api_requisicoes():
-    if "user" not in session:
-        return jsonify([]), 401
-    q = (request.args.get("q") or "").strip()
-    con = get_db()
-    cur = con.cursor()
-    try:
-        _na_ensure_schema(cur)
-        sql_query = """
-            SELECT id,chave,requisicao_num,sigla,secretaria,contrato,nome_fornecedor,
-                   oficio,natureza_despesa,item_despesa,tipo_documento,num_nota
-            FROM requisicoes WHERE 1=1
-        """
-        params = []
-        if session.get("perfil") != "admin":
-            sql_query += " AND servidor_id=%s"
-            params.append(session.get("user_id"))
-        if q:
-            sql_query += " AND (chave ILIKE %s OR requisicao_num ILIKE %s OR sigla ILIKE %s OR secretaria ILIKE %s OR nome_fornecedor ILIKE %s OR contrato ILIKE %s)"
-            params.extend([f"%{q}%"] * 6)
-        sql_query += " ORDER BY data_criacao DESC NULLS LAST, id DESC LIMIT 40"
-        cur.execute(sql_query, params)
-        rows = cur.fetchall()
-        con.commit()
-        return jsonify([{k: (str(v) if isinstance(v, (_na_date, _na_datetime)) else v) for k, v in row.items()} for row in rows])
-    finally:
-        cur.close()
-        con.close()
-
-
-@app.route("/notas-auditoria-documentos/<int:nota_id>/gerar-documento", methods=["POST"])
-def na_gerar_documento(nota_id):
-    if "user" not in session:
-        return redirect("/")
-    con = get_db()
-    cur = con.cursor()
-    try:
-        _na_ensure_schema(cur)
-        note = _na_note_access(cur, nota_id)
-    finally:
-        cur.close()
-        con.close()
-    if not note:
-        return "Nota não encontrada ou sem permissão de acesso.", 404
-    try:
-        _, _, msg = _na_create_google_doc(nota_id)
-    except Exception as exc:
-        msg = "Não foi possível criar o Google Docs: " + str(exc)[:500]
-    return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
-
-
-@app.route("/notas-auditoria-documentos/<int:nota_id>/gerar-pdf", methods=["POST"])
-def na_gerar_pdf(nota_id):
-    """Gera/atualiza um único PDF por Nota e elimina registros de PDFs antigos.
-
-    Nome estável: ao gerar novamente, reutiliza o arquivo de mesmo nome na pasta.
-    Se o arquivo tiver sido apagado do Drive, cria outro e atualiza o cadastro.
-    Os anexos de resposta não são alterados por esta rota.
-    """
-    if "user" not in session:
-        return redirect("/")
-
-    con = get_db()
-    cur = con.cursor()
-    msg = ""
-    files_to_trash = set()
-    current_file_id = None
-
-    try:
-        _na_ensure_schema(cur)
-        note = _na_note_access(cur, nota_id)
-        if not note:
-            return "Nota não encontrada ou sem permissão de acesso.", 404
-
-        doc_id = note.get("google_doc_id")
-        if not doc_id:
-            return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('Crie primeiro o Google Docs a partir do modelo.')}")
-
-        drive, docs = _na_google_services()
-        from googleapiclient.http import MediaIoBaseUpload
-        from googleapiclient.errors import HttpError
-
-        # Exporta a versão atual do Google Docs.
-        pdf_bytes = drive.files().export(fileId=doc_id, mimeType="application/pdf").execute()
-        if not pdf_bytes or not pdf_bytes.startswith(b"%PDF-"):
-            raise RuntimeError("O Google Docs não retornou um PDF válido.")
-
-        # Nome fixo para que o mesmo PDF seja atualizado, e não acumulado a cada execução.
-        filename = _na_clean_filename(f"{note['na_numero']} - Nota de Auditoria") + ".pdf"
-        filename_q = filename.replace("\\", "\\\\").replace("'", "\\'")
-        query = (
-            f"name = '{filename_q}' "
-            f"and '{NA_GOOGLE_PDFS_FOLDER_ID}' in parents "
-            "and mimeType = 'application/pdf' and trashed = false"
-        )
-        same_name_files = drive.files().list(
-            q=query,
-            pageSize=100,
-            orderBy="modifiedTime desc",
-            fields="files(id,name,mimeType,webViewLink,parents,trashed,modifiedTime)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-        ).execute().get("files", [])
-
-        # Guarda os IDs previamente registrados para limpar os PDFs antigos do Drive.
-        cur.execute("""
-            SELECT drive_file_id
-            FROM na_documento_pdfs
-            WHERE nota_id=%s
-            ORDER BY gerado_em DESC, id DESC
-        """, (nota_id,))
-        previous_rows = cur.fetchall()
-        previous_ids = {r["drive_file_id"] for r in previous_rows if r.get("drive_file_id")}
-
-        # Prioridade: arquivo com nome estável já existente na pasta dedicada.
-        # Se não houver, tenta reutilizar o ID atual salvo no cadastro (inclusive o nome antigo com data).
-        target = same_name_files[0] if same_name_files else None
-        if target is None and note.get("pdf_file_id"):
-            try:
-                existing_current = drive.files().get(
-                    fileId=note["pdf_file_id"],
-                    fields="id,name,mimeType,webViewLink,parents,trashed",
-                    supportsAllDrives=True,
-                ).execute()
-                if not existing_current.get("trashed") and existing_current.get("mimeType") == "application/pdf":
-                    target = existing_current
-            except HttpError as exc:
-                if getattr(exc, "resp", None) is None or exc.resp.status != 404:
-                    raise
-                # O usuário apagou o arquivo no Drive; será criado novamente abaixo.
-                target = None
-
-        media = MediaIoBaseUpload(io.BytesIO(pdf_bytes), mimetype="application/pdf", resumable=True)
-        if target:
-            current_file_id = target["id"]
-            parents = target.get("parents") or []
-            update_kwargs = {}
-            if NA_GOOGLE_PDFS_FOLDER_ID not in parents:
-                update_kwargs["addParents"] = NA_GOOGLE_PDFS_FOLDER_ID
-                parents_to_remove = [p for p in parents if p != NA_GOOGLE_PDFS_FOLDER_ID]
-                if parents_to_remove:
-                    update_kwargs["removeParents"] = ",".join(parents_to_remove)
-            uploaded = drive.files().update(
-                fileId=current_file_id,
-                body={"name": filename},
-                media_body=media,
-                fields="id,name,webViewLink,parents,mimeType",
-                supportsAllDrives=True,
-                **update_kwargs,
-            ).execute()
-        else:
-            uploaded = drive.files().create(
-                body={"name": filename, "mimeType": "application/pdf", "parents": [NA_GOOGLE_PDFS_FOLDER_ID]},
-                media_body=media,
-                fields="id,name,webViewLink,parents,mimeType",
-                supportsAllDrives=True,
-            ).execute()
-            current_file_id = uploaded["id"]
-
-        file_id = uploaded["id"]
-        file_url = uploaded.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view"
-
-        # Prepara limpeza do Drive: PDFs antigos registrados e cópias duplicadas de mesmo nome.
-        files_to_trash.update(fid for fid in previous_ids if fid and fid != file_id)
-        files_to_trash.update(f["id"] for f in same_name_files if f.get("id") and f["id"] != file_id)
-
-        # O banco terá somente um registro por Nota: o PDF atual.
-        cur.execute("DELETE FROM na_documento_pdfs WHERE nota_id=%s", (nota_id,))
-        cur.execute("""
-            INSERT INTO na_documento_pdfs(nota_id,drive_file_id,drive_url,nome_arquivo,gerado_por)
-            VALUES(%s,%s,%s,%s,%s)
-        """, (nota_id, file_id, file_url, filename, session.get("user_id")))
-        cur.execute("""
-            UPDATE na_documentos
-            SET pdf_file_id=%s, pdf_url=%s, pdf_gerado_em=NOW(),
-                estado='PDF GERADO', atualizado_em=NOW()
-            WHERE id=%s
-        """, (file_id, file_url, nota_id))
-        con.commit()
-
-        # Limpa do Drive versões antigas criadas pelo próprio módulo; respostas ficam intocadas.
-        cleanup_failed = 0
-        for old_id in files_to_trash:
-            try:
-                drive.files().update(
-                    fileId=old_id,
-                    body={"trashed": True},
-                    supportsAllDrives=True,
-                    fields="id,trashed",
-                ).execute()
-            except HttpError as exc:
-                if getattr(exc, "resp", None) is not None and exc.resp.status == 404:
-                    continue  # já foi excluído manualmente
-                cleanup_failed += 1
-            except Exception:
-                cleanup_failed += 1
-
-        if cleanup_failed:
-            msg = ("PDF atualizado. O banco agora mantém somente o PDF atual, mas "
-                   f"{cleanup_failed} arquivo(s) antigo(s) não puderam ser enviados à lixeira no Drive.")
-        else:
-            msg = "PDF atualizado na pasta de PDFs emitidos. O sistema manteve apenas o registro do PDF atual e limpou as versões antigas; os PDFs de resposta foram preservados."
-
-    except Exception as exc:
-        con.rollback()
-        msg = "Não foi possível gerar/atualizar o PDF: " + str(exc)[:500]
-    finally:
-        cur.close()
-        con.close()
-
-    return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
-
-
-@app.route("/notas-auditoria-documentos/<int:nota_id>/respostas/upload", methods=["POST"])
-def na_upload_resposta(nota_id):
-    if "user" not in session:
-        return redirect("/")
-    file = request.files.get("resposta_pdf")
-    if not file or not file.filename:
-        return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('Selecione um arquivo PDF para enviar.')}")
-    original_name = _na_secure_filename(file.filename)
-    if not original_name or not original_name.lower().endswith(".pdf"):
-        return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('Envie somente arquivo com extensão .pdf.')}")
-    data = file.stream.read(NA_MAX_RESPONSE_PDF_BYTES + 1)
-    if len(data) > NA_MAX_RESPONSE_PDF_BYTES:
-        return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('O PDF excede o limite de 20 MB.')}")
-    if not data.startswith(b"%PDF-"):
-        return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote('O arquivo selecionado não parece ser um PDF válido.')}")
-
-    con = get_db()
-    cur = con.cursor()
-    try:
-        _na_ensure_schema(cur)
-        note = _na_note_access(cur, nota_id)
-        if not note:
-            return "Nota não encontrada ou sem permissão de acesso.", 404
-        drive, docs = _na_google_services()
-        from googleapiclient.http import MediaIoBaseUpload
-        safe_na = _na_clean_filename(note["na_numero"])
-        filename = _na_clean_filename(f"Resposta - {safe_na} - {_na_datetime.now().strftime('%Y%m%d-%H%M%S')} - {original_name}")
-        media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/pdf", resumable=True)
-        uploaded = drive.files().create(
-            body={"name": filename, "mimeType": "application/pdf", "parents": [NA_GOOGLE_RESPONSES_FOLDER_ID]},
-            media_body=media, fields="id,name,webViewLink,parents", supportsAllDrives=True,
-        ).execute()
-        file_id = uploaded["id"]
-        file_url = uploaded.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view"
-        cur.execute("""
-            INSERT INTO na_respostas(nota_id,drive_file_id,drive_url,nome_arquivo,enviado_por)
-            VALUES(%s,%s,%s,%s,%s)
-        """, (nota_id, file_id, file_url, filename, session.get("user_id")))
-        cur.execute("UPDATE na_documentos SET resposta_url=%s, atualizado_em=NOW() WHERE id=%s", (file_url, nota_id))
-        con.commit()
-        msg = "Resposta em PDF enviada ao Google Drive e vinculada à Nota."
-    except Exception as exc:
-        con.rollback()
-        msg = "Não foi possível enviar a resposta: " + str(exc)[:500]
-    finally:
-        cur.close()
-        con.close()
-    return redirect(f"/notas-auditoria-documentos/{nota_id}?msg={quote(msg)}")
-
 @app.route("/api/<tabela>")
 def api_tabela(tabela):
 
@@ -23120,134 +19772,6 @@ import io
 import psycopg2.extras
 from psycopg2 import sql
 
-import unicodedata
-from flask import request, jsonify
-
-
-def normalizar_tipo_checklist(valor):
-    texto = unicodedata.normalize("NFKD", str(valor or ""))
-    texto = "".join(
-        c for c in texto
-        if not unicodedata.combining(c)
-    )
-    return "".join(
-        c for c in texto.upper()
-        if c.isalnum()
-    )
-
-
-def familia_tipo_checklist(valor):
-    tipo = normalizar_tipo_checklist(valor)
-
-    if tipo == "ADITAMENTO":
-        return "ADITAMENTO"
-
-    if tipo.startswith("CONTRATA"):
-        return "CONTRATACAO"
-
-    return None
-
-
-@app.route("/api/checklist/requisicoes", methods=["GET"])
-def api_checklist_requisicoes():
-
-    tipo_solicitado = familia_tipo_checklist(
-        request.args.get("tipo", "ADITAMENTO")
-    )
-
-    if tipo_solicitado not in ("ADITAMENTO", "CONTRATACAO"):
-        return jsonify({
-            "success": False,
-            "erro": "Tipo de checklist inválido."
-        }), 400
-
-    con = None
-
-    try:
-        con = get_db()
-
-        with con.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    id,
-                    chave,
-                    requisicao_num,
-                    sigla,
-                    secretaria,
-                    contrato,
-                    status_analise,
-                    tipo,
-                    criterio,
-                    valor_requisicao::text AS valor_requisicao
-                FROM requisicoes
-                WHERE
-                    UPPER(BTRIM(COALESCE(tipo, ''))) = 'ADITAMENTO'
-                    OR UPPER(BTRIM(COALESCE(tipo, ''))) LIKE 'CONTRATA%'
-                ORDER BY
-                    secretaria NULLS LAST,
-                    requisicao_num NULLS LAST,
-                    chave NULLS LAST,
-                    id
-            """)
-
-            rows = cur.fetchall()
-
-        requisicoes_api = []
-
-        for row in rows:
-
-            familia = familia_tipo_checklist(row.get("tipo"))
-
-            if familia != tipo_solicitado:
-                continue
-
-            requisicoes_api.append({
-                "id": int(row["id"]),
-                "criterio": row.get("criterio") or "",
-                "valor_requisicao": (
-                    str(row["valor_requisicao"])
-                    if row.get("valor_requisicao") is not None
-                    else ""
-                ),
-                "chave": row.get("chave") or "",
-                "requisicao_num": row.get("requisicao_num") or "",
-                "sigla": row.get("sigla") or "",
-                "secretaria": row.get("secretaria") or "",
-                "contrato": row.get("contrato") or "",
-                "status_analise": row.get("status_analise") or "",
-                "tipo": familia
-            })
-
-        resposta = jsonify({
-            "success": True,
-            "total": len(requisicoes_api),
-            "filtro": {
-                "tipo": tipo_solicitado,
-                "status_analise": "TODOS"
-            },
-            "requisicoes": requisicoes_api
-        })
-
-        resposta.headers["Cache-Control"] = (
-            "no-store, no-cache, must-revalidate, max-age=0"
-        )
-
-        return resposta
-
-    except Exception:
-        app.logger.exception(
-            "Erro na API de requisições do checklist."
-        )
-
-        return jsonify({
-            "success": False,
-            "erro": "Não foi possível consultar as requisições."
-        }), 500
-
-    finally:
-        if con is not None:
-            con.close()
-            
 @app.route("/api/excel/<tabela>")
 def api_excel(tabela):
 

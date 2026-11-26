@@ -3088,131 +3088,80 @@ def recomendacoes_os():
         return "Colaborador não encontrado"
 
     # =========================================================
-    # IDENTIFICAR O.S
+    # IDENTIFICAR O.S. SELECIONADA NAS LISTAS
     # =========================================================
 
     termo_os = request.args.get("os", "").strip()
 
-    os_codigo = termo_os
-    os_resumo = request.args.get("resumo_os", "").strip()
-    
+    os_codigo = ""
+    os_resumo = ""
+
     if termo_os:
 
+        # O.S. da tabela principal liberada para monitoramento (monit = SIM)
         cur.execute("""
             SELECT
                 codigo,
-                resumo
+                COALESCE(resumo, '') AS resumo
             FROM os
-            WHERE codigo ILIKE %s
-               OR resumo ILIKE %s
-            ORDER BY
-                CASE
-                    WHEN codigo = %s THEN 0
-                    WHEN codigo ILIKE %s THEN 1
-                    ELSE 2
-                END,
-                codigo
+            WHERE TRIM(codigo) = TRIM(%s)
+              AND UPPER(TRIM(COALESCE(monit, ''))) = 'SIM'
             LIMIT 1
-        """, (
-            termo_os,
-            f"%{termo_os}%",
-            termo_os,
-            f"{termo_os}%"
-        ))
-    
+        """, (termo_os,))
+
         os_encontrada = cur.fetchone()
-    
+
         if os_encontrada:
-    
             os_codigo = os_encontrada["codigo"]
-    
-            # =====================================================
-            # 1. RESUMO OFICIAL DA TABELA OS
-            # =====================================================
-    
-            if os_encontrada["resumo"]:
-                os_resumo = os_encontrada["resumo"]
-    
-            else:
-    
-                # =================================================
-                # 2. RESUMO MANUAL DA CONFIGURAÇÃO
-                # =================================================
-    
-                cur.execute("""
-                    SELECT resumo_os
-                    FROM recomendacao_monitoramento_config
-                    WHERE TRIM(os_codigo) = TRIM(%s)
-                      AND resumo_os IS NOT NULL
-                      AND TRIM(resumo_os) <> ''
-                    LIMIT 1
-                """, (os_codigo,))
-    
-                resumo_config = cur.fetchone()
-    
-                if resumo_config and resumo_config["resumo_os"]:
-                    os_resumo = resumo_config["resumo_os"]
-    
-                else:
-    
-                    # =============================================
-                    # 3. COMPATIBILIDADE COM REGISTROS ANTIGOS
-                    # =============================================
-    
-                    cur.execute("""
-                        SELECT resumo_os
-                        FROM recomendacoes
-                        WHERE TRIM(os_codigo) = TRIM(%s)
-                          AND resumo_os IS NOT NULL
-                          AND TRIM(resumo_os) <> ''
-                        ORDER BY id DESC
-                        LIMIT 1
-                    """, (os_codigo,))
-    
-                    resumo_antigo = cur.fetchone()
-    
-                    if resumo_antigo:
-                        os_resumo = resumo_antigo["resumo_os"]
-    
+            os_resumo = os_encontrada["resumo"] or ""
+
         else:
-    
-            # =====================================================
-            # O.S NÃO EXISTE NA TABELA OS
-            # =====================================================
-            # Procurar resumo manual salvo na configuração.
-    
+            # Compatibilidade com O.S. que já possuem dados nesta área,
+            # mesmo que não estejam com monit=SIM na tabela principal.
             cur.execute("""
-                SELECT resumo_os
-                FROM recomendacao_monitoramento_config
-                WHERE TRIM(os_codigo) = TRIM(%s)
-                  AND resumo_os IS NOT NULL
-                  AND TRIM(resumo_os) <> ''
+                SELECT
+                    x.os_codigo,
+                    COALESCE(
+                        NULLIF(MAX(x.resumo_recomendacao), ''),
+                        MAX(o.resumo),
+                        ''
+                    ) AS resumo
+                FROM (
+                    SELECT
+                        r.os_codigo,
+                        MAX(r.resumo_os) AS resumo_recomendacao
+                    FROM recomendacoes r
+                    GROUP BY r.os_codigo
+
+                    UNION ALL
+
+                    SELECT
+                        mc.os_codigo,
+                        MAX(mc.resumo_os) AS resumo_recomendacao
+                    FROM recomendacao_monitoramento_config mc
+                    GROUP BY mc.os_codigo
+
+                    UNION ALL
+
+                    SELECT
+                        rm.os_codigo,
+                        NULL::text AS resumo_recomendacao
+                    FROM recomendacao_monitoramentos rm
+                    GROUP BY rm.os_codigo
+                ) x
+                LEFT JOIN os o
+                    ON TRIM(o.codigo) = TRIM(x.os_codigo)
+                WHERE TRIM(x.os_codigo) = TRIM(%s)
+                GROUP BY x.os_codigo
                 LIMIT 1
             """, (termo_os,))
-    
-            resumo_config = cur.fetchone()
-    
-            if resumo_config:
-                os_resumo = resumo_config["resumo_os"]
-    
-            else:
-    
-                # Compatibilidade com registros antigos
-                cur.execute("""
-                    SELECT resumo_os
-                    FROM recomendacoes
-                    WHERE TRIM(os_codigo) = TRIM(%s)
-                      AND resumo_os IS NOT NULL
-                      AND TRIM(resumo_os) <> ''
-                    ORDER BY id DESC
-                    LIMIT 1
-                """, (termo_os,))
-    
-                resumo_antigo = cur.fetchone()
-    
-                if resumo_antigo:
-                    os_resumo = resumo_antigo["resumo_os"]
-                
+
+            os_anterior = cur.fetchone()
+
+            if os_anterior:
+                os_codigo = os_anterior["os_codigo"]
+                os_resumo = os_anterior["resumo"] or ""
+
     # =========================================================
     # O.S. JÁ CADASTRADAS NAS RECOMENDAÇÕES
     # =========================================================
@@ -3250,6 +3199,16 @@ def recomendacoes_os():
                 MAX(mc.resumo_os) AS resumo_recomendacao
             FROM recomendacao_monitoramento_config mc
             GROUP BY mc.os_codigo
+
+
+            UNION ALL
+
+            /* O.S. que possuem somente histórico de monitoramento */
+            SELECT
+                rm.os_codigo,
+                NULL::text AS resumo_recomendacao
+            FROM recomendacao_monitoramentos rm
+            GROUP BY rm.os_codigo
     
         ) x
     
@@ -3268,6 +3227,50 @@ def recomendacoes_os():
     os_cadastradas = cur.fetchall()
 
     # =========================================================
+    # O.S. DA TABELA PRINCIPAL COM monit = SIM
+    # Exibe somente as que ainda não possuem recomendações,
+    # configuração ou histórico de monitoramento nesta área.
+    # =========================================================
+
+    cur.execute("""
+        SELECT
+            o.codigo,
+            COALESCE(o.resumo, '') AS resumo
+        FROM os o
+        WHERE o.codigo IS NOT NULL
+          AND TRIM(o.codigo) <> ''
+          AND UPPER(TRIM(COALESCE(o.monit, ''))) = 'SIM'
+
+          AND NOT EXISTS (
+              SELECT 1
+              FROM recomendacoes r
+              WHERE TRIM(r.os_codigo) = TRIM(o.codigo)
+          )
+
+          AND NOT EXISTS (
+              SELECT 1
+              FROM recomendacao_monitoramento_config mc
+              WHERE TRIM(mc.os_codigo) = TRIM(o.codigo)
+          )
+
+          AND NOT EXISTS (
+              SELECT 1
+              FROM recomendacao_monitoramentos rm
+              WHERE TRIM(rm.os_codigo) = TRIM(o.codigo)
+          )
+
+        ORDER BY
+            CASE
+                WHEN o.codigo ~ '/[0-9]{4}$'
+                THEN split_part(o.codigo, '/', 2)::int
+                ELSE 0
+            END DESC,
+            o.codigo DESC
+    """)
+
+    os_disponiveis = cur.fetchall()
+
+    # =========================================================
     # POST
     # =========================================================
 
@@ -3276,21 +3279,56 @@ def recomendacoes_os():
         os_codigo = request.form.get("os_codigo", "").strip()
         os_resumo = request.form.get("os_resumo", "").strip()
 
+        if not os_codigo:
+            con.close()
+            return "Selecione uma O.S. válida."
+
+        # Só permite O.S. liberada na tabela principal (monit=SIM)
+        # ou O.S. que já possui recomendações/monitoramento nesta área.
+        cur.execute("""
+            SELECT
+                (
+                    EXISTS (
+                        SELECT 1
+                        FROM os
+                        WHERE TRIM(codigo) = TRIM(%s)
+                          AND UPPER(TRIM(COALESCE(monit, ''))) = 'SIM'
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM recomendacoes
+                        WHERE TRIM(os_codigo) = TRIM(%s)
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM recomendacao_monitoramento_config
+                        WHERE TRIM(os_codigo) = TRIM(%s)
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM recomendacao_monitoramentos
+                        WHERE TRIM(os_codigo) = TRIM(%s)
+                    )
+                ) AS os_permitida
+        """, (os_codigo, os_codigo, os_codigo, os_codigo))
+
+        validacao_os = cur.fetchone()
+
+        if not validacao_os or not validacao_os["os_permitida"]:
+            con.close()
+            return "Esta O.S. não está habilitada para recomendações. Selecione uma O.S. das listas disponíveis."
+
         cur.execute("""
             SELECT resumo
             FROM os
-            WHERE codigo = %s
+            WHERE TRIM(codigo) = TRIM(%s)
             LIMIT 1
         """, (os_codigo,))
-        
+
         os_db = cur.fetchone()
-        
+
         if os_db and os_db["resumo"]:
             os_resumo = os_db["resumo"]
-
-        if not os_codigo:
-            con.close()
-            return "Informe o código da O.S."
 
         acao = request.form.get("acao")
 
@@ -3763,16 +3801,6 @@ select {
     margin-top:5px;
 }
 
-.os-box {
-    display:flex;
-    gap:10px;
-    align-items:end;
-}
-
-.os-box > div {
-    flex:1;
-}
-
 .rec {
     display:grid;
     grid-template-columns:40px 1fr 140px 150px 220px 45px;
@@ -3979,68 +4007,70 @@ select {
         <div style="margin-bottom:15px;">
 
             <label>
-                <b>O.S. já cadastradas</b>
+                <b>O.S. que já possuem recomendações ou monitoramento</b>
             </label>
 
             <select
                 id="osCadastrada"
                 onchange="selecionarOS(this)"
             >
-
                 <option value="">
-                    Selecione uma O.S...
+                    Selecione uma O.S. já utilizada...
                 </option>
 
                 {% for o in os_cadastradas %}
-
                 <option
-                    value="{{o.os_codigo}}"
+                    value="{{ o.os_codigo }}"
                     {% if o.os_codigo == os_codigo %}selected{% endif %}
                 >
-                    {{o.os_codigo}}
-
+                    {{ o.os_codigo }}
                     {% if o.resumo %}
-                        - {{o.resumo}}
+                        — {{ o.resumo }}
                     {% endif %}
-
                 </option>
-
                 {% endfor %}
-
             </select>
 
         </div>
 
+        <div style="margin-bottom:15px;">
 
-        <div class="os-box">
+            <label>
+                <b>O.S. cadastradas no sistema com Monitoramento = SIM</b>
+            </label>
 
-            <div>
+            <select
+                id="osDisponivel"
+                onchange="selecionarOS(this)"
+            >
+                <option value="">
+                    Selecione uma O.S. disponível...
+                </option>
 
-                <label>
-                    <b>O.S</b>
-                </label>
-
-                <input
-                    type="text"
-                    id="campoOS"
-                    name="os"
-                    value="{{ os_codigo }}"
-                    placeholder="Digite o código ou o nome da O.S..."
-                    required
+                {% for o in os_disponiveis %}
+                <option
+                    value="{{ o.codigo }}"
+                    {% if o.codigo == os_codigo %}selected{% endif %}
                 >
+                    {{ o.codigo }}
+                    {% if o.resumo %}
+                        — {{ o.resumo }}
+                    {% endif %}
+                </option>
+                {% endfor %}
+            </select>
 
+            <div style="
+                margin-top:6px;
+                font-size:12px;
+                color:#64748b;
+            ">
+                Exibe somente O.S. da tabela principal com o campo
+                <b>monit = SIM</b> que ainda não possuem recomendações
+                ou monitoramentos nesta área.
             </div>
 
-
-            <div style="flex:0 0 130px;">
-
-                <button
-                    class="btn"
-                    style="width:100%;"
-                >
-                    Consultar
-                </button>
-            </div>
+        </div>
         </div>
     </form>
 </div>
@@ -4084,7 +4114,7 @@ select {
             font-size:12px;
             color:#64748b;
         ">
-            Informe manualmente o resumo desta O.S.
+            Esta O.S. não possui resumo cadastrado. Preencha o resumo para identificar as recomendações.
         </div>
     
         {% endif %}
@@ -5706,6 +5736,7 @@ document.addEventListener(
         os_codigo=os_codigo,
         os_resumo=os_resumo,
         os_cadastradas=os_cadastradas,
+        os_disponiveis=os_disponiveis,
         colaboradores=colaboradores,
         recomendacoes=recomendacoes,
         monitoramento=monitoramento,

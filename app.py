@@ -3921,6 +3921,17 @@ select {
     box-shadow:0 15px 40px rgba(0,0,0,.25);
 }
 
+.rec-id-badge {
+    display:inline-block;
+    font-size:11px;
+    font-weight:700;
+    color:#475569;
+    background:#f1f5f9;
+    border:1px solid #cbd5e1;
+    border-radius:6px;
+    padding:3px 7px;
+    margin-bottom:4px;
+}
 </style>
 
 
@@ -4291,6 +4302,8 @@ select {
                         name="rec_id[]"
                         value="{{ r.id }}"
                     >
+
+                    <span class="rec-id-badge">ID {{ r.id }}</span>
             
                     <textarea
                         name="recomendacao[]"

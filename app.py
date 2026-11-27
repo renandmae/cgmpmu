@@ -13183,21 +13183,21 @@ def requisicoes():
                 <button onclick="excluir({{ r.id }})" title="Excluir">🗑️</button>
             </td>
 
-            <td style="min-width:150px;">
+            <td style="white-space:nowrap; min-width:55px;">
                 {% set nota_chave = (r.num_nota|string|trim) if r.num_nota else '' %}
                 {% set respostas = respostas_por_nota.get(nota_chave, []) %}
             
-                {% if respostas %}
-                    {% for arquivo in respostas %}
-                        <a href="{{ arquivo.web_view_link or ('https://drive.google.com/file/d/' ~ arquivo.drive_file_id ~ '/view') }}"
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           title="{{ arquivo.nome_arquivo or 'PDF de resposta' }}">
-                            📄 {{ arquivo.nome_arquivo or 'Ver resposta' }}
-                        </a>
-                        {% if not loop.last %}<br>{% endif %}
-                    {% endfor %}
-                {% else %}
+                {% for arquivo in respostas %}
+                    <a href="{{ arquivo.web_view_link or ('https://drive.google.com/file/d/' ~ arquivo.drive_file_id ~ '/view') }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       title="Abrir PDF de resposta"
+                       style="text-decoration:none; font-size:18px; margin-right:4px;">
+                        📄
+                    </a>
+                {% endfor %}
+            
+                {% if not respostas %}
                     <span style="color:#999;">—</span>
                 {% endif %}
             </td>

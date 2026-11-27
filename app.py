@@ -14313,45 +14313,294 @@ perc_valor_req_nota=perc_valor_req_nota,
 fmt_br=fmt_br
 )
 
-@app.route("/notas-auditoria", methods=["GET","POST"])
+# ================================================================
+# RESPOSTAS DE NOTAS DE AUDITORIA - CONFIGURAÇÃO E FUNÇÕES AUXILIARES
+# Cole esta parte UMA VEZ, antes da rota /notas-auditoria.
+# Usa requests, json e time já existentes no app.py.
+# ================================================================
+DRIVE_RESPOSTAS_NA_FOLDER_ID = "1m2Ov6s5K-X-TGTanX1u1ox5M7QyiHErR"
+
+# Para teste, os dados podem ficar diretamente no app.py.
+# NÃO são a API key: são credenciais OAuth do usuário que tem acesso à pasta.
+GOOGLE_DRIVE_OAUTH_CLIENT_ID = "384831111222-rfr11cfeq10ouu63lip626gbtc5ee5tp.apps.googleusercontent.com"
+GOOGLE_DRIVE_OAUTH_CLIENT_SECRET = "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"
+GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN = "1//04p-bXGyjYKW8CgYIARAAGAQSSQF-L9IrJXemD1SwoCYqBQF8hJFLM0nP73GqhrQg6v9ciT24_nYN-jqSCc1kOTv0-6LIwhBaD84qujCjHPJ39ztg6XEWNISC7wQ"
+DRIVE_RESPOSTAS_MAX_BYTES = 25 * 1024 * 1024  # 25 MB
+
+def obter_token_oauth_drive_respostas():
+    """Gera um access token novo usando o refresh token OAuth."""
+
+    if not all([
+        GOOGLE_DRIVE_OAUTH_CLIENT_ID,
+        GOOGLE_DRIVE_OAUTH_CLIENT_SECRET,
+        GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN
+    ]):
+        raise ValueError("Credenciais OAuth do Google Drive não configuradas.")
+
+    resposta = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "client_id": GOOGLE_DRIVE_OAUTH_CLIENT_ID,
+            "client_secret": GOOGLE_DRIVE_OAUTH_CLIENT_SECRET,
+            "refresh_token": GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN,
+            "grant_type": "refresh_token"
+        },
+        timeout=(10, 30)
+    )
+
+    if resposta.status_code != 200:
+        # Não imprime credenciais nem tokens no log.
+        raise RuntimeError(
+            "Google OAuth não autorizou a operação "
+            f"(HTTP {resposta.status_code}). Confira o refresh token e o acesso."
+        )
+
+    dados = resposta.json()
+    token = dados.get("access_token")
+
+    if not token:
+        raise RuntimeError("O Google não retornou access_token.")
+
+    return token
+
+
+def enviar_pdf_resposta_drive(token, conteudo_pdf, nome_original, num_nota):
+    """Envia PDF com o nome original e associa a N.A. por metadado interno."""
+
+    if not DRIVE_RESPOSTAS_NA_FOLDER_ID:
+        raise ValueError("Pasta de respostas do Drive não configurada.")
+
+    metadata = {
+        "name": nome_original,
+        "mimeType": "application/pdf",
+        "parents": [DRIVE_RESPOSTAS_NA_FOLDER_ID],
+        # Metadado privado da aplicação. Não depende do nome do arquivo.
+        "appProperties": {
+            "cgmpmu_tipo": "resposta_nota_auditoria",
+            "cgmpmu_num_nota": str(num_nota)
+        }
+    }
+
+    # Drive v3 recebe upload multipart/related.
+    boundary = "cgmpmu_resposta_" + str(int(time.time() * 1000000))
+    boundary_bytes = boundary.encode("ascii")
+
+    corpo = (
+        b"--" + boundary_bytes + b"\r\n"
+        b"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        + json.dumps(metadata, ensure_ascii=False).encode("utf-8")
+        + b"\r\n--" + boundary_bytes + b"\r\n"
+        b"Content-Type: application/pdf\r\n"
+        b"Content-Transfer-Encoding: binary\r\n\r\n"
+        + conteudo_pdf
+        + b"\r\n--" + boundary_bytes + b"--\r\n"
+    )
+
+    resposta = requests.post(
+        "https://www.googleapis.com/upload/drive/v3/files",
+        params={
+            "uploadType": "multipart",
+            "supportsAllDrives": "true",
+            "fields": "id,name,mimeType,webViewLink,createdTime"
+        },
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": f"multipart/related; boundary={boundary}"
+        },
+        data=corpo,
+        timeout=(20, 180)
+    )
+
+    if resposta.status_code not in (200, 201):
+        # Evita devolver conteúdo potencialmente sensível do Google ao navegador.
+        raise RuntimeError(
+            "Falha no upload para o Google Drive "
+            f"(HTTP {resposta.status_code}). Confira a permissão de edição na pasta."
+        )
+
+    arquivo_drive = resposta.json()
+
+    if not arquivo_drive.get("id"):
+        raise RuntimeError("O Google Drive não retornou o ID do arquivo enviado.")
+
+    arquivo_drive["webViewLink"] = arquivo_drive.get("webViewLink") or (
+        "https://drive.google.com/file/d/"
+        f"{arquivo_drive['id']}/view"
+    )
+
+    return arquivo_drive
+
+@app.route("/notas-auditoria", methods=["GET", "POST"])
 def notas_auditoria():
 
     if "user" not in session:
         return redirect("/")
 
+    perfil = session.get("perfil")
+    user_id = session.get("user_id")
+
     con = get_db()
     cur = con.cursor()
 
-    # =========================
-    # PAGINAÇÃO
-    # =========================
+    # ============================================================
+    # PAGINAÇÃO E BUSCA
+    # ============================================================
     try:
-        page = int(request.args.get("page", 1))
-        if page < 1:
-            page = 1
-    except:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
         page = 1
-    
+
     try:
         per_page = int(request.args.get("per_page", 25))
         if per_page not in (10, 25, 50, 100):
             per_page = 25
-    except:
+    except (TypeError, ValueError):
         per_page = 25
 
     offset = (page - 1) * per_page
+    busca = request.args.get("busca", "").strip()
 
-    # =========================
-    # SALVAR EDIÇÃO DA NOTA
-    # =========================
+    return_to_padrao = request.full_path
+    if return_to_padrao.endswith("?"):
+        return_to_padrao = return_to_padrao[:-1]
+    if not return_to_padrao.startswith("/notas-auditoria"):
+        return_to_padrao = "/notas-auditoria"
+
+    def redirecionar_com_status(status):
+        destino = request.form.get("return_to", "/notas-auditoria")
+        # Impede que o campo hidden seja usado como redirecionamento externo.
+        if not destino.startswith("/notas-auditoria"):
+            destino = "/notas-auditoria"
+        separador = "&" if "?" in destino else "?"
+        return redirect(destino + separador + status)
+
+    # ============================================================
+    # POST: SUBIR RESPOSTA OU SALVAR DADOS DA NOTA
+    # ============================================================
     if request.method == "POST":
 
-        num_nota = request.form.get("num_nota")
+        acao = request.form.get("acao", "salvar")
+        num_nota = (request.form.get("num_nota") or "").strip()
+
+        if not num_nota:
+            con.close()
+            return redirect("/notas-auditoria")
+
+        # Confirma que a N.A. pertence ao conjunto visível ao usuário.
+        cur.execute("""
+            SELECT 1
+            FROM requisicoes r
+            WHERE r.num_nota::text = %s
+              AND (%s = 'admin' OR r.servidor_id = %s)
+            LIMIT 1
+        """, (num_nota, perfil, user_id))
+
+        pode_acessar_nota = cur.fetchone()
+        if not pode_acessar_nota:
+            con.close()
+            return "Acesso negado", 403
+
+        # --------------------------------------------------------
+        # UPLOAD DO PDF DE RESPOSTA
+        # --------------------------------------------------------
+        if acao == "upload_resposta":
+
+            arquivo = request.files.get("arquivo_resposta")
+
+            if not arquivo or not arquivo.filename:
+                con.close()
+                return redirecionar_com_status("upload=sem_arquivo")
+
+            nome_original = arquivo.filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
+
+            if not nome_original or not nome_original.lower().endswith(".pdf"):
+                con.close()
+                return redirecionar_com_status("upload=nao_pdf")
+
+            # Limite de 25 MB e validação básica do cabeçalho PDF.
+            conteudo_pdf = arquivo.read(DRIVE_RESPOSTAS_MAX_BYTES + 1)
+
+            if len(conteudo_pdf) > DRIVE_RESPOSTAS_MAX_BYTES:
+                con.close()
+                return redirecionar_com_status("upload=grande")
+
+            if not conteudo_pdf.startswith(b"%PDF-"):
+                con.close()
+                return redirecionar_com_status("upload=nao_pdf")
+
+            try:
+                token = obter_token_oauth_drive_respostas()
+
+                arquivo_drive = enviar_pdf_resposta_drive(
+                    token=token,
+                    conteudo_pdf=conteudo_pdf,
+                    nome_original=nome_original,
+                    num_nota=num_nota
+                )
+
+                drive_file_id = arquivo_drive["id"]
+                web_view_link = arquivo_drive.get("webViewLink") or (
+                    "https://drive.google.com/file/d/"
+                    f"{drive_file_id}/view"
+                )
+
+                try:
+                    cur.execute("""
+                        INSERT INTO notas_auditoria_respostas
+                            (num_nota, drive_file_id, nome_arquivo,
+                             web_view_link, mime_type, servidor_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (
+                        num_nota,
+                        drive_file_id,
+                        nome_original,
+                        web_view_link,
+                        "application/pdf",
+                        user_id
+                    ))
+                    con.commit()
+
+                except Exception:
+                    con.rollback()
+                    # Se o registro no banco falhar, tenta remover o arquivo
+                    # recém-enviado para não deixar um PDF sem vínculo.
+                    try:
+                        requests.delete(
+                            "https://www.googleapis.com/drive/v3/files/"
+                            + drive_file_id,
+                            headers={"Authorization": f"Bearer {token}"},
+                            params={"supportsAllDrives": "true"},
+                            timeout=(10, 30)
+                        )
+                    except Exception:
+                        pass
+                    raise
+
+                con.close()
+                return redirecionar_com_status("upload=ok")
+
+            except Exception as erro:
+                con.rollback()
+                print(
+                    "ERRO AO SUBIR RESPOSTA DA N.A.",
+                    num_nota,
+                    type(erro).__name__,
+                    str(erro)
+                )
+                con.close()
+                return redirecionar_com_status("upload=erro")
+
+        # --------------------------------------------------------
+        # SALVAR VALOR POSTERIOR / OBSERVAÇÕES / STATUS
+        # --------------------------------------------------------
         valor_posterior = request.form.get("valor_posterior")
 
         if valor_posterior:
-            valor_posterior = valor_posterior.strip()
-            valor_posterior = valor_posterior.replace(".", "").replace(",", ".")
+            valor_posterior = (
+                valor_posterior.strip()
+                .replace(".", "")
+                .replace(",", ".")
+            )
         else:
             valor_posterior = None
 
@@ -14359,424 +14608,418 @@ def notas_auditoria():
         status = request.form.get("status")
 
         cur.execute("""
-        INSERT INTO notas_auditoria
-        (num_nota, valor_posterior, observacoes, status)
-        VALUES (%s,%s,%s,%s)
-        ON CONFLICT (num_nota)
-        DO UPDATE SET
-            valor_posterior = EXCLUDED.valor_posterior,
-            observacoes = EXCLUDED.observacoes,
-            status = EXCLUDED.status
-        """,(num_nota,valor_posterior,observacoes,status))
+            INSERT INTO notas_auditoria
+                (num_nota, valor_posterior, observacoes, status)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (num_nota)
+            DO UPDATE SET
+                valor_posterior = EXCLUDED.valor_posterior,
+                observacoes = EXCLUDED.observacoes,
+                status = EXCLUDED.status
+        """, (num_nota, valor_posterior, observacoes, status))
 
         con.commit()
+        con.close()
+        return redirecionar_com_status("salvo=ok")
 
-    # =========================
-    # BUSCA
-    # =========================
-    busca = request.args.get("busca","").strip()
-
-    # =========================
-    # COUNT TOTAL (PAGINAÇÃO)
-    # =========================
+    # ============================================================
+    # TOTAL DE NOTAS PARA PAGINAÇÃO
+    # A busca considera N.A., colaborador e chave da requisição.
+    # ============================================================
     count_sql = """
-    SELECT COUNT(DISTINCT r.num_nota)
-    FROM requisicoes r
-    LEFT JOIN colaboradores c ON c.id = r.servidor_id
-    WHERE r.num_nota IS NOT NULL
-      AND r.num_nota <> ''
+        SELECT COUNT(*) AS total
+        FROM (
+            SELECT DISTINCT r.num_nota
+            FROM requisicoes r
+            LEFT JOIN colaboradores c ON c.id = r.servidor_id
+            WHERE r.num_nota IS NOT NULL
+              AND r.num_nota::text <> ''
     """
-
     count_params = []
 
-    if session.get("perfil") != "admin":
+    if perfil != "admin":
         count_sql += " AND r.servidor_id = %s"
-        count_params.append(session.get("user_id"))
+        count_params.append(user_id)
 
     if busca:
         count_sql += """
-        AND (
-            r.num_nota ILIKE %s
-            OR c.nome ILIKE %s
-        )
+              AND (
+                    r.num_nota::text ILIKE %s
+                 OR COALESCE(c.nome, '') ILIKE %s
+                 OR COALESCE(r.chave::text, '') ILIKE %s
+              )
         """
-        count_params.append(f"%{busca}%")
-        count_params.append(f"%{busca}%")
+        termo = f"%{busca}%"
+        count_params.extend([termo, termo, termo])
+
+    count_sql += ") AS notas_encontradas"
 
     cur.execute(count_sql, count_params)
-    total = cur.fetchone()["count"]
+    total = cur.fetchone()["total"]
 
-    # =========================
-    # LISTAR NOTAS (COM LIMIT)
-    # =========================
+    # ============================================================
+    # LISTAGEM DAS NOTAS
+    # A CTE encontra as N.A. que correspondem à busca. A consulta
+    # externa agrega TODAS as requisições daquela N.A. no escopo
+    # de acesso do usuário, e não apenas a chave que coincidiu.
+    # ============================================================
     sql = """
-    SELECT
-        r.num_nota,
-
-        COUNT(r.id) AS qtd_requisicoes,
-
-        SUM(r.valor_requisicao) AS valor_nota,
-
-        na.valor_posterior,
-        na.observacoes,
-        na.status,
-
-        STRING_AGG(DISTINCT c.nome, ', ') AS responsavel,
-        
-        CASE 
-            WHEN na.valor_posterior IS NOT NULL 
-            THEN SUM(r.valor_requisicao) - na.valor_posterior
-            ELSE NULL
-        END AS diferenca
-
-    FROM requisicoes r
-
-    LEFT JOIN colaboradores c
-        ON c.id = r.servidor_id
-
-    LEFT JOIN notas_auditoria na
-        ON na.num_nota = r.num_nota
-
-    WHERE r.num_nota IS NOT NULL
-      AND r.num_nota <> ''
+        WITH notas_filtradas AS (
+            SELECT DISTINCT r.num_nota
+            FROM requisicoes r
+            LEFT JOIN colaboradores c ON c.id = r.servidor_id
+            WHERE r.num_nota IS NOT NULL
+              AND r.num_nota::text <> ''
     """
-
     params = []
 
-    if session.get("perfil") != "admin":
+    if perfil != "admin":
         sql += " AND r.servidor_id = %s"
-        params.append(session.get("user_id"))
+        params.append(user_id)
 
     if busca:
         sql += """
-        AND (
-            r.num_nota ILIKE %s
-            OR c.nome ILIKE %s
-        )
+              AND (
+                    r.num_nota::text ILIKE %s
+                 OR COALESCE(c.nome, '') ILIKE %s
+                 OR COALESCE(r.chave::text, '') ILIKE %s
+              )
         """
-        params.append(f"%{busca}%")
-        params.append(f"%{busca}%")
+        termo = f"%{busca}%"
+        params.extend([termo, termo, termo])
 
     sql += """
-    GROUP BY
-        r.num_nota,
-        na.valor_posterior,
-        na.observacoes,
-        na.status
-
-    ORDER BY r.num_nota
-    LIMIT %s OFFSET %s
+        )
+        SELECT
+            r.num_nota,
+            COUNT(DISTINCT r.id) AS qtd_requisicoes,
+            COALESCE(SUM(r.valor_requisicao), 0) AS valor_nota,
+            na.valor_posterior,
+            na.observacoes,
+            na.status,
+            STRING_AGG(DISTINCT c.nome, ', ' ORDER BY c.nome)
+                FILTER (WHERE c.nome IS NOT NULL) AS responsavel,
+            STRING_AGG(
+                DISTINCT r.chave::text,
+                E'\\n' ORDER BY r.chave::text
+            ) FILTER (WHERE r.chave IS NOT NULL) AS reqs,
+            CASE
+                WHEN na.valor_posterior IS NOT NULL
+                THEN COALESCE(SUM(r.valor_requisicao), 0) - na.valor_posterior
+                ELSE NULL
+            END AS diferenca
+        FROM requisicoes r
+        LEFT JOIN colaboradores c ON c.id = r.servidor_id
+        LEFT JOIN notas_auditoria na ON na.num_nota = r.num_nota
+        WHERE r.num_nota IN (SELECT num_nota FROM notas_filtradas)
     """
 
+    # Mantém o mesmo recorte de acesso na agregação das requisições.
+    if perfil != "admin":
+        sql += " AND r.servidor_id = %s"
+        params.append(user_id)
+
+    sql += """
+        GROUP BY
+            r.num_nota,
+            na.valor_posterior,
+            na.observacoes,
+            na.status
+        ORDER BY r.num_nota
+        LIMIT %s OFFSET %s
+    """
     params.extend([per_page, offset])
 
     cur.execute(sql, params)
     notas = cur.fetchall()
 
+    # ============================================================
+    # CARREGA RESPOSTAS JÁ VINCULADAS NO POSTGRESQL
+    # O vínculo usa num_nota + drive_file_id; não usa o nome do PDF.
+    # ============================================================
+    num_notas_pagina = [str(n["num_nota"]) for n in notas]
+    respostas_por_nota = {}
+
+    if num_notas_pagina:
+        cur.execute("""
+            SELECT
+                num_nota,
+                drive_file_id,
+                nome_arquivo,
+                web_view_link,
+                criado_em
+            FROM notas_auditoria_respostas
+            WHERE num_nota = ANY(%s)
+            ORDER BY criado_em DESC, id DESC
+        """, (num_notas_pagina,))
+
+        for resposta in cur.fetchall():
+            chave_na = str(resposta["num_nota"])
+            resposta["link"] = resposta.get("web_view_link") or (
+                "https://drive.google.com/file/d/"
+                f"{resposta['drive_file_id']}/view"
+            )
+            respostas_por_nota.setdefault(chave_na, []).append(resposta)
+
+    # ============================================================
+    # CARREGA TODAS AS REQUISIÇÕES DE CADA N.A. DA PÁGINA
+    # para montar a coluna Reqs e localizar seus PDFs de checklist.
+    # ============================================================
+    requisicoes_por_nota = {}
+
+    if num_notas_pagina:
+        sql_reqs = """
+            SELECT
+                r.num_nota::text AS num_nota,
+                r.chave::text AS chave,
+                r.secretaria
+            FROM requisicoes r
+            WHERE r.num_nota::text = ANY(%s)
+        """
+        params_reqs = [num_notas_pagina]
+
+        if perfil != "admin":
+            sql_reqs += " AND r.servidor_id = %s"
+            params_reqs.append(user_id)
+
+        sql_reqs += " ORDER BY r.num_nota, r.chave"
+
+        cur.execute(sql_reqs, params_reqs)
+
+        for req in cur.fetchall():
+            requisicoes_por_nota.setdefault(str(req["num_nota"]), []).append(req)
+
     con.close()
 
-    # =========================
+    # Aplica os PDFs de resposta e checklist em cada registro da tabela.
+    for n in notas:
+        chave_na = str(n["num_nota"])
+        n["respostas"] = respostas_por_nota.get(chave_na, [])
+        n["reqs_lista"] = requisicoes_por_nota.get(chave_na, [])
+        n["pdf_checklist"] = []
+
+    # Usa as funções e o cache de PDFs de checklist que já existem no app.py.
+    try:
+        indice_pdfs_checklist, consulta_pdfs_ok = carregar_pdfs_checklist_drive()
+
+        for n in notas:
+            pdfs_na = {}
+
+            for req in n.get("reqs_lista", []):
+                for pdf in localizar_pdf_requisicao(req, indice_pdfs_checklist):
+                    # Evita repetir o mesmo arquivo se estiver ligado a mais de uma chave.
+                    pdfs_na[pdf.get("id") or pdf.get("link")] = pdf
+
+            n["pdf_checklist"] = sorted(
+                pdfs_na.values(),
+                key=lambda item: item.get("modificado", ""),
+                reverse=True
+            )
+            n["pdf_checklist_consulta_ok"] = consulta_pdfs_ok
+
+    except Exception as erro:
+        print("ERRO AO ASSOCIAR PDFS DE CHECKLIST ÀS N.A.", type(erro).__name__, str(erro))
+        for n in notas:
+            n["pdf_checklist_consulta_ok"] = False
+
+    # ============================================================
     # HTML
-    # =========================
+    # ============================================================
     html = """
 <style>
-
-.table-wrap{
-    width:100%;
-    overflow-x:auto;
-    margin-top:10px;
-    border-radius:16px;
-}
-
-.audit-table{
-    width:100%;
-    table-layout:auto;
-    border-collapse:separate;
-    border-spacing:0;
-    background:#fff;
-    border-radius:16px;
-    overflow:hidden;
-    box-shadow:0 6px 18px rgba(0,0,0,.08);
-}
-
-.audit-table th{
-    background:linear-gradient(
-        90deg,
-        #2563eb,
-        #3b82f6
-    );
-    color:white;
-    padding:12px;
-    text-align:left;
-    font-weight:600;
-    font-size:14px;
-    white-space:nowrap;
-    position:sticky;
-    top:0;
-    z-index:1;
-}
-
-.audit-table td{
-    padding:10px;
-    border-bottom:1px solid #e5e7eb;
-    vertical-align:top;
-    background:white;
-}
-
-.audit-table tr:nth-child(even) td{
-    background:#fafafa;
-}
-
-.audit-table tr:hover td{
-    background:#eff6ff;
-}
-
-.audit-input{
-    width:100%;
-    min-width:140px;
-    padding:9px 12px;
-    border:1px solid #d1d5db;
-    border-radius:8px;
-    box-sizing:border-box;
-    transition:.2s;
-}
-
-.audit-select{
-    width:100%;
-    min-width:140px;
-    padding:9px 12px;
-    border:1px solid #d1d5db;
-    border-radius:8px;
-    background:white;
-    box-sizing:border-box;
-    transition:.2s;
-}
-
-.audit-textarea{
-    width:100%;
-    min-width:500px;
-    min-height:90px;
-    resize:vertical;
-    padding:10px 12px;
-    border:1px solid #d1d5db;
-    border-radius:8px;
-    box-sizing:border-box;
-    font-family:inherit;
-    transition:.2s;
-}
-
-.audit-input:focus,
-.audit-select:focus,
-.audit-textarea:focus{
-    outline:none;
-    border-color:#3b82f6;
-    box-shadow:0 0 0 3px rgba(59,130,246,.15);
-}
-
-.btn-save{
-    background:linear-gradient(
-        135deg,
-        #16a34a,
-        #22c55e
-    );
-    color:white;
-    border:none;
-    border-radius:10px;
-    padding:10px 16px;
-    cursor:pointer;
-    font-weight:600;
-    transition:.2s;
-    box-shadow:0 2px 8px rgba(0,0,0,.12);
-}
-
-.btn-save:hover{
-    transform:translateY(-1px);
-    box-shadow:0 6px 16px rgba(0,0,0,.15);
-}
-
-.badge-monitorada{
-    background:#dcfce7;
-    color:#166534;
-    padding:5px 12px;
-    border-radius:999px;
-    font-weight:600;
-}
-
-.busca-auditoria{
-    display:flex;
-    gap:10px;
-    align-items:center;
-    flex-wrap:wrap;
-    margin-bottom:15px;
-}
-
-.busca-auditoria input{
-    width:350px;
-    max-width:100%;
-    padding:10px 14px;
-    border:1px solid #d1d5db;
-    border-radius:10px;
-}
-
-.busca-auditoria select{
-    padding:10px;
-    border:1px solid #d1d5db;
-    border-radius:10px;
-}
-
-.btn-exportar{
-    display:inline-block;
-    margin-bottom:15px;
-    padding:10px 16px;
-    border-radius:10px;
-    text-decoration:none;
-    font-weight:600;
-    color:white;
-    background:linear-gradient(
-        135deg,
-        #059669,
-        #10b981
-    );
-    box-shadow:0 4px 12px rgba(0,0,0,.10);
-}
-
-.btn-exportar:hover{
-    opacity:.92;
-}
-
+.table-wrap{width:100%;overflow-x:auto;margin-top:10px;border-radius:16px;}
+.audit-table{width:100%;min-width:1500px;table-layout:auto;border-collapse:separate;border-spacing:0;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.08);}
+.audit-table th{background:linear-gradient(90deg,#2563eb,#3b82f6);color:white;padding:12px;text-align:left;font-weight:600;font-size:14px;white-space:nowrap;position:sticky;top:0;z-index:1;}
+.audit-table td{padding:10px;border-bottom:1px solid #e5e7eb;vertical-align:top;background:white;}
+.audit-table tr:nth-child(even) td{background:#fafafa;}
+.audit-table tr:hover td{background:#eff6ff;}
+.audit-input,.audit-select{width:100%;min-width:140px;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;transition:.2s;}
+.audit-select{background:white;}
+.audit-textarea{width:100%;min-width:360px;min-height:90px;resize:vertical;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;font-family:inherit;transition:.2s;}
+.audit-input:focus,.audit-select:focus,.audit-textarea:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15);}
+.btn-save,.btn-upload{display:inline-block;border:0;border-radius:9px;padding:9px 13px;cursor:pointer;font-weight:600;text-decoration:none;white-space:nowrap;}
+.btn-save{background:linear-gradient(135deg,#16a34a,#22c55e);color:white;box-shadow:0 2px 8px rgba(0,0,0,.12);}
+.btn-upload{background:#e0f2fe;color:#075985;margin-top:6px;}
+.btn-save:hover,.btn-upload:hover{filter:brightness(.96);}
+.btn-ver-nota{display:inline-block;background:#eff6ff;color:#1d4ed8;padding:8px 11px;border-radius:8px;text-decoration:none;font-weight:600;white-space:nowrap;}
+.busca-auditoria{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:15px;}
+.busca-auditoria input{width:380px;max-width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:10px;}
+.busca-auditoria select{padding:10px;border:1px solid #d1d5db;border-radius:10px;}
+.btn-exportar{display:inline-block;margin-bottom:15px;padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:600;color:white;background:linear-gradient(135deg,#059669,#10b981);box-shadow:0 4px 12px rgba(0,0,0,.10);}
+.reqs-cell{white-space:pre-line;min-width:170px;max-width:260px;line-height:1.6;font-size:13px;}
+.pdf-lista{min-width:150px;max-width:250px;}
+.pdf-lista summary{cursor:pointer;color:#b91c1c;font-weight:700;white-space:nowrap;}
+.pdf-lista a{display:block;margin:7px 0;color:#1d4ed8;text-decoration:none;overflow-wrap:anywhere;font-size:13px;}
+.pdf-lista a:hover{text-decoration:underline;}
+.upload-form{min-width:190px;}
+.upload-form input[type=file]{width:190px;max-width:190px;font-size:12px;}
+.alerta-upload{padding:11px 14px;border-radius:9px;margin:10px 0 15px;font-weight:600;}
+.alerta-ok{background:#dcfce7;color:#166534;}
+.alerta-erro{background:#fee2e2;color:#991b1b;}
+.alerta-info{background:#dbeafe;color:#1e40af;}
 </style>
 
-    <h2>Notas de Auditoria</h2>
+<h2>Notas de Auditoria</h2>
 
-    <a href="/exportar-notas-auditoria" class="btn-exportar">
-    Exportar Notas Auditoria
-    </a>
+<a href="/exportar-notas-auditoria" class="btn-exportar">Exportar Notas Auditoria</a>
 
-    <br><br>
+{% if request.args.get('upload') == 'ok' %}
+<div class="alerta-upload alerta-ok">PDF enviado e vinculado à N.A. com sucesso.</div>
+{% elif request.args.get('upload') == 'sem_arquivo' %}
+<div class="alerta-upload alerta-erro">Selecione um PDF antes de clicar em Subir Resposta.</div>
+{% elif request.args.get('upload') == 'nao_pdf' %}
+<div class="alerta-upload alerta-erro">O arquivo selecionado não é um PDF válido.</div>
+{% elif request.args.get('upload') == 'grande' %}
+<div class="alerta-upload alerta-erro">O PDF ultrapassa o limite de 25 MB.</div>
+{% elif request.args.get('upload') == 'erro' %}
+<div class="alerta-upload alerta-erro">Não foi possível enviar o PDF. Confira as credenciais OAuth e a permissão de edição na pasta do Drive.</div>
+{% endif %}
+{% if request.args.get('salvo') == 'ok' %}
+<div class="alerta-upload alerta-ok">Dados da nota salvos com sucesso.</div>
+{% endif %}
 
-    <form method="get" class="busca-auditoria">
-        <input type="text" name="busca"
-        placeholder="Buscar por nota ou colaborador"
-        value="{{request.args.get('busca','')}}">
-        
-        Exibir:
-        <select name="per_page" onchange="this.form.submit()">
-            {% for opt in [10,25,50,100] %}
-            <option value="{{opt}}" {% if opt==per_page %}selected{% endif %}>
-                {{opt}}
-            </option>
-            {% endfor %}
-        </select>
+<form method="get" class="busca-auditoria">
+    <input type="text" name="busca"
+           placeholder="Buscar por N.A., requisição ou colaborador"
+           value="{{request.args.get('busca','')}}">
+    Exibir:
+    <select name="per_page" onchange="this.form.submit()">
+        {% for opt in [10,25,50,100] %}
+        <option value="{{opt}}" {% if opt==per_page %}selected{% endif %}>{{opt}}</option>
+        {% endfor %}
+    </select>
+    <button class="btn">Pesquisar</button>
+</form>
 
-        <button class="btn">Pesquisar</button>
-    </form>
+<div class="table-wrap">
+<table class="audit-table">
+<thead>
+<tr>
+    <th>N.A.</th>
+    <th>Reqs</th>
+    <th>Responsável</th>
+    <th>Qtd Requisições</th>
+    <th>Valor Nota</th>
+    <th>Valor Posterior</th>
+    <th>Diferença</th>
+    <th>Status</th>
+    <th style="min-width:360px;">Observações</th>
+    <th>Ação</th>
+    <th>Subir Resposta</th>
+    <th>Ver Respostas</th>
+    <th>PDF Checklist</th>
+    <th>Salvar</th>
+</tr>
+</thead>
+<tbody>
+{% for n in notas %}
+<tr>
+    <td>
+        <strong>{{n.num_nota}}</strong>
+        <form id="form-save-{{loop.index}}" method="post"></form>
+        <form id="form-upload-{{loop.index}}" method="post" enctype="multipart/form-data"></form>
+        <input form="form-save-{{loop.index}}" type="hidden" name="acao" value="salvar">
+        <input form="form-save-{{loop.index}}" type="hidden" name="num_nota" value="{{n.num_nota}}">
+        <input form="form-save-{{loop.index}}" type="hidden" name="return_to" value="{{return_to}}">
+        <input form="form-upload-{{loop.index}}" type="hidden" name="acao" value="upload_resposta">
+        <input form="form-upload-{{loop.index}}" type="hidden" name="num_nota" value="{{n.num_nota}}">
+        <input form="form-upload-{{loop.index}}" type="hidden" name="return_to" value="{{return_to}}">
+    </td>
 
-    <br>
+    <td class="reqs-cell">{{n.reqs or ''}}</td>
+    <td>{{n.responsavel or ''}}</td>
+    <td>{{n.qtd_requisicoes}}</td>
+    <td>{{fmt_br(n.valor_nota)}}</td>
 
-    <div class="table-wrap">
-    <table class="audit-table">
+    <td>
+        <input form="form-save-{{loop.index}}" class="audit-input" name="valor_posterior"
+               value="{{fmt_br(n.valor_posterior) if n.valor_posterior else ''}}">
+    </td>
 
-    <tr>
-        <th>Nota</th>
-        <th>Responsável</th>
-        <th>Qtd Requisições</th>
-        <th>Valor Nota</th>
-        <th>Valor Posterior</th>
-        <th>Diferença</th>
-        <th>Status</th>
-        <th style="min-width:500px;">Observações</th>
-        <th>Ação</th>
-        <th>Salvar</th>
-    </tr>
+    <td>{% if n.diferenca is not none %}{{fmt_br(n.diferenca)}}{% endif %}</td>
 
-    {% for n in notas %}
-
-    <form method="post">
-
-    <tr>
-
-        <td>
-        {{n.num_nota}}
-        <input type="hidden" name="num_nota" value="{{n.num_nota}}">
-        </td>
-
-        <td>{{n.responsavel}}</td>
-
-        <td>{{n.qtd_requisicoes}}</td>
-
-        <td>{{fmt_br(n.valor_nota)}}</td>
-
-        <td>
-        <input
-            class="audit-input"
-            name="valor_posterior"
-            value="{{fmt_br(n.valor_posterior) if n.valor_posterior else ''}}">
-        </td>
-        <td>
-            {% if n.diferenca is not none %}
-                {{fmt_br(n.diferenca)}}
-            {% endif %}
-        </td>
-        <td>
-        <select name="status" class="audit-select">
+    <td>
+        <select form="form-save-{{loop.index}}" name="status" class="audit-select">
             <option value=""></option>
-            <option value="MONITORADA"
-            {% if n.status=="MONITORADA" %}selected{% endif %}>
-            Monitorada
-            </option>
+            <option value="MONITORADA" {% if n.status=="MONITORADA" %}selected{% endif %}>Monitorada</option>
         </select>
-        </td>
+    </td>
 
-        <td style="min-width:500px;">
-        <textarea
-            name="observacoes"
-            class="audit-textarea"
-        >{{n.observacoes or ''}}</textarea>
-        </td>
+    <td>
+        <textarea form="form-save-{{loop.index}}" name="observacoes" class="audit-textarea">{{n.observacoes or ''}}</textarea>
+    </td>
 
-        <td>
-        <a href="/notas-auditoria/{{n.num_nota}}">
-        Ver nota
-        </a>
-        </td>
+    <td>
+        <a class="btn-ver-nota" href="/notas-auditoria/{{n.num_nota}}">Ver nota</a>
+    </td>
 
-        <td style="text-align:center;">
-            <button class="btn-save">
-                💾 Salvar
-            </button>
-        </td>
+    <td class="upload-form">
+        <input form="form-upload-{{loop.index}}" type="file" name="arquivo_resposta"
+               accept="application/pdf,.pdf" required>
+        <button form="form-upload-{{loop.index}}" type="submit" class="btn-upload">⬆ Subir Resposta</button>
+    </td>
 
-    </tr>
-
-    </form>
-
-    {% endfor %}
-    
-    </table>
-    </div>
-    <div style="margin-top:10px;">
-        {% if page > 1 %}
-            <a href="?page={{page-1}}&per_page={{per_page}}&busca={{request.args.get('busca','')}}">Anterior</a>
+    <td>
+        {% if n.respostas %}
+        <details class="pdf-lista">
+            <summary>📄 {{n.respostas|length}} PDF(s)</summary>
+            {% for arq in n.respostas %}
+            <a href="{{arq.link}}" target="_blank" rel="noopener">📕 {{arq.nome_arquivo}}</a>
+            {% endfor %}
+        </details>
+        {% else %}
+        <span style="color:#9ca3af;">—</span>
         {% endif %}
+    </td>
 
-        Página {{page}}
-
-        {% if page * per_page < total %}
-            <a href="?page={{page+1}}&per_page={{per_page}}&busca={{request.args.get('busca','')}}">Próxima</a>
+    <td>
+        {% if n.pdf_checklist %}
+        <details class="pdf-lista">
+            <summary>📑 {{n.pdf_checklist|length}} PDF(s)</summary>
+            {% for pdf in n.pdf_checklist %}
+            <a href="{{pdf.link}}" target="_blank" rel="noopener">📕 {{pdf.nome}}</a>
+            {% endfor %}
+        </details>
+        {% else %}
+        <span style="color:#9ca3af;" title="Nenhum PDF de checklist localizado para as requisições desta N.A.">—</span>
         {% endif %}
-    </div>
-    """
+    </td>
+
+    <td style="text-align:center;">
+        <button form="form-save-{{loop.index}}" type="submit" class="btn-save">💾 Salvar</button>
+    </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<div style="margin-top:14px;display:flex;gap:14px;align-items:center;">
+    {% if page > 1 %}
+        <a href="?page={{page-1}}&per_page={{per_page}}&busca={{busca|urlencode}}">Anterior</a>
+    {% endif %}
+    Página {{page}} de {{total_paginas}}
+    {% if page * per_page < total %}
+        <a href="?page={{page+1}}&per_page={{per_page}}&busca={{busca|urlencode}}">Próxima</a>
+    {% endif %}
+</div>
+"""
+
+    total_paginas = max(1, (total + per_page - 1) // per_page)
 
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
         notas=notas,
         fmt_br=fmt_br,
-        user=session['user'],
-        perfil=session['perfil'],
+        user=session["user"],
+        perfil=perfil,
         request=request,
         page=page,
         per_page=per_page,
-        total=total
+        total=total,
+        total_paginas=total_paginas,
+        busca=busca,
+        return_to=return_to_padrao
     )
     
 @app.route("/notas-auditoria/<path:num_nota>")

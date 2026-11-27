@@ -14369,64 +14369,65 @@ fmt_br=fmt_br
 # Cole esta parte UMA VEZ, antes da rota /notas-auditoria.
 # Usa requests, json e time já existentes no app.py.
 # ================================================================
+
 DRIVE_RESPOSTAS_NA_FOLDER_ID = "1m2Ov6s5K-X-TGTanX1u1ox5M7QyiHErR"
+DRIVE_NOTAS_NA_FOLDER_ID = "1nkAdN9avNTXBuwjq-cYQ-CClg0hw1T3H"
 
 # Para teste, os dados podem ficar diretamente no app.py.
 # NÃO são a API key: são credenciais OAuth do usuário que tem acesso à pasta.
-GOOGLE_DRIVE_OAUTH_CLIENT_ID = "384831111222-rfr11cfeq10ouu63lip626gbtc5ee5tp.apps.googleusercontent.com"
-GOOGLE_DRIVE_OAUTH_CLIENT_SECRET = "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"
-GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN = "1//04p-bXGyjYKW8CgYIARAAGAQSSQF-L9IrJXemD1SwoCYqBQF8hJFLM0nP73GqhrQg6v9ciT24_nYN-jqSCc1kOTv0-6LIwhBaD84qujCjHPJ39ztg6XEWNISC7wQ"
+GOOGLE_DRIVE_OAUTH_CLIENT_ID = "COLE_AQUI_O_CLIENT_ID"
+GOOGLE_DRIVE_OAUTH_CLIENT_SECRET = "COLE_AQUI_O_CLIENT_SECRET"
+GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN = "COLE_AQUI_O_REFRESH_TOKEN"
+
 DRIVE_RESPOSTAS_MAX_BYTES = 25 * 1024 * 1024  # 25 MB
 
-def detalhe_erro_google(resposta):
-    """Extrai o erro retornado pelo Google sem expor credenciais."""
 
+def _erro_google_drive(resposta, etapa):
+    """Extrai somente código/mensagem de erro, nunca tokens ou segredos."""
     try:
         dados = resposta.json()
     except Exception:
         dados = {}
 
-    partes = []
+    erro = dados.get("error", {}) if isinstance(dados, dict) else {}
 
-    erro = dados.get("error")
+    # OAuth token endpoint costuma retornar error + error_description.
+    if isinstance(erro, str):
+        codigo = erro
+        descricao = dados.get("error_description", "") if isinstance(dados, dict) else ""
+        return f"{etapa}: HTTP {resposta.status_code}; {codigo}: {descricao}".strip()
 
     if isinstance(erro, dict):
-        if erro.get("status"):
-            partes.append(str(erro["status"]))
+        codigo = erro.get("status") or erro.get("code") or ""
+        mensagem = erro.get("message") or dados.get("error_description") or ""
+        motivos = []
+        for item in erro.get("errors", []) or []:
+            if isinstance(item, dict) and item.get("reason"):
+                motivos.append(str(item["reason"]))
+        extra = f"; motivos: {', '.join(motivos)}" if motivos else ""
+        return f"{etapa}: HTTP {resposta.status_code}; {codigo}; {mensagem}{extra}".strip()
 
-        if erro.get("message"):
-            partes.append(str(erro["message"]))
-
-        for item in erro.get("errors", []):
-            if item.get("reason"):
-                partes.append("Motivo: " + str(item["reason"]))
-
-            if item.get("message"):
-                partes.append(str(item["message"]))
-
-    elif erro:
-        partes.append(str(erro))
-
-        if dados.get("error_description"):
-            partes.append(str(dados["error_description"]))
-
-    if not partes:
-        partes.append(resposta.text[:1200] or "Sem detalhes retornados.")
-
-    texto = " | ".join(partes)
-
-    # Proteção adicional contra exposição de credenciais nos logs.
-    for segredo in (
-        GOOGLE_DRIVE_OAUTH_CLIENT_SECRET,
-        GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN
-    ):
-        if segredo:
-            texto = texto.replace(segredo, "[CREDENCIAL OCULTA]")
-
-    return texto[:2000]
+    descricao = dados.get("error_description", "") if isinstance(dados, dict) else ""
+    return f"{etapa}: HTTP {resposta.status_code}; {descricao or 'resposta sem detalhe'}"
 
 
 def obter_token_oauth_drive_respostas():
+    """Gera um access token novo usando o refresh token OAuth."""
+
+    credenciais = {
+        "Client ID": GOOGLE_DRIVE_OAUTH_CLIENT_ID,
+        "Client Secret": GOOGLE_DRIVE_OAUTH_CLIENT_SECRET,
+        "Refresh Token": GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN
+    }
+    faltando = [
+        nome for nome, valor in credenciais.items()
+        if not valor or str(valor).startswith("COLE_AQUI_")
+    ]
+    if faltando:
+        raise ValueError(
+            "Preencha no app.py: " + ", ".join(faltando) +
+            ". Os textos COLE_AQUI_ são apenas marcadores."
+        )
 
     resposta = requests.post(
         "https://oauth2.googleapis.com/token",
@@ -14440,36 +14441,67 @@ def obter_token_oauth_drive_respostas():
     )
 
     if resposta.status_code != 200:
-        raise RuntimeError(
-            "ERRO NA AUTENTICAÇÃO OAUTH: "
-            f"HTTP {resposta.status_code} - "
-            f"{detalhe_erro_google(resposta)}"
-        )
+        raise RuntimeError(_erro_google_drive(resposta, "Renovação OAuth"))
 
     dados = resposta.json()
     token = dados.get("access_token")
-
     if not token:
-        raise RuntimeError(
-            "Google não retornou access_token: " +
-            str(dados.get("error_description", "sem detalhes"))
-        )
-
+        raise RuntimeError("OAuth respondeu sem access_token.")
     return token
 
 
+def verificar_pasta_drive(token, folder_id):
+    """Confirma se uma pasta existe e se a conta OAuth pode adicionar arquivos."""
+    resposta = requests.get(
+        "https://www.googleapis.com/drive/v3/files/" + folder_id,
+        params={
+            "supportsAllDrives": "true",
+            "fields": "id,name,mimeType,capabilities(canAddChildren)"
+        },
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=(10, 30)
+    )
+    if resposta.status_code != 200:
+        raise RuntimeError(_erro_google_drive(resposta, "Verificação da pasta de destino"))
+
+    pasta = resposta.json()
+    if pasta.get("mimeType") != "application/vnd.google-apps.folder":
+        raise RuntimeError(
+            "O ID configurado existe, mas não identifica uma pasta do Google Drive."
+        )
+
+    pode_adicionar = (pasta.get("capabilities") or {}).get("canAddChildren")
+    if pode_adicionar is not True:
+        raise PermissionError(
+            "A conta autorizada pelo OAuth não tem permissão para adicionar arquivos "
+            "nessa pasta. Compartilhe a pasta com essa conta como Editor."
+        )
+    return pasta
+
+
+def verificar_pasta_respostas_drive(token):
+    """Mantida para compatibilidade com o diagnóstico já existente."""
+    return verificar_pasta_drive(token, DRIVE_RESPOSTAS_NA_FOLDER_ID)
+
+
 def enviar_pdf_resposta_drive(token, conteudo_pdf, nome_original, num_nota):
+    """Envia PDF com o nome original e associa a N.A. por metadado interno."""
+
+    if not DRIVE_RESPOSTAS_NA_FOLDER_ID:
+        raise ValueError("Pasta de respostas do Drive não configurada.")
 
     metadata = {
         "name": nome_original,
         "mimeType": "application/pdf",
         "parents": [DRIVE_RESPOSTAS_NA_FOLDER_ID],
+        # Metadado privado da aplicação. Não depende do nome do arquivo.
         "appProperties": {
             "cgmpmu_tipo": "resposta_nota_auditoria",
             "cgmpmu_num_nota": str(num_nota)
         }
     }
 
+    # Drive v3 recebe upload multipart/related.
     boundary = "cgmpmu_resposta_" + str(int(time.time() * 1000000))
     boundary_bytes = boundary.encode("ascii")
 
@@ -14500,18 +14532,16 @@ def enviar_pdf_resposta_drive(token, conteudo_pdf, nome_original, num_nota):
     )
 
     if resposta.status_code not in (200, 201):
+        # Evita devolver conteúdo potencialmente sensível do Google ao navegador.
         raise RuntimeError(
-            "ERRO NO UPLOAD DO GOOGLE DRIVE: "
-            f"HTTP {resposta.status_code} - "
-            f"{detalhe_erro_google(resposta)}"
+            "Falha no upload para o Google Drive "
+            f"(HTTP {resposta.status_code}). Confira a permissão de edição na pasta."
         )
 
     arquivo_drive = resposta.json()
 
     if not arquivo_drive.get("id"):
-        raise RuntimeError(
-            "Upload aparentemente concluído, mas o Google não retornou o ID."
-        )
+        raise RuntimeError("O Google Drive não retornou o ID do arquivo enviado.")
 
     arquivo_drive["webViewLink"] = arquivo_drive.get("webViewLink") or (
         "https://drive.google.com/file/d/"
@@ -14520,15 +14550,9 @@ def enviar_pdf_resposta_drive(token, conteudo_pdf, nome_original, num_nota):
 
     return arquivo_drive
 
-# ================================================================
-# PDF DA NOTA DE AUDITORIA
-# ================================================================
-
-DRIVE_NOTAS_NA_FOLDER_ID = "1nkAdN9avNTXBuwjq-cYQ-CClg0hw1T3H"
-
 
 def enviar_pdf_nota_drive(token, conteudo_pdf, nome_original, num_nota):
-
+    """Envia o PDF da nota para a pasta própria e vincula pela N.A."""
     metadata = {
         "name": nome_original,
         "mimeType": "application/pdf",
@@ -14541,7 +14565,6 @@ def enviar_pdf_nota_drive(token, conteudo_pdf, nome_original, num_nota):
 
     boundary = "cgmpmu_nota_" + str(int(time.time() * 1000000))
     boundary_bytes = boundary.encode("ascii")
-
     corpo = (
         b"--" + boundary_bytes + b"\r\n"
         b"Content-Type: application/json; charset=UTF-8\r\n\r\n"
@@ -14570,24 +14593,90 @@ def enviar_pdf_nota_drive(token, conteudo_pdf, nome_original, num_nota):
 
     if resposta.status_code not in (200, 201):
         raise RuntimeError(
-            "ERRO NO UPLOAD DO PDF DA NOTA: "
-            f"HTTP {resposta.status_code} - "
-            f"{detalhe_erro_google(resposta)}"
+            "Falha no upload do PDF da nota para o Google Drive "
+            f"(HTTP {resposta.status_code}). Confira a permissão da pasta."
         )
 
     arquivo_drive = resposta.json()
-
     if not arquivo_drive.get("id"):
-        raise RuntimeError(
-            "Upload concluído sem retorno do ID do arquivo."
-        )
+        raise RuntimeError("O Google Drive não retornou o ID do PDF da nota.")
 
     arquivo_drive["webViewLink"] = arquivo_drive.get("webViewLink") or (
-        "https://drive.google.com/file/d/"
-        f"{arquivo_drive['id']}/view"
+        "https://drive.google.com/file/d/" + arquivo_drive["id"] + "/view"
     )
-
     return arquivo_drive
+
+
+# ================================================================
+# SQL PARA EXECUTAR UMA ÚNICA VEZ NO POSTGRESQL
+# ================================================================
+# CREATE TABLE IF NOT EXISTS notas_auditoria_respostas (
+#     id BIGSERIAL PRIMARY KEY,
+#     num_nota TEXT NOT NULL,
+#     drive_file_id TEXT NOT NULL UNIQUE,
+#     nome_arquivo TEXT NOT NULL,
+#     web_view_link TEXT,
+#     mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+#     servidor_id BIGINT,
+#     criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+# );
+# CREATE INDEX IF NOT EXISTS idx_notas_auditoria_respostas_num_nota
+#     ON notas_auditoria_respostas (num_nota);
+#
+# CREATE TABLE IF NOT EXISTS notas_auditoria_notas (
+#     id BIGSERIAL PRIMARY KEY,
+#     num_nota TEXT NOT NULL,
+#     drive_file_id TEXT NOT NULL UNIQUE,
+#     nome_arquivo TEXT NOT NULL,
+#     web_view_link TEXT,
+#     mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+#     servidor_id BIGINT,
+#     criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+# );
+# CREATE INDEX IF NOT EXISTS idx_notas_auditoria_notas_num_nota
+#     ON notas_auditoria_notas (num_nota);
+# ================================================================
+
+
+@app.route("/diagnosticar-drive-respostas")
+def diagnosticar_drive_respostas():
+    """Teste administrativo de OAuth e permissão de escrita, sem enviar PDF."""
+    if "user" not in session:
+        return redirect("/")
+    if session.get("perfil") != "admin":
+        return "Acesso negado", 403
+
+    try:
+        token = obter_token_oauth_drive_respostas()
+        pasta = verificar_pasta_respostas_drive(token)
+
+        # Confere também se a tabela que registra os vínculos existe.
+        con_diag = get_db()
+        cur_diag = con_diag.cursor()
+        cur_diag.execute("SELECT 1 FROM notas_auditoria_respostas LIMIT 1")
+        cur_diag.fetchone()
+        con_diag.close()
+
+        return (
+            "Conexão com Google Drive OK.\n"
+            f"Pasta: {pasta.get('name', '(sem nome)')}\n"
+            "Permissão para adicionar arquivos: SIM\n"
+            "Tabela notas_auditoria_respostas: OK\n"
+            "Agora teste o upload pela tela de Notas de Auditoria."
+        ), 200, {"Content-Type": "text/plain; charset=utf-8"}
+    except Exception as erro:
+        print(
+            "DIAGNÓSTICO DRIVE RESPOSTAS:",
+            type(erro).__name__,
+            str(erro)
+        )
+        return (
+            "Falha na conexão/permissão do Google Drive: " + str(erro) +
+            "\nOs tokens e segredos não são exibidos nesta página.",
+            400,
+            {"Content-Type": "text/plain; charset=utf-8"}
+        )
+
 
 @app.route("/notas-auditoria", methods=["GET", "POST"])
 def notas_auditoria():
@@ -14601,6 +14690,9 @@ def notas_auditoria():
     con = get_db()
     cur = con.cursor()
 
+    # ============================================================
+    # PAGINAÇÃO E BUSCA
+    # ============================================================
     try:
         page = max(1, int(request.args.get("page", 1)))
     except (TypeError, ValueError):
@@ -14619,132 +14711,20 @@ def notas_auditoria():
     return_to_padrao = request.full_path
     if return_to_padrao.endswith("?"):
         return_to_padrao = return_to_padrao[:-1]
-
     if not return_to_padrao.startswith("/notas-auditoria"):
         return_to_padrao = "/notas-auditoria"
 
     def redirecionar_com_status(status):
         destino = request.form.get("return_to", "/notas-auditoria")
-
+        # Impede que o campo hidden seja usado como redirecionamento externo.
         if not destino.startswith("/notas-auditoria"):
             destino = "/notas-auditoria"
-
         separador = "&" if "?" in destino else "?"
         return redirect(destino + separador + status)
 
     # ============================================================
-    # FUNÇÃO INTERNA PARA VALIDAR E ENVIAR PDF AO DRIVE
+    # POST: SUBIR RESPOSTA OU SALVAR DADOS DA NOTA
     # ============================================================
-
-    def processar_upload_pdf(
-        arquivo,
-        num_nota,
-        tipo,
-        nome_campo
-    ):
-
-        if not arquivo or not arquivo.filename:
-            return None, "sem_arquivo"
-
-        nome_original = (
-            arquivo.filename
-            .replace("\\", "/")
-            .rsplit("/", 1)[-1]
-            .strip()
-        )
-
-        if not nome_original or not nome_original.lower().endswith(".pdf"):
-            return None, "nao_pdf"
-
-        conteudo_pdf = arquivo.read(DRIVE_RESPOSTAS_MAX_BYTES + 1)
-
-        if len(conteudo_pdf) > DRIVE_RESPOSTAS_MAX_BYTES:
-            return None, "grande"
-
-        if not conteudo_pdf.startswith(b"%PDF-"):
-            return None, "nao_pdf"
-
-        token = obter_token_oauth_drive_respostas()
-
-        if tipo == "nota":
-            arquivo_drive = enviar_pdf_nota_drive(
-                token=token,
-                conteudo_pdf=conteudo_pdf,
-                nome_original=nome_original,
-                num_nota=num_nota
-            )
-        else:
-            arquivo_drive = enviar_pdf_resposta_drive(
-                token=token,
-                conteudo_pdf=conteudo_pdf,
-                nome_original=nome_original,
-                num_nota=num_nota
-            )
-
-        drive_file_id = arquivo_drive["id"]
-
-        web_view_link = arquivo_drive.get("webViewLink") or (
-            "https://drive.google.com/file/d/"
-            f"{drive_file_id}/view"
-        )
-
-        tabela = (
-            "notas_auditoria_notas"
-            if tipo == "nota"
-            else "notas_auditoria_respostas"
-        )
-
-        try:
-            cur.execute(f"""
-                INSERT INTO {tabela}
-                    (
-                        num_nota,
-                        drive_file_id,
-                        nome_arquivo,
-                        web_view_link,
-                        mime_type,
-                        servidor_id
-                    )
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (
-                num_nota,
-                drive_file_id,
-                nome_original,
-                web_view_link,
-                "application/pdf",
-                user_id
-            ))
-
-            con.commit()
-
-        except Exception:
-            con.rollback()
-
-            # Remove o arquivo do Drive caso não consiga registrar
-            # o vínculo no PostgreSQL.
-            try:
-                requests.delete(
-                    "https://www.googleapis.com/drive/v3/files/"
-                    + drive_file_id,
-                    headers={
-                        "Authorization": f"Bearer {token}"
-                    },
-                    params={
-                        "supportsAllDrives": "true"
-                    },
-                    timeout=(10, 30)
-                )
-            except Exception:
-                pass
-
-            raise
-
-        return arquivo_drive, None
-
-    # ============================================================
-    # POST: UPLOAD DA NOTA, UPLOAD DA RESPOSTA OU SALVAR DADOS
-    # ============================================================
-
     if request.method == "POST":
 
         acao = request.form.get("acao", "salvar")
@@ -14754,6 +14734,7 @@ def notas_auditoria():
             con.close()
             return redirect("/notas-auditoria")
 
+        # Confirma que a N.A. pertence ao conjunto visível ao usuário.
         cur.execute("""
             SELECT 1
             FROM requisicoes r
@@ -14763,89 +14744,111 @@ def notas_auditoria():
         """, (num_nota, perfil, user_id))
 
         pode_acessar_nota = cur.fetchone()
-
         if not pode_acessar_nota:
             con.close()
             return "Acesso negado", 403
 
         # --------------------------------------------------------
-        # UPLOAD DO PDF DA NOTA
+        # UPLOAD DO PDF DA NOTA OU DA RESPOSTA
+        # Cada tipo usa sua própria tabela e pasta do Drive.
         # --------------------------------------------------------
+        if acao in ("upload_nota", "upload_resposta"):
 
-        if acao == "upload_nota":
+            eh_nota = acao == "upload_nota"
+            campo_arquivo = "arquivo_nota" if eh_nota else "arquivo_resposta"
+            tabela = "notas_auditoria_notas" if eh_nota else "notas_auditoria_respostas"
+            descricao = "NOTA" if eh_nota else "RESPOSTA"
+            pasta_id = DRIVE_NOTAS_NA_FOLDER_ID if eh_nota else DRIVE_RESPOSTAS_NA_FOLDER_ID
+            func_upload = enviar_pdf_nota_drive if eh_nota else enviar_pdf_resposta_drive
+            status_prefixo = "upload_nota" if eh_nota else "upload_resposta"
+
+            arquivo = request.files.get(campo_arquivo)
+            if not arquivo or not arquivo.filename:
+                con.close()
+                return redirecionar_com_status(f"{status_prefixo}=sem_arquivo")
+
+            nome_original = arquivo.filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
+            if not nome_original or not nome_original.lower().endswith(".pdf"):
+                con.close()
+                return redirecionar_com_status(f"{status_prefixo}=nao_pdf")
+
+            conteudo_pdf = arquivo.read(DRIVE_RESPOSTAS_MAX_BYTES + 1)
+            if len(conteudo_pdf) > DRIVE_RESPOSTAS_MAX_BYTES:
+                con.close()
+                return redirecionar_com_status(f"{status_prefixo}=grande")
+
+            if not conteudo_pdf.startswith(b"%PDF-"):
+                con.close()
+                return redirecionar_com_status(f"{status_prefixo}=nao_pdf")
 
             try:
-                arquivo = request.files.get("arquivo_nota")
-
-                _, erro = processar_upload_pdf(
-                    arquivo=arquivo,
-                    num_nota=num_nota,
-                    tipo="nota",
-                    nome_campo="arquivo_nota"
+                token = obter_token_oauth_drive_respostas()
+                pasta_destino = verificar_pasta_drive(token, pasta_id)
+                print(
+                    f"DRIVE {descricao}: pasta confirmada:",
+                    pasta_destino.get("name"),
+                    "| canAddChildren=True"
                 )
 
+                arquivo_drive = func_upload(
+                    token=token,
+                    conteudo_pdf=conteudo_pdf,
+                    nome_original=nome_original,
+                    num_nota=num_nota
+                )
+
+                drive_file_id = arquivo_drive["id"]
+                web_view_link = arquivo_drive.get("webViewLink") or (
+                    "https://drive.google.com/file/d/" + drive_file_id + "/view"
+                )
+
+                try:
+                    cur.execute(f"""
+                        INSERT INTO {tabela}
+                            (num_nota, drive_file_id, nome_arquivo,
+                             web_view_link, mime_type, servidor_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (
+                        num_nota,
+                        drive_file_id,
+                        nome_original,
+                        web_view_link,
+                        "application/pdf",
+                        user_id
+                    ))
+                    con.commit()
+
+                except Exception:
+                    con.rollback()
+                    # Se o banco falhar, remove o arquivo recém-enviado do Drive.
+                    try:
+                        requests.delete(
+                            "https://www.googleapis.com/drive/v3/files/" + drive_file_id,
+                            headers={"Authorization": f"Bearer {token}"},
+                            params={"supportsAllDrives": "true"},
+                            timeout=(10, 30)
+                        )
+                    except Exception:
+                        pass
+                    raise
+
                 con.close()
-
-                if erro:
-                    return redirecionar_com_status(
-                        "upload_nota=" + erro
-                    )
-
-                return redirecionar_com_status("upload_nota=ok")
+                return redirecionar_com_status(f"{status_prefixo}=ok")
 
             except Exception as erro:
                 con.rollback()
-
                 print(
-                    "ERRO AO SUBIR PDF DA NOTA:",
+                    f"ERRO AO SUBIR {descricao} DA N.A.",
                     num_nota,
                     type(erro).__name__,
                     str(erro)
                 )
-
                 con.close()
-                return redirecionar_com_status("upload_nota=erro")
-
-        # --------------------------------------------------------
-        # UPLOAD DO PDF DE RESPOSTA
-        # --------------------------------------------------------
-
-        if acao == "upload_resposta":
-
-            try:
-                arquivo = request.files.get("arquivo_resposta")
-
-                _, erro = processar_upload_pdf(
-                    arquivo=arquivo,
-                    num_nota=num_nota,
-                    tipo="resposta",
-                    nome_campo="arquivo_resposta"
-                )
-
-                con.close()
-
-                if erro:
-                    return redirecionar_com_status("upload=" + erro)
-
-                return redirecionar_com_status("upload=ok")
-
-            except Exception as erro:
-                con.rollback()
-
-                print(
-                    "ERRO AO SUBIR RESPOSTA DA N.A.:",
-                    num_nota,
-                    type(erro).__name__,
-                    str(erro)
-                )
-
-                con.close()
-                return redirecionar_com_status("upload=erro")
+                return redirecionar_com_status(f"{status_prefixo}=erro")
 
         # --------------------------------------------------------
         # SALVAR VALOR POSTERIOR / OBSERVAÇÕES / STATUS
         # --------------------------------------------------------
-
         valor_posterior = request.form.get("valor_posterior")
 
         if valor_posterior:
@@ -14869,22 +14872,16 @@ def notas_auditoria():
                 valor_posterior = EXCLUDED.valor_posterior,
                 observacoes = EXCLUDED.observacoes,
                 status = EXCLUDED.status
-        """, (
-            num_nota,
-            valor_posterior,
-            observacoes,
-            status
-        ))
+        """, (num_nota, valor_posterior, observacoes, status))
 
         con.commit()
         con.close()
-
         return redirecionar_com_status("salvo=ok")
 
     # ============================================================
     # TOTAL DE NOTAS PARA PAGINAÇÃO
+    # A busca considera N.A., colaborador e chave da requisição.
     # ============================================================
-
     count_sql = """
         SELECT COUNT(*) AS total
         FROM (
@@ -14894,7 +14891,6 @@ def notas_auditoria():
             WHERE r.num_nota IS NOT NULL
               AND r.num_nota::text <> ''
     """
-
     count_params = []
 
     if perfil != "admin":
@@ -14903,13 +14899,12 @@ def notas_auditoria():
 
     if busca:
         count_sql += """
-            AND (
-                   r.num_nota::text ILIKE %s
-                OR COALESCE(c.nome, '') ILIKE %s
-                OR COALESCE(r.chave::text, '') ILIKE %s
-            )
+              AND (
+                    r.num_nota::text ILIKE %s
+                 OR COALESCE(c.nome, '') ILIKE %s
+                 OR COALESCE(r.chave::text, '') ILIKE %s
+              )
         """
-
         termo = f"%{busca}%"
         count_params.extend([termo, termo, termo])
 
@@ -14920,8 +14915,10 @@ def notas_auditoria():
 
     # ============================================================
     # LISTAGEM DAS NOTAS
+    # A CTE encontra as N.A. que correspondem à busca. A consulta
+    # externa agrega TODAS as requisições daquela N.A. no escopo
+    # de acesso do usuário, e não apenas a chave que coincidiu.
     # ============================================================
-
     sql = """
         WITH notas_filtradas AS (
             SELECT DISTINCT r.num_nota
@@ -14930,7 +14927,6 @@ def notas_auditoria():
             WHERE r.num_nota IS NOT NULL
               AND r.num_nota::text <> ''
     """
-
     params = []
 
     if perfil != "admin":
@@ -14939,13 +14935,12 @@ def notas_auditoria():
 
     if busca:
         sql += """
-            AND (
-                   r.num_nota::text ILIKE %s
-                OR COALESCE(c.nome, '') ILIKE %s
-                OR COALESCE(r.chave::text, '') ILIKE %s
-            )
+              AND (
+                    r.num_nota::text ILIKE %s
+                 OR COALESCE(c.nome, '') ILIKE %s
+                 OR COALESCE(r.chave::text, '') ILIKE %s
+              )
         """
-
         termo = f"%{busca}%"
         params.extend([termo, termo, termo])
 
@@ -14958,37 +14953,24 @@ def notas_auditoria():
             na.valor_posterior,
             na.observacoes,
             na.status,
-
-            STRING_AGG(
-                DISTINCT c.nome,
-                ', ' ORDER BY c.nome
-            ) FILTER (
-                WHERE c.nome IS NOT NULL
-            ) AS responsavel,
-
+            STRING_AGG(DISTINCT c.nome, ', ' ORDER BY c.nome)
+                FILTER (WHERE c.nome IS NOT NULL) AS responsavel,
             STRING_AGG(
                 DISTINCT r.chave::text,
                 E'\\n' ORDER BY r.chave::text
-            ) FILTER (
-                WHERE r.chave IS NOT NULL
-            ) AS reqs,
-
+            ) FILTER (WHERE r.chave IS NOT NULL) AS reqs,
             CASE
                 WHEN na.valor_posterior IS NOT NULL
-                THEN COALESCE(SUM(r.valor_requisicao), 0)
-                     - na.valor_posterior
+                THEN COALESCE(SUM(r.valor_requisicao), 0) - na.valor_posterior
                 ELSE NULL
             END AS diferenca
-
         FROM requisicoes r
         LEFT JOIN colaboradores c ON c.id = r.servidor_id
         LEFT JOIN notas_auditoria na ON na.num_nota = r.num_nota
-
-        WHERE r.num_nota IN (
-            SELECT num_nota FROM notas_filtradas
-        )
+        WHERE r.num_nota IN (SELECT num_nota FROM notas_filtradas)
     """
 
+    # Mantém o mesmo recorte de acesso na agregação das requisições.
     if perfil != "admin":
         sql += " AND r.servidor_id = %s"
         params.append(user_id)
@@ -14999,27 +14981,22 @@ def notas_auditoria():
             na.valor_posterior,
             na.observacoes,
             na.status
-
         ORDER BY r.num_nota
         LIMIT %s OFFSET %s
     """
-
     params.extend([per_page, offset])
 
     cur.execute(sql, params)
     notas = cur.fetchall()
 
     # ============================================================
-    # CARREGA PDFs DE RESPOSTA
+    # CARREGA RESPOSTAS JÁ VINCULADAS NO POSTGRESQL
+    # O vínculo usa num_nota + drive_file_id; não usa o nome do PDF.
     # ============================================================
-
     num_notas_pagina = [str(n["num_nota"]) for n in notas]
-
     respostas_por_nota = {}
-    notas_pdf_por_nota = {}
 
     if num_notas_pagina:
-
         cur.execute("""
             SELECT
                 num_nota,
@@ -15033,25 +15010,16 @@ def notas_auditoria():
         """, (num_notas_pagina,))
 
         for resposta in cur.fetchall():
-
             chave_na = str(resposta["num_nota"])
-
-            resposta["link"] = (
-                resposta.get("web_view_link")
-                or (
-                    "https://drive.google.com/file/d/"
-                    f"{resposta['drive_file_id']}/view"
-                )
+            resposta["link"] = resposta.get("web_view_link") or (
+                "https://drive.google.com/file/d/"
+                f"{resposta['drive_file_id']}/view"
             )
+            respostas_por_nota.setdefault(chave_na, []).append(resposta)
 
-            respostas_por_nota.setdefault(
-                chave_na, []
-            ).append(resposta)
-
-        # ========================================================
-        # CARREGA PDFs DA NOTA
-        # ========================================================
-
+    # PDFs da nota de auditoria, armazenados separadamente das respostas.
+    notas_pdf_por_nota = {}
+    if num_notas_pagina:
         cur.execute("""
             SELECT
                 num_nota,
@@ -15065,29 +15033,20 @@ def notas_auditoria():
         """, (num_notas_pagina,))
 
         for arquivo_nota in cur.fetchall():
-
             chave_na = str(arquivo_nota["num_nota"])
-
-            arquivo_nota["link"] = (
-                arquivo_nota.get("web_view_link")
-                or (
-                    "https://drive.google.com/file/d/"
-                    f"{arquivo_nota['drive_file_id']}/view"
-                )
+            arquivo_nota["link"] = arquivo_nota.get("web_view_link") or (
+                "https://drive.google.com/file/d/"
+                f"{arquivo_nota['drive_file_id']}/view"
             )
-
-            notas_pdf_por_nota.setdefault(
-                chave_na, []
-            ).append(arquivo_nota)
+            notas_pdf_por_nota.setdefault(chave_na, []).append(arquivo_nota)
 
     # ============================================================
-    # CARREGA REQUISIÇÕES DE CADA N.A.
+    # CARREGA TODAS AS REQUISIÇÕES DE CADA N.A. DA PÁGINA
+    # para montar a coluna Reqs e localizar seus PDFs de checklist.
     # ============================================================
-
     requisicoes_por_nota = {}
 
     if num_notas_pagina:
-
         sql_reqs = """
             SELECT
                 r.num_nota::text AS num_nota,
@@ -15096,7 +15055,6 @@ def notas_auditoria():
             FROM requisicoes r
             WHERE r.num_nota::text = ANY(%s)
         """
-
         params_reqs = [num_notas_pagina]
 
         if perfil != "admin":
@@ -15108,42 +15066,28 @@ def notas_auditoria():
         cur.execute(sql_reqs, params_reqs)
 
         for req in cur.fetchall():
-            requisicoes_por_nota.setdefault(
-                str(req["num_nota"]), []
-            ).append(req)
+            requisicoes_por_nota.setdefault(str(req["num_nota"]), []).append(req)
 
     con.close()
 
-    # ============================================================
-    # PREPARA PDFs E CHECKLISTS
-    # ============================================================
-
+    # Aplica os PDFs de resposta e checklist em cada registro da tabela.
     for n in notas:
-
         chave_na = str(n["num_nota"])
-
         n["respostas"] = respostas_por_nota.get(chave_na, [])
         n["notas_pdf"] = notas_pdf_por_nota.get(chave_na, [])
         n["reqs_lista"] = requisicoes_por_nota.get(chave_na, [])
         n["pdf_checklist"] = []
 
+    # Usa as funções e o cache de PDFs de checklist que já existem no app.py.
     try:
-
-        indice_pdfs_checklist, consulta_pdfs_ok = (
-            carregar_pdfs_checklist_drive()
-        )
+        indice_pdfs_checklist, consulta_pdfs_ok = carregar_pdfs_checklist_drive()
 
         for n in notas:
-
             pdfs_na = {}
 
             for req in n.get("reqs_lista", []):
-
-                for pdf in localizar_pdf_requisicao(
-                    req,
-                    indice_pdfs_checklist
-                ):
-
+                for pdf in localizar_pdf_requisicao(req, indice_pdfs_checklist):
+                    # Evita repetir o mesmo arquivo se estiver ligado a mais de uma chave.
                     pdfs_na[pdf.get("id") or pdf.get("link")] = pdf
 
             n["pdf_checklist"] = sorted(
@@ -15151,572 +15095,216 @@ def notas_auditoria():
                 key=lambda item: item.get("modificado", ""),
                 reverse=True
             )
-
             n["pdf_checklist_consulta_ok"] = consulta_pdfs_ok
 
     except Exception as erro:
-
-        print(
-            "ERRO AO ASSOCIAR PDFs DE CHECKLIST ÀS N.A.",
-            type(erro).__name__,
-            str(erro)
-        )
-
+        print("ERRO AO ASSOCIAR PDFS DE CHECKLIST ÀS N.A.", type(erro).__name__, str(erro))
         for n in notas:
             n["pdf_checklist_consulta_ok"] = False
 
     # ============================================================
     # HTML
     # ============================================================
-
     html = """
-    <style>
-    .table-wrap {
-        width:100%;
-        overflow-x:auto;
-        margin-top:10px;
-        border-radius:16px;
-    }
+<style>
+.table-wrap{width:100%;overflow-x:auto;margin-top:10px;border-radius:16px;}
+.audit-table{width:100%;min-width:1650px;table-layout:auto;border-collapse:separate;border-spacing:0;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.08);}
+.audit-table th{background:linear-gradient(90deg,#2563eb,#3b82f6);color:white;padding:12px;text-align:left;font-weight:600;font-size:14px;white-space:nowrap;position:sticky;top:0;z-index:1;}
+.audit-table td{padding:10px;border-bottom:1px solid #e5e7eb;vertical-align:top;background:white;}
+.audit-table tr:nth-child(even) td{background:#fafafa;}
+.audit-table tr:hover td{background:#eff6ff;}
+.audit-input,.audit-select{width:100%;min-width:140px;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;transition:.2s;}
+.audit-select{background:white;}
+.audit-textarea{width:100%;min-width:360px;min-height:90px;resize:vertical;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;font-family:inherit;transition:.2s;}
+.audit-input:focus,.audit-select:focus,.audit-textarea:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15);}
+.btn-save,.btn-upload{display:inline-block;border:0;border-radius:9px;padding:9px 13px;cursor:pointer;font-weight:600;text-decoration:none;white-space:nowrap;}
+.btn-save{background:linear-gradient(135deg,#16a34a,#22c55e);color:white;box-shadow:0 2px 8px rgba(0,0,0,.12);}
+.btn-upload{background:#e0f2fe;color:#075985;margin-top:6px;}
+.btn-save:hover,.btn-upload:hover{filter:brightness(.96);}
+.busca-auditoria{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:15px;}
+.busca-auditoria input{width:380px;max-width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:10px;}
+.busca-auditoria select{padding:10px;border:1px solid #d1d5db;border-radius:10px;}
+.btn-exportar{display:inline-block;margin-bottom:15px;padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:600;color:white;background:linear-gradient(135deg,#059669,#10b981);box-shadow:0 4px 12px rgba(0,0,0,.10);}
+.reqs-cell{white-space:pre-line;min-width:170px;max-width:260px;line-height:1.6;font-size:13px;}
+.pdf-lista{min-width:150px;max-width:250px;}
+.pdf-lista summary{cursor:pointer;color:#b91c1c;font-weight:700;white-space:nowrap;}
+.pdf-lista a{display:block;margin:7px 0;color:#1d4ed8;text-decoration:none;overflow-wrap:anywhere;font-size:13px;}
+.pdf-lista a:hover{text-decoration:underline;}
+.upload-cell{min-width:205px;max-width:245px;}
+.upload-cell input[type=file]{display:block;width:205px;max-width:205px;font-size:12px;margin-bottom:5px;}
+.upload-bloco{margin-bottom:10px;padding-bottom:9px;border-bottom:1px solid #e5e7eb;}
+.upload-bloco:last-child{margin-bottom:0;padding-bottom:0;border-bottom:0;}
+.alerta-upload{padding:11px 14px;border-radius:9px;margin:10px 0 15px;font-weight:600;}
+.alerta-ok{background:#dcfce7;color:#166534;}
+.alerta-erro{background:#fee2e2;color:#991b1b;}
+.alerta-info{background:#dbeafe;color:#1e40af;}
+</style>
 
-    .audit-table {
-        width:100%;
-        min-width:1650px;
-        table-layout:auto;
-        border-collapse:separate;
-        border-spacing:0;
-        background:#fff;
-        border-radius:16px;
-        overflow:hidden;
-        box-shadow:0 6px 18px rgba(0,0,0,.08);
-    }
+<h2>Notas de Auditoria</h2>
 
-    .audit-table th {
-        background:linear-gradient(90deg,#2563eb,#3b82f6);
-        color:white;
-        padding:12px;
-        text-align:left;
-        font-weight:600;
-        font-size:14px;
-        white-space:nowrap;
-        position:sticky;
-        top:0;
-        z-index:1;
-    }
+<a href="/exportar-notas-auditoria" class="btn-exportar">Exportar Notas Auditoria</a>
 
-    .audit-table td {
-        padding:10px;
-        border-bottom:1px solid #e5e7eb;
-        vertical-align:top;
-        background:white;
-    }
-
-    .audit-table tr:nth-child(even) td {
-        background:#fafafa;
-    }
-
-    .audit-table tr:hover td {
-        background:#eff6ff;
-    }
-
-    .audit-input,
-    .audit-select {
-        width:100%;
-        min-width:140px;
-        padding:9px 12px;
-        border:1px solid #d1d5db;
-        border-radius:8px;
-        box-sizing:border-box;
-    }
-
-    .audit-textarea {
-        width:100%;
-        min-width:360px;
-        min-height:90px;
-        resize:vertical;
-        padding:10px 12px;
-        border:1px solid #d1d5db;
-        border-radius:8px;
-        box-sizing:border-box;
-        font-family:inherit;
-    }
-
-    .btn-save,
-    .btn-upload {
-        display:inline-block;
-        border:0;
-        border-radius:9px;
-        padding:9px 13px;
-        cursor:pointer;
-        font-weight:600;
-        text-decoration:none;
-        white-space:nowrap;
-    }
-
-    .btn-save {
-        background:linear-gradient(135deg,#16a34a,#22c55e);
-        color:white;
-    }
-
-    .btn-upload {
-        background:#e0f2fe;
-        color:#075985;
-        margin-top:6px;
-    }
-
-    .btn-upload-nota {
-        background:#fef3c7;
-        color:#92400e;
-    }
-
-    .btn-ver-nota {
-        display:inline-block;
-        background:#eff6ff;
-        color:#1d4ed8;
-        padding:8px 11px;
-        border-radius:8px;
-        text-decoration:none;
-        font-weight:600;
-        white-space:nowrap;
-    }
-
-    .busca-auditoria {
-        display:flex;
-        gap:10px;
-        align-items:center;
-        flex-wrap:wrap;
-        margin-bottom:15px;
-    }
-
-    .busca-auditoria input {
-        width:380px;
-        max-width:100%;
-        padding:10px 14px;
-        border:1px solid #d1d5db;
-        border-radius:10px;
-    }
-
-    .busca-auditoria select {
-        padding:10px;
-        border:1px solid #d1d5db;
-        border-radius:10px;
-    }
-
-    .btn-exportar {
-        display:inline-block;
-        margin-bottom:15px;
-        padding:10px 16px;
-        border-radius:10px;
-        text-decoration:none;
-        font-weight:600;
-        color:white;
-        background:linear-gradient(135deg,#059669,#10b981);
-    }
-
-    .reqs-cell {
-        white-space:pre-line;
-        min-width:170px;
-        max-width:260px;
-        line-height:1.6;
-        font-size:13px;
-    }
-
-    .pdf-lista {
-        min-width:100px;
-        max-width:250px;
-    }
-
-    .pdf-lista summary {
-        cursor:pointer;
-        color:#b91c1c;
-        font-weight:700;
-        white-space:nowrap;
-    }
-
-    .pdf-lista a {
-        display:block;
-        margin:7px 0;
-        color:#1d4ed8;
-        text-decoration:none;
-        overflow-wrap:anywhere;
-        font-size:13px;
-    }
-
-    .upload-form {
-        min-width:190px;
-    }
-
-    .upload-form input[type=file] {
-        width:190px;
-        max-width:190px;
-        font-size:12px;
-    }
-
-    .alerta-upload {
-        padding:11px 14px;
-        border-radius:9px;
-        margin:10px 0 15px;
-        font-weight:600;
-    }
-
-    .alerta-ok {
-        background:#dcfce7;
-        color:#166534;
-    }
-
-    .alerta-erro {
-        background:#fee2e2;
-        color:#991b1b;
-    }
-
-    .alerta-info {
-        background:#dbeafe;
-        color:#1e40af;
-    }
-    </style>
-
-    <h2>Notas de Auditoria</h2>
-
-    <a href="/exportar-notas-auditoria" class="btn-exportar">
-        Exportar Notas Auditoria
-    </a>
-
-    {% if request.args.get('upload_nota') == 'ok' %}
-        <div class="alerta-upload alerta-ok">
-            PDF da nota enviado e vinculado com sucesso.
-        </div>
-    {% elif request.args.get('upload_nota') == 'sem_arquivo' %}
-        <div class="alerta-upload alerta-erro">
-            Selecione o PDF da nota antes de enviar.
-        </div>
-    {% elif request.args.get('upload_nota') == 'nao_pdf' %}
-        <div class="alerta-upload alerta-erro">
-            O arquivo selecionado não é um PDF válido.
-        </div>
-    {% elif request.args.get('upload_nota') == 'grande' %}
-        <div class="alerta-upload alerta-erro">
-            O PDF ultrapassa o limite de 25 MB.
-        </div>
-    {% elif request.args.get('upload_nota') == 'erro' %}
-        <div class="alerta-upload alerta-erro">
-            Não foi possível enviar o PDF da nota. Confira a permissão
-            de edição na pasta do Drive.
-        </div>
+{% for campo, rotulo in [('upload_nota', 'nota'), ('upload_resposta', 'resposta')] %}
+    {% if request.args.get(campo) == 'ok' %}
+    <div class="alerta-upload alerta-ok">PDF da {{rotulo}} enviado e vinculado à N.A. com sucesso.</div>
+    {% elif request.args.get(campo) == 'sem_arquivo' %}
+    <div class="alerta-upload alerta-erro">Selecione o PDF da {{rotulo}} antes de enviar.</div>
+    {% elif request.args.get(campo) == 'nao_pdf' %}
+    <div class="alerta-upload alerta-erro">O arquivo selecionado para a {{rotulo}} não é um PDF válido.</div>
+    {% elif request.args.get(campo) == 'grande' %}
+    <div class="alerta-upload alerta-erro">O PDF da {{rotulo}} ultrapassa o limite de 25 MB.</div>
+    {% elif request.args.get(campo) == 'erro' %}
+    <div class="alerta-upload alerta-erro">Não foi possível enviar o PDF da {{rotulo}}. Confira o OAuth e a permissão da pasta do Drive.</div>
     {% endif %}
+{% endfor %}
+{% if request.args.get('salvo') == 'ok' %}
+<div class="alerta-upload alerta-ok">Dados da nota salvos com sucesso.</div>
+{% endif %}
 
-    {% if request.args.get('upload') == 'ok' %}
-        <div class="alerta-upload alerta-ok">
-            PDF de resposta enviado e vinculado à N.A. com sucesso.
-        </div>
-    {% elif request.args.get('upload') == 'sem_arquivo' %}
-        <div class="alerta-upload alerta-erro">
-            Selecione um PDF antes de clicar em Subir Resposta.
-        </div>
-    {% elif request.args.get('upload') == 'nao_pdf' %}
-        <div class="alerta-upload alerta-erro">
-            O arquivo selecionado não é um PDF válido.
-        </div>
-    {% elif request.args.get('upload') == 'grande' %}
-        <div class="alerta-upload alerta-erro">
-            O PDF ultrapassa o limite de 25 MB.
-        </div>
-    {% elif request.args.get('upload') == 'erro' %}
-        <div class="alerta-upload alerta-erro">
-            Não foi possível enviar o PDF de resposta.
-            Confira as credenciais OAuth e a permissão na pasta do Drive.
-        </div>
-    {% endif %}
+<form method="get" class="busca-auditoria">
+    <input type="text" name="busca"
+           placeholder="Buscar por N.A., requisição ou colaborador"
+           value="{{request.args.get('busca','')}}">
+    Exibir:
+    <select name="per_page" onchange="this.form.submit()">
+        {% for opt in [10,25,50,100] %}
+        <option value="{{opt}}" {% if opt==per_page %}selected{% endif %}>{{opt}}</option>
+        {% endfor %}
+    </select>
+    <button class="btn">Pesquisar</button>
+</form>
 
-    {% if request.args.get('salvo') == 'ok' %}
-        <div class="alerta-upload alerta-ok">
-            Dados da nota salvos com sucesso.
-        </div>
-    {% endif %}
+<div class="table-wrap">
+<table class="audit-table">
+<thead>
+<tr>
+    <th>N.A.</th>
+    <th>Reqs</th>
+    <th>Responsável</th>
+    <th>Qtd Requisições</th>
+    <th>Valor Nota</th>
+    <th>Valor Posterior</th>
+    <th>Diferença</th>
+    <th>Status</th>
+    <th style="min-width:360px;">Observações</th>
+    <th>Nota</th>
+    <th>Resposta</th>
+    <th>PDF Checklist</th>
+    <th>Salvar</th>
+</tr>
+</thead>
+<tbody>
+{% for n in notas %}
+<tr>
+    <td>
+        <strong>{{n.num_nota}}</strong>
+        <form id="form-save-{{loop.index}}" method="post"></form>
+        <form id="form-upload-nota-{{loop.index}}" method="post" enctype="multipart/form-data"></form>
+        <form id="form-upload-resposta-{{loop.index}}" method="post" enctype="multipart/form-data"></form>
+        <input form="form-save-{{loop.index}}" type="hidden" name="acao" value="salvar">
+        <input form="form-save-{{loop.index}}" type="hidden" name="num_nota" value="{{n.num_nota}}">
+        <input form="form-save-{{loop.index}}" type="hidden" name="return_to" value="{{return_to}}">
+        <input form="form-upload-nota-{{loop.index}}" type="hidden" name="acao" value="upload_nota">
+        <input form="form-upload-nota-{{loop.index}}" type="hidden" name="num_nota" value="{{n.num_nota}}">
+        <input form="form-upload-nota-{{loop.index}}" type="hidden" name="return_to" value="{{return_to}}">
+        <input form="form-upload-resposta-{{loop.index}}" type="hidden" name="acao" value="upload_resposta">
+        <input form="form-upload-resposta-{{loop.index}}" type="hidden" name="num_nota" value="{{n.num_nota}}">
+        <input form="form-upload-resposta-{{loop.index}}" type="hidden" name="return_to" value="{{return_to}}">
+    </td>
 
-    <form method="get" class="busca-auditoria">
-        <input
-            type="text"
-            name="busca"
-            placeholder="Buscar por N.A., requisição ou colaborador"
-            value="{{request.args.get('busca','')}}"
-        >
+    <td class="reqs-cell">{{n.reqs or ''}}</td>
+    <td>{{n.responsavel or ''}}</td>
+    <td>{{n.qtd_requisicoes}}</td>
+    <td>{{fmt_br(n.valor_nota)}}</td>
 
-        Exibir:
+    <td>
+        <input form="form-save-{{loop.index}}" class="audit-input" name="valor_posterior"
+               value="{{fmt_br(n.valor_posterior) if n.valor_posterior else ''}}">
+    </td>
 
-        <select name="per_page" onchange="this.form.submit()">
-            {% for opt in [10,25,50,100] %}
-                <option value="{{opt}}" {% if opt==per_page %}selected{% endif %}>
-                    {{opt}}
-                </option>
-            {% endfor %}
+    <td>{% if n.diferenca is not none %}{{fmt_br(n.diferenca)}}{% endif %}</td>
+
+    <td>
+        <select form="form-save-{{loop.index}}" name="status" class="audit-select">
+            <option value=""></option>
+            <option value="MONITORADA" {% if n.status=="MONITORADA" %}selected{% endif %}>Monitorada</option>
         </select>
+    </td>
 
-        <button class="btn">Pesquisar</button>
-    </form>
+    <td>
+        <textarea form="form-save-{{loop.index}}" name="observacoes" class="audit-textarea">{{n.observacoes or ''}}</textarea>
+    </td>
 
-    <div class="table-wrap">
-    <table class="audit-table">
-
-    <thead>
-    <tr>
-        <th>N.A.</th>
-        <th>Reqs</th>
-        <th>Responsável</th>
-        <th>Qtd Requisições</th>
-        <th>Valor Nota</th>
-        <th>Valor Posterior</th>
-        <th>Diferença</th>
-        <th>Status</th>
-        <th style="min-width:360px;">Observações</th>
-        <th>Ação</th>
-        <th>Nota</th>
-        <th>Subir Resposta</th>
-        <th>Ver Respostas</th>
-        <th>PDF Checklist</th>
-        <th>Salvar</th>
-    </tr>
-    </thead>
-
-    <tbody>
-
-    {% for n in notas %}
-    <tr>
-
-        <td>
-            <strong>{{n.num_nota}}</strong>
-
-            <form id="form-save-{{loop.index}}" method="post"></form>
-            <form id="form-nota-{{loop.index}}" method="post"
-                  enctype="multipart/form-data"></form>
-            <form id="form-upload-{{loop.index}}" method="post"
-                  enctype="multipart/form-data"></form>
-
-            <input form="form-save-{{loop.index}}"
-                   type="hidden" name="acao" value="salvar">
-
-            <input form="form-save-{{loop.index}}"
-                   type="hidden" name="num_nota" value="{{n.num_nota}}">
-
-            <input form="form-save-{{loop.index}}"
-                   type="hidden" name="return_to" value="{{return_to}}">
-
-            <input form="form-nota-{{loop.index}}"
-                   type="hidden" name="acao" value="upload_nota">
-
-            <input form="form-nota-{{loop.index}}"
-                   type="hidden" name="num_nota" value="{{n.num_nota}}">
-
-            <input form="form-nota-{{loop.index}}"
-                   type="hidden" name="return_to" value="{{return_to}}">
-
-            <input form="form-upload-{{loop.index}}"
-                   type="hidden" name="acao" value="upload_resposta">
-
-            <input form="form-upload-{{loop.index}}"
-                   type="hidden" name="num_nota" value="{{n.num_nota}}">
-
-            <input form="form-upload-{{loop.index}}"
-                   type="hidden" name="return_to" value="{{return_to}}">
-        </td>
-
-        <td class="reqs-cell">{{n.reqs or ''}}</td>
-
-        <td>{{n.responsavel or ''}}</td>
-
-        <td>{{n.qtd_requisicoes}}</td>
-
-        <td>{{fmt_br(n.valor_nota)}}</td>
-
-        <td>
-            <input
-                form="form-save-{{loop.index}}"
-                class="audit-input"
-                name="valor_posterior"
-                value="{{fmt_br(n.valor_posterior) if n.valor_posterior else ''}}"
-            >
-        </td>
-
-        <td>
-            {% if n.diferenca is not none %}
-                {{fmt_br(n.diferenca)}}
-            {% endif %}
-        </td>
-
-        <td>
-            <select
-                form="form-save-{{loop.index}}"
-                name="status"
-                class="audit-select"
-            >
-                <option value=""></option>
-                <option value="MONITORADA"
-                    {% if n.status=="MONITORADA" %}selected{% endif %}>
-                    Monitorada
-                </option>
-            </select>
-        </td>
-
-        <td>
-            <textarea
-                form="form-save-{{loop.index}}"
-                name="observacoes"
-                class="audit-textarea"
-            >{{n.observacoes or ''}}</textarea>
-        </td>
-
-        <td>
-            <a class="btn-ver-nota"
-               href="/notas-auditoria/{{n.num_nota}}">
-                Ver nota
-            </a>
-        </td>
-
-        <!-- ========================================= -->
-        <!-- NOVO CAMPO: PDF DA NOTA                   -->
-        <!-- ========================================= -->
-
-        <td class="upload-form">
-
-            {% if n.notas_pdf %}
-                <details class="pdf-lista">
-                    <summary>
-                        📄 {{n.notas_pdf|length}} PDF(s)
-                    </summary>
-
-                    {% for arq in n.notas_pdf %}
-                        <a href="{{arq.link}}"
-                           target="_blank"
-                           rel="noopener">
-                            📕 {{arq.nome_arquivo}}
-                        </a>
-                    {% endfor %}
-                </details>
-            {% endif %}
-
-            <input
-                form="form-nota-{{loop.index}}"
-                type="file"
-                name="arquivo_nota"
-                accept="application/pdf,.pdf"
-                required
-            >
-
-            <button
-                form="form-nota-{{loop.index}}"
-                type="submit"
-                class="btn-upload btn-upload-nota"
-            >
-                ⬆ Subir Nota
-            </button>
-
-        </td>
-
-        <!-- ========================================= -->
-        <!-- UPLOAD DA RESPOSTA - MANTIDO              -->
-        <!-- ========================================= -->
-
-        <td class="upload-form">
-
-            <input
-                form="form-upload-{{loop.index}}"
-                type="file"
-                name="arquivo_resposta"
-                accept="application/pdf,.pdf"
-                required
-            >
-
-            <button
-                form="form-upload-{{loop.index}}"
-                type="submit"
-                class="btn-upload"
-            >
-                ⬆ Subir Resposta
-            </button>
-
-        </td>
-
-        <td>
-            {% if n.respostas %}
-                <details class="pdf-lista">
-                    <summary>
-                        📄 {{n.respostas|length}} PDF(s)
-                    </summary>
-
-                    {% for arq in n.respostas %}
-                        <a href="{{arq.link}}"
-                           target="_blank"
-                           rel="noopener">
-                            📕 {{arq.nome_arquivo}}
-                        </a>
-                    {% endfor %}
-                </details>
-            {% else %}
-                <span style="color:#9ca3af;">—</span>
-            {% endif %}
-        </td>
-
-        <td>
-            {% if n.pdf_checklist %}
-                <details class="pdf-lista">
-                    <summary>
-                        📑 {{n.pdf_checklist|length}} PDF(s)
-                    </summary>
-
-                    {% for pdf in n.pdf_checklist %}
-                        <a href="{{pdf.link}}"
-                           target="_blank"
-                           rel="noopener">
-                            📕 {{pdf.nome}}
-                        </a>
-                    {% endfor %}
-                </details>
-            {% else %}
-                <span
-                    style="color:#9ca3af;"
-                    title="Nenhum PDF de checklist localizado para as requisições desta N.A."
-                >—</span>
-            {% endif %}
-        </td>
-
-        <td style="text-align:center;">
-            <button
-                form="form-save-{{loop.index}}"
-                type="submit"
-                class="btn-save"
-            >
-                💾 Salvar
-            </button>
-        </td>
-
-    </tr>
-    {% endfor %}
-
-    </tbody>
-    </table>
-    </div>
-
-    <div style="margin-top:14px;display:flex;gap:14px;align-items:center;">
-
-        {% if page > 1 %}
-            <a href="?page={{page-1}}&per_page={{per_page}}&busca={{busca|urlencode}}">
-                Anterior
-            </a>
+    <td class="upload-cell">
+        <div class="upload-bloco">
+            <input form="form-upload-nota-{{loop.index}}" type="file" name="arquivo_nota"
+                   accept="application/pdf,.pdf" required>
+            <button form="form-upload-nota-{{loop.index}}" type="submit" class="btn-upload">⬆ Subir Nota</button>
+        </div>
+        {% if n.notas_pdf %}
+        <details class="pdf-lista">
+            <summary>📄 {{n.notas_pdf|length}} PDF(s) da nota</summary>
+            {% for arq in n.notas_pdf %}
+            <a href="{{arq.link}}" target="_blank" rel="noopener">📕 {{arq.nome_arquivo}}</a>
+            {% endfor %}
+        </details>
+        {% else %}
+        <span style="color:#9ca3af;">Nenhum PDF cadastrado</span>
         {% endif %}
+    </td>
 
-        Página {{page}} de {{total_paginas}}
-
-        {% if page * per_page < total %}
-            <a href="?page={{page+1}}&per_page={{per_page}}&busca={{busca|urlencode}}">
-                Próxima
-            </a>
+    <td class="upload-cell">
+        <div class="upload-bloco">
+            <input form="form-upload-resposta-{{loop.index}}" type="file" name="arquivo_resposta"
+                   accept="application/pdf,.pdf" required>
+            <button form="form-upload-resposta-{{loop.index}}" type="submit" class="btn-upload">⬆ Subir Resposta</button>
+        </div>
+        {% if n.respostas %}
+        <details class="pdf-lista">
+            <summary>📄 {{n.respostas|length}} PDF(s) de resposta</summary>
+            {% for arq in n.respostas %}
+            <a href="{{arq.link}}" target="_blank" rel="noopener">📕 {{arq.nome_arquivo}}</a>
+            {% endfor %}
+        </details>
+        {% else %}
+        <span style="color:#9ca3af;">Nenhum PDF cadastrado</span>
         {% endif %}
+    </td>
 
-    </div>
-    """
+    <td>
+        {% if n.pdf_checklist %}
+        <details class="pdf-lista">
+            <summary>📑 {{n.pdf_checklist|length}} PDF(s)</summary>
+            {% for pdf in n.pdf_checklist %}
+            <a href="{{pdf.link}}" target="_blank" rel="noopener">📕 {{pdf.nome}}</a>
+            {% endfor %}
+        </details>
+        {% else %}
+        <span style="color:#9ca3af;" title="Nenhum PDF de checklist localizado para as requisições desta N.A.">—</span>
+        {% endif %}
+    </td>
 
-    total_paginas = max(
-        1,
-        (total + per_page - 1) // per_page
-    )
+    <td style="text-align:center;">
+        <button form="form-save-{{loop.index}}" type="submit" class="btn-save">💾 Salvar</button>
+    </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<div style="margin-top:14px;display:flex;gap:14px;align-items:center;">
+    {% if page > 1 %}
+        <a href="?page={{page-1}}&per_page={{per_page}}&busca={{busca|urlencode}}">Anterior</a>
+    {% endif %}
+    Página {{page}} de {{total_paginas}}
+    {% if page * per_page < total %}
+        <a href="?page={{page+1}}&per_page={{per_page}}&busca={{busca|urlencode}}">Próxima</a>
+    {% endif %}
+</div>
+"""
+
+    total_paginas = max(1, (total + per_page - 1) // per_page)
 
     return render_template_string(
         BASE.replace("{% block content %}{% endblock %}", html),
@@ -15731,118 +15319,6 @@ def notas_auditoria():
         total_paginas=total_paginas,
         busca=busca,
         return_to=return_to_padrao
-    )
-    
-@app.route("/notas-auditoria/<path:num_nota>")
-def ver_nota(num_nota):
-
-    if "user" not in session:
-        return redirect("/")
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    if session["perfil"] == "admin":
-
-        cur.execute("""
-        SELECT
-            r.chave,
-            r.secretaria,
-            r.tipo,
-            r.criterio,
-            r.edital,
-            r.contrato,
-            r.nome_fornecedor,
-            r.valor_requisicao,
-            c.nome AS colaborador
-        FROM requisicoes r
-        LEFT JOIN colaboradores c
-            ON c.id = r.servidor_id
-        WHERE r.num_nota = %s
-        ORDER BY r.chave
-        """,(num_nota,))
-
-    else:
-
-        cur.execute("""
-        SELECT
-            r.chave,
-            r.secretaria,
-            r.tipo,
-            r.criterio,
-            r.edital,
-            r.contrato,
-            r.nome_fornecedor,
-            r.valor_requisicao,
-            c.nome AS colaborador
-        FROM requisicoes r
-        LEFT JOIN colaboradores c
-            ON c.id = r.servidor_id
-        WHERE r.num_nota = %s
-        AND r.servidor_id = %s
-        ORDER BY r.chave
-        """,(num_nota, session["user_id"]))
-
-    reqs = cur.fetchall()
-    conn.close()
-
-    html = """
-
-    <div class="container mt-4">
-
-    <h3>Nota {{num_nota}}</h3>
-
-    <table class="table table-bordered table-sm">
-
-    <thead class="table-light">
-    <tr>
-        <th>Requisição</th>
-        <th>Secretaria</th>
-        <th>Tipo</th>
-        <th>Critério</th>
-        <th>Edital</th>
-        <th>Contrato</th>
-        <th>Fornecedor</th>
-        <th>Responsável</th>
-        <th style="text-align:right">Valor</th>
-    </tr>
-    </thead>
-
-    <tbody>
-
-    {% for r in reqs %}
-
-    <tr>
-        <td>{{r.chave}}</td>
-        <td>{{r.secretaria}}</td>
-        <td>{{r.tipo}}</td>
-        <td>{{r.criterio}}</td>
-         <td>{{r.edital or ''}}</td>
-         <td>{{r.contrato or ''}}</td>
-          <td>{{r.nome_fornecedor or ''}}</td>
-        <td>{{r.colaborador}}</td>
-        <td style="text-align:right">
-            {{fmt_br(r.valor_requisicao)}}
-        </td>
-    </tr>
-
-    {% endfor %}
-
-    </tbody>
-    </table>
-
-    <a href="/notas-auditoria" class="btn btn-secondary">
-    Voltar
-    </a>
-
-    </div>
-    """
-
-    return render_template_string(
-        BASE.replace("{% block content %}{% endblock %}", html),
-        reqs=reqs,
-        num_nota=num_nota,
-        fmt_br=fmt_br
     )
 
 @app.route("/exportar-notas-auditoria")

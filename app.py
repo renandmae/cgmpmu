@@ -14327,15 +14327,55 @@ GOOGLE_DRIVE_OAUTH_CLIENT_SECRET = "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"
 GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN = "1//04p-bXGyjYKW8CgYIARAAGAQSSQF-L9IrJXemD1SwoCYqBQF8hJFLM0nP73GqhrQg6v9ciT24_nYN-jqSCc1kOTv0-6LIwhBaD84qujCjHPJ39ztg6XEWNISC7wQ"
 DRIVE_RESPOSTAS_MAX_BYTES = 25 * 1024 * 1024  # 25 MB
 
-def obter_token_oauth_drive_respostas():
-    """Gera um access token novo usando o refresh token OAuth."""
+def detalhe_erro_google(resposta):
+    """Extrai o erro retornado pelo Google sem expor credenciais."""
 
-    if not all([
-        GOOGLE_DRIVE_OAUTH_CLIENT_ID,
+    try:
+        dados = resposta.json()
+    except Exception:
+        dados = {}
+
+    partes = []
+
+    erro = dados.get("error")
+
+    if isinstance(erro, dict):
+        if erro.get("status"):
+            partes.append(str(erro["status"]))
+
+        if erro.get("message"):
+            partes.append(str(erro["message"]))
+
+        for item in erro.get("errors", []):
+            if item.get("reason"):
+                partes.append("Motivo: " + str(item["reason"]))
+
+            if item.get("message"):
+                partes.append(str(item["message"]))
+
+    elif erro:
+        partes.append(str(erro))
+
+        if dados.get("error_description"):
+            partes.append(str(dados["error_description"]))
+
+    if not partes:
+        partes.append(resposta.text[:1200] or "Sem detalhes retornados.")
+
+    texto = " | ".join(partes)
+
+    # Proteção adicional contra exposição de credenciais nos logs.
+    for segredo in (
         GOOGLE_DRIVE_OAUTH_CLIENT_SECRET,
         GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN
-    ]):
-        raise ValueError("Credenciais OAuth do Google Drive não configuradas.")
+    ):
+        if segredo:
+            texto = texto.replace(segredo, "[CREDENCIAL OCULTA]")
+
+    return texto[:2000]
+
+
+def obter_token_oauth_drive_respostas():
 
     resposta = requests.post(
         "https://oauth2.googleapis.com/token",
@@ -14349,39 +14389,36 @@ def obter_token_oauth_drive_respostas():
     )
 
     if resposta.status_code != 200:
-        # Não imprime credenciais nem tokens no log.
         raise RuntimeError(
-            "Google OAuth não autorizou a operação "
-            f"(HTTP {resposta.status_code}). Confira o refresh token e o acesso."
+            "ERRO NA AUTENTICAÇÃO OAUTH: "
+            f"HTTP {resposta.status_code} - "
+            f"{detalhe_erro_google(resposta)}"
         )
 
     dados = resposta.json()
     token = dados.get("access_token")
 
     if not token:
-        raise RuntimeError("O Google não retornou access_token.")
+        raise RuntimeError(
+            "Google não retornou access_token: " +
+            str(dados.get("error_description", "sem detalhes"))
+        )
 
     return token
 
 
 def enviar_pdf_resposta_drive(token, conteudo_pdf, nome_original, num_nota):
-    """Envia PDF com o nome original e associa a N.A. por metadado interno."""
-
-    if not DRIVE_RESPOSTAS_NA_FOLDER_ID:
-        raise ValueError("Pasta de respostas do Drive não configurada.")
 
     metadata = {
         "name": nome_original,
         "mimeType": "application/pdf",
         "parents": [DRIVE_RESPOSTAS_NA_FOLDER_ID],
-        # Metadado privado da aplicação. Não depende do nome do arquivo.
         "appProperties": {
             "cgmpmu_tipo": "resposta_nota_auditoria",
             "cgmpmu_num_nota": str(num_nota)
         }
     }
 
-    # Drive v3 recebe upload multipart/related.
     boundary = "cgmpmu_resposta_" + str(int(time.time() * 1000000))
     boundary_bytes = boundary.encode("ascii")
 
@@ -14412,16 +14449,18 @@ def enviar_pdf_resposta_drive(token, conteudo_pdf, nome_original, num_nota):
     )
 
     if resposta.status_code not in (200, 201):
-        # Evita devolver conteúdo potencialmente sensível do Google ao navegador.
         raise RuntimeError(
-            "Falha no upload para o Google Drive "
-            f"(HTTP {resposta.status_code}). Confira a permissão de edição na pasta."
+            "ERRO NO UPLOAD DO GOOGLE DRIVE: "
+            f"HTTP {resposta.status_code} - "
+            f"{detalhe_erro_google(resposta)}"
         )
 
     arquivo_drive = resposta.json()
 
     if not arquivo_drive.get("id"):
-        raise RuntimeError("O Google Drive não retornou o ID do arquivo enviado.")
+        raise RuntimeError(
+            "Upload aparentemente concluído, mas o Google não retornou o ID."
+        )
 
     arquivo_drive["webViewLink"] = arquivo_drive.get("webViewLink") or (
         "https://drive.google.com/file/d/"
@@ -14429,6 +14468,173 @@ def enviar_pdf_resposta_drive(token, conteudo_pdf, nome_original, num_nota):
     )
 
     return arquivo_drive
+
+@app.route("/diagnosticar-drive-respostas")
+def diagnosticar_drive_respostas():
+
+    if "user" not in session:
+        return redirect("/")
+
+    if session.get("perfil") != "admin":
+        return "Acesso negado", 403
+
+    linhas = []
+    token = None
+
+    # ======================================================
+    # 1. TESTAR OAUTH
+    # ======================================================
+    try:
+        token = obter_token_oauth_drive_respostas()
+        linhas.append("OAUTH: OK - Access token obtido.")
+
+    except Exception as e:
+        linhas.append("OAUTH: FALHA - " + str(e))
+
+    # ======================================================
+    # 2. TESTAR PASTA DO GOOGLE DRIVE
+    # ======================================================
+    if token:
+
+        try:
+            resposta = requests.get(
+                "https://www.googleapis.com/drive/v3/files/"
+                + DRIVE_RESPOSTAS_NA_FOLDER_ID,
+                params={
+                    "supportsAllDrives": "true",
+                    "fields": (
+                        "id,name,mimeType,trashed,driveId,"
+                        "capabilities(canAddChildren)"
+                    )
+                },
+                headers={
+                    "Authorization": f"Bearer {token}"
+                },
+                timeout=(10, 30)
+            )
+
+            if resposta.status_code != 200:
+                raise RuntimeError(
+                    f"HTTP {resposta.status_code} - "
+                    f"{detalhe_erro_google(resposta)}"
+                )
+
+            pasta = resposta.json()
+
+            linhas.append(
+                "PASTA: OK - " + str(pasta.get("name"))
+            )
+
+            linhas.append(
+                "TIPO: " + str(pasta.get("mimeType"))
+            )
+
+            if pasta.get("mimeType") != "application/vnd.google-apps.folder":
+                linhas.append("ERRO: O ID informado não é uma pasta.")
+
+            elif pasta.get("trashed"):
+                linhas.append("ERRO: A pasta está na lixeira.")
+
+            else:
+                pode_adicionar = pasta.get(
+                    "capabilities", {}
+                ).get("canAddChildren")
+
+                linhas.append(
+                    "PERMISSÃO PARA ADICIONAR ARQUIVOS: "
+                    + str(pode_adicionar)
+                )
+
+                if pode_adicionar is False:
+                    linhas.append(
+                        "ERRO: A conta OAuth não pode adicionar arquivos "
+                        "nesta pasta."
+                    )
+
+        except Exception as e:
+            linhas.append("PASTA: FALHA - " + str(e))
+
+    # ======================================================
+    # 3. TESTAR TABELA DO POSTGRESQL
+    # ======================================================
+    con = None
+
+    try:
+        con = get_db()
+        cur = con.cursor()
+
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'notas_auditoria_respostas'
+              AND table_schema = ANY(current_schemas(true))
+        """)
+
+        colunas = cur.fetchall()
+
+        nomes_colunas = {
+            r["column_name"] if isinstance(r, dict) else r[0]
+            for r in colunas
+        }
+
+        obrigatorias = {
+            "id",
+            "num_nota",
+            "drive_file_id",
+            "nome_arquivo",
+            "web_view_link",
+            "mime_type",
+            "servidor_id",
+            "criado_em"
+        }
+
+        faltando = obrigatorias - nomes_colunas
+
+        if not nomes_colunas:
+            linhas.append(
+                "POSTGRESQL: FALHA - Tabela notas_auditoria_respostas "
+                "não encontrada."
+            )
+
+        elif faltando:
+            linhas.append(
+                "POSTGRESQL: FALHA - Colunas faltando: "
+                + ", ".join(sorted(faltando))
+            )
+
+        else:
+            linhas.append(
+                "POSTGRESQL: OK - Tabela e colunas encontradas."
+            )
+
+    except Exception as e:
+        linhas.append(
+            "POSTGRESQL: FALHA - " + str(e)
+        )
+
+    finally:
+        if con:
+            con.close()
+
+    resultado = "\n".join(linhas)
+
+    print("========== DIAGNÓSTICO DRIVE RESPOSTAS ==========")
+    print(resultado)
+    print("=================================================")
+
+    return render_template_string("""
+        <div style="font-family:Arial;padding:25px;">
+            <h2>Diagnóstico - Upload de Respostas</h2>
+            <pre style="
+                background:#f1f5f9;
+                padding:20px;
+                border-radius:10px;
+                white-space:pre-wrap;
+                line-height:1.8;
+            ">{{ resultado }}</pre>
+            <a href="/notas-auditoria">Voltar às Notas de Auditoria</a>
+        </div>
+    """, resultado=resultado)
 
 @app.route("/notas-auditoria", methods=["GET", "POST"])
 def notas_auditoria():

@@ -12912,6 +12912,35 @@ def requisicoes():
     tem_proxima = len(rows) > per_page
     rows = rows[:per_page]
     
+    # ======================================================
+    # PDFs DE RESPOSTA VINCULADOS AO NÚMERO DA N.A.
+    # ======================================================
+    respostas_por_nota = {}
+    
+    notas_da_pagina = sorted({
+        str(r["num_nota"]).strip()
+        for r in rows
+        if r["num_nota"] and str(r["num_nota"]).strip()
+    })
+    
+    if notas_da_pagina:
+        cur.execute("""
+            SELECT
+                num_nota,
+                nome_arquivo,
+                drive_file_id,
+                web_view_link,
+                criado_em
+            FROM notas_auditoria_respostas
+            WHERE TRIM(num_nota) = ANY(%s)
+            ORDER BY criado_em DESC
+        """, (notas_da_pagina,))
+    
+        for resposta in cur.fetchall():
+            chave_nota = str(resposta["num_nota"] or "").strip()
+    
+            respostas_por_nota.setdefault(chave_nota, []).append(resposta)
+    
     # Detecta se existe página anterior
     tem_anterior = page > 1
     
@@ -13038,6 +13067,7 @@ def requisicoes():
             <th>Ofício</th>
             <th>Monitoramento</th>
             <th>Ações</th>
+            <th>Resp.</th>
         </tr>
 
         {% for r in rows %}
@@ -13153,6 +13183,25 @@ def requisicoes():
                 <button onclick="excluir({{ r.id }})" title="Excluir">🗑️</button>
             </td>
 
+            <td style="min-width:150px;">
+                {% set nota_chave = (r.num_nota|string|trim) if r.num_nota else '' %}
+                {% set respostas = respostas_por_nota.get(nota_chave, []) %}
+            
+                {% if respostas %}
+                    {% for arquivo in respostas %}
+                        <a href="{{ arquivo.web_view_link or ('https://drive.google.com/file/d/' ~ arquivo.drive_file_id ~ '/view') }}"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           title="{{ arquivo.nome_arquivo or 'PDF de resposta' }}">
+                            📄 {{ arquivo.nome_arquivo or 'Ver resposta' }}
+                        </a>
+                        {% if not loop.last %}<br>{% endif %}
+                    {% endfor %}
+                {% else %}
+                    <span style="color:#999;">—</span>
+                {% endif %}
+            </td>
+
         </tr>
         {% endfor %}
     </table>
@@ -13218,6 +13267,7 @@ function atualizarCampo(id, campo, valor){
         perfil=session["perfil"],
         page=page,
         tem_proxima=tem_proxima,  # ✅ substitui total_pages
+        respostas_por_nota=respostas_por_nota,
         status=status,
         q=q,                     # ✅ mantém busca
         fmt=fmt,
